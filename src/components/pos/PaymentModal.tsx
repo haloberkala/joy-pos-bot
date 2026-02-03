@@ -41,12 +41,14 @@ export function PaymentModal({
     cash: <Wallet className="w-6 h-6" />,
     card: <CreditCard className="w-6 h-6" />,
     qris: <QrCode className="w-6 h-6" />,
+    transfer: <CreditCard className="w-6 h-6" />,
   };
 
   const paymentLabel = {
     cash: 'Tunai',
     card: 'Kartu',
     qris: 'QRIS',
+    transfer: 'Transfer',
   };
 
   return (
@@ -67,7 +69,7 @@ export function PaymentModal({
                 <span className="text-[hsl(var(--pos-muted-foreground))]">
                   {item.product.name} x{item.quantity}
                 </span>
-                <span>{formatCurrency(item.product.price * item.quantity)}</span>
+                <span>{formatCurrency(item.pricePerUnit * item.quantity)}</span>
               </div>
             ))}
           </div>

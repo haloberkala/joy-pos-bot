@@ -50,7 +50,7 @@ export function CartPanel({
                     {item.product.name}
                   </h4>
                   <p className="text-xs text-[hsl(var(--pos-muted-foreground))]">
-                    {formatCurrency(item.product.price)} / item
+                    {formatCurrency(item.pricePerUnit)} / item
                   </p>
                 </div>
                 <button
@@ -83,7 +83,7 @@ export function CartPanel({
                   </button>
                 </div>
                 <span className="price-text text-[hsl(var(--pos-accent))]">
-                  {formatCurrency(item.product.price * item.quantity)}
+                  {formatCurrency(item.pricePerUnit * item.quantity)}
                 </span>
               </div>
             </div>

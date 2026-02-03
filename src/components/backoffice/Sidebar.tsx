@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 const navItems = [
   { to: '/backoffice', icon: LayoutDashboard, label: 'Dashboard', end: true },
   { to: '/backoffice/products', icon: Package, label: 'Produk' },
+  { to: '/backoffice/stock', icon: Package, label: 'Stok' },
   { to: '/backoffice/transactions', icon: Receipt, label: 'Transaksi' },
   { to: '/backoffice/settings', icon: Settings, label: 'Pengaturan' },
 ];

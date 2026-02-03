@@ -1,10 +1,10 @@
-import { Product } from '@/types/pos';
+import { LegacyProduct } from '@/types/pos';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 interface ProductCardProps {
-  product: Product;
-  onAdd: (product: Product) => void;
+  product: LegacyProduct;
+  onAdd: (product: LegacyProduct) => void;
 }
 
 export function ProductCard({ product, onAdd }: ProductCardProps) {
