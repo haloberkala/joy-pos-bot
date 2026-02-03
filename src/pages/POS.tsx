@@ -5,7 +5,7 @@ import { CategoryTabs } from '@/components/pos/CategoryTabs';
 import { CartPanel } from '@/components/pos/CartPanel';
 import { PaymentModal } from '@/components/pos/PaymentModal';
 import { ReceiptModal } from '@/components/pos/ReceiptModal';
-import { products, categories } from '@/data/sampleData';
+import { legacyProducts, legacyCategories } from '@/data/sampleData';
 import { PaymentMethod, Transaction } from '@/types/pos';
 import { generateTransactionId } from '@/lib/format';
 import { Settings, User } from 'lucide-react';
@@ -21,8 +21,8 @@ export default function POS() {
   const { items, addItem, removeItem, updateQuantity, clearCart, total } = useCart();
 
   const filteredProducts = useMemo(() => {
-    if (activeCategory === 'all') return products;
-    return products.filter((p) => p.category === activeCategory);
+    if (activeCategory === 'all') return legacyProducts;
+    return legacyProducts.filter((p) => p.category === activeCategory);
   }, [activeCategory]);
 
   const handleCheckout = (method: PaymentMethod) => {
@@ -30,15 +30,24 @@ export default function POS() {
   };
 
   const handleConfirmPayment = (amountPaid: number) => {
+    const subtotal = total;
+    const discount = 0;
+    const tax = 0;
+    
     const transaction: Transaction = {
       id: generateTransactionId(),
+      storeId: 'store-1',
       items: [...items],
-      total,
+      subtotal,
+      discount,
+      tax,
+      total: subtotal - discount + tax,
       paymentMethod: paymentMethod!,
       amountPaid,
       change: Math.max(0, amountPaid - total),
       createdAt: new Date(),
-      cashier: 'Admin',
+      cashierId: 'user-1',
+      cashierName: 'Admin',
     };
 
     setCurrentTransaction(transaction);
@@ -85,7 +94,7 @@ export default function POS() {
         {/* Categories */}
         <div className="px-6 py-4">
           <CategoryTabs
-            categories={categories}
+            categories={legacyCategories}
             activeCategory={activeCategory}
             onCategoryChange={setActiveCategory}
           />

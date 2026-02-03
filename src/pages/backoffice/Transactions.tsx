@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { sampleTransactions } from '@/data/sampleData';
+import { sampleTransactions, stores } from '@/data/sampleData';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -12,16 +12,26 @@ import {
   TableRow 
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Search, Download, Eye, Wallet, CreditCard, QrCode } from 'lucide-react';
+import { Search, Download, Eye, Wallet, CreditCard, QrCode, Building2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Transaction } from '@/types/pos';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export default function Transactions() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
+  const [selectedStore, setSelectedStore] = useState<string>('all');
 
   const filteredTransactions = sampleTransactions.filter((transaction) => {
-    return transaction.id.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesSearch = transaction.id.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStore = selectedStore === 'all' || transaction.storeId === selectedStore;
+    return matchesSearch && matchesStore;
   });
 
   const getPaymentIcon = (method: string) => {
@@ -38,8 +48,14 @@ export default function Transactions() {
       case 'cash': return 'Tunai';
       case 'card': return 'Kartu';
       case 'qris': return 'QRIS';
+      case 'transfer': return 'Transfer';
       default: return method;
     }
+  };
+
+  const getStoreName = (storeId: string) => {
+    const store = stores.find(s => s.id === storeId);
+    return store?.name || storeId;
   };
 
   return (
@@ -56,15 +72,31 @@ export default function Transactions() {
         </Button>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-md">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input
-          placeholder="Cari transaksi..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-10"
-        />
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Cari transaksi..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10"
+          />
+        </div>
+        <Select value={selectedStore} onValueChange={setSelectedStore}>
+          <SelectTrigger className="w-full sm:w-[250px]">
+            <Building2 className="w-4 h-4 mr-2" />
+            <SelectValue placeholder="Pilih Toko" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Semua Toko</SelectItem>
+            {stores.map((store) => (
+              <SelectItem key={store.id} value={store.id}>
+                {store.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Transactions Table */}
@@ -73,6 +105,7 @@ export default function Transactions() {
           <TableHeader>
             <TableRow>
               <TableHead>ID Transaksi</TableHead>
+              <TableHead>Toko</TableHead>
               <TableHead>Tanggal</TableHead>
               <TableHead>Item</TableHead>
               <TableHead>Pembayaran</TableHead>
@@ -84,6 +117,11 @@ export default function Transactions() {
             {filteredTransactions.map((transaction) => (
               <TableRow key={transaction.id}>
                 <TableCell className="font-medium">{transaction.id}</TableCell>
+                <TableCell>
+                  <span className="text-sm text-muted-foreground">
+                    {getStoreName(transaction.storeId).split(' - ')[1] || getStoreName(transaction.storeId)}
+                  </span>
+                </TableCell>
                 <TableCell className="text-muted-foreground">
                   {formatDate(transaction.createdAt)}
                 </TableCell>
@@ -141,8 +179,12 @@ export default function Transactions() {
                   <p className="font-medium">{formatDate(selectedTransaction.createdAt)}</p>
                 </div>
                 <div>
+                  <p className="text-muted-foreground">Toko</p>
+                  <p className="font-medium">{getStoreName(selectedTransaction.storeId)}</p>
+                </div>
+                <div>
                   <p className="text-muted-foreground">Kasir</p>
-                  <p className="font-medium">{selectedTransaction.cashier}</p>
+                  <p className="font-medium">{selectedTransaction.cashierName}</p>
                 </div>
                 <div>
                   <p className="text-muted-foreground">Metode Pembayaran</p>
@@ -159,7 +201,7 @@ export default function Transactions() {
                         {item.product.name} x{item.quantity}
                       </span>
                       <span className="font-medium">
-                        {formatCurrency(item.product.price * item.quantity)}
+                        {formatCurrency(item.pricePerUnit * item.quantity)}
                       </span>
                     </div>
                   ))}
@@ -167,6 +209,18 @@ export default function Transactions() {
               </div>
 
               <div className="border-t pt-4 space-y-1">
+                {selectedTransaction.discount > 0 && (
+                  <>
+                    <div className="flex justify-between text-sm">
+                      <span>Subtotal</span>
+                      <span>{formatCurrency(selectedTransaction.subtotal)}</span>
+                    </div>
+                    <div className="flex justify-between text-sm text-green-600">
+                      <span>Diskon</span>
+                      <span>-{formatCurrency(selectedTransaction.discount)}</span>
+                    </div>
+                  </>
+                )}
                 <div className="flex justify-between font-semibold">
                   <span>Total</span>
                   <span>{formatCurrency(selectedTransaction.total)}</span>

@@ -17,6 +17,7 @@ export function ReceiptModal({ isOpen, onClose, transaction }: ReceiptModalProps
     cash: 'Tunai',
     card: 'Kartu',
     qris: 'QRIS',
+    transfer: 'Transfer',
   };
 
   return (
@@ -29,8 +30,8 @@ export function ReceiptModal({ isOpen, onClose, transaction }: ReceiptModalProps
         <div className="space-y-4 font-mono text-sm">
           {/* Store Info */}
           <div className="text-center border-b border-dashed pb-3">
-            <h3 className="font-bold text-lg">TOKO POS</h3>
-            <p className="text-xs text-gray-600">Jl. Contoh No. 123</p>
+            <h3 className="font-bold text-lg">MINIMARKET BERKAH</h3>
+            <p className="text-xs text-gray-600">Jl. Merdeka No. 123</p>
             <p className="text-xs text-gray-600">Telp: 021-12345678</p>
           </div>
 
@@ -46,7 +47,7 @@ export function ReceiptModal({ isOpen, onClose, transaction }: ReceiptModalProps
             </div>
             <div className="flex justify-between">
               <span>Kasir</span>
-              <span>{transaction.cashier}</span>
+              <span>{transaction.cashierName}</span>
             </div>
           </div>
 
@@ -57,9 +58,9 @@ export function ReceiptModal({ isOpen, onClose, transaction }: ReceiptModalProps
                 <div className="font-medium">{item.product.name}</div>
                 <div className="flex justify-between text-xs text-gray-600">
                   <span>
-                    {item.quantity} x {formatCurrency(item.product.price)}
+                    {item.quantity} x {formatCurrency(item.pricePerUnit)}
                   </span>
-                  <span>{formatCurrency(item.product.price * item.quantity)}</span>
+                  <span>{formatCurrency(item.pricePerUnit * item.quantity)}</span>
                 </div>
               </div>
             ))}
@@ -67,6 +68,18 @@ export function ReceiptModal({ isOpen, onClose, transaction }: ReceiptModalProps
 
           {/* Totals */}
           <div className="space-y-1">
+            {transaction.discount > 0 && (
+              <>
+                <div className="flex justify-between text-xs">
+                  <span>Subtotal</span>
+                  <span>{formatCurrency(transaction.subtotal)}</span>
+                </div>
+                <div className="flex justify-between text-xs text-green-600">
+                  <span>Diskon</span>
+                  <span>-{formatCurrency(transaction.discount)}</span>
+                </div>
+              </>
+            )}
             <div className="flex justify-between font-bold">
               <span>TOTAL</span>
               <span>{formatCurrency(transaction.total)}</span>

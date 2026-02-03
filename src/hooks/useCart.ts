@@ -1,10 +1,10 @@
 import { useState, useCallback, useMemo } from 'react';
-import { CartItem, Product } from '@/types/pos';
+import { CartItem, LegacyProduct } from '@/types/pos';
 
 export function useCart() {
   const [items, setItems] = useState<CartItem[]>([]);
 
-  const addItem = useCallback((product: Product) => {
+  const addItem = useCallback((product: LegacyProduct) => {
     setItems((prev) => {
       const existing = prev.find((item) => item.product.id === product.id);
       if (existing) {
@@ -14,7 +14,27 @@ export function useCart() {
             : item
         );
       }
-      return [...prev, { product, quantity: 1 }];
+      // Convert LegacyProduct to Product-like structure for CartItem
+      const cartItem: CartItem = {
+        product: {
+          id: product.id,
+          sku: product.id,
+          barcode: product.id,
+          name: product.name,
+          categoryId: product.category,
+          baseUnitId: 'unit-pcs',
+          buyPrice: product.price * 0.8, // Estimate
+          sellPrice: product.price,
+          minStock: 10,
+          isActive: true,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+        quantity: 1,
+        unitId: 'unit-pcs',
+        pricePerUnit: product.price,
+      };
+      return [...prev, cartItem];
     });
   }, []);
 
@@ -40,7 +60,7 @@ export function useCart() {
 
   const total = useMemo(() => {
     return items.reduce(
-      (sum, item) => sum + item.product.price * item.quantity,
+      (sum, item) => sum + item.pricePerUnit * item.quantity,
       0
     );
   }, [items]);

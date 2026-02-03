@@ -1,27 +1,86 @@
 import { StatCard } from '@/components/backoffice/StatCard';
-import { sampleTransactions, products } from '@/data/sampleData';
+import { sampleTransactions, products, stores, stockPerStore, getProductStock } from '@/data/sampleData';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { 
   TrendingUp, 
   ShoppingCart, 
   Package, 
-  Users,
+  Building2,
   ArrowUpRight,
-  ArrowDownRight
 } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useState } from 'react';
 
 export default function Dashboard() {
-  const totalRevenue = sampleTransactions.reduce((sum, t) => sum + t.total, 0);
-  const totalTransactions = sampleTransactions.length;
+  const [selectedStore, setSelectedStore] = useState<string>('all');
+
+  // Filter transactions by store
+  const filteredTransactions = selectedStore === 'all' 
+    ? sampleTransactions 
+    : sampleTransactions.filter(t => t.storeId === selectedStore);
+
+  const totalRevenue = filteredTransactions.reduce((sum, t) => sum + t.total, 0);
+  const totalTransactions = filteredTransactions.length;
   const totalProducts = products.length;
-  const lowStockProducts = products.filter(p => p.stock < 20).length;
+  
+  // Get low stock products based on selected store
+  const getLowStockCount = () => {
+    if (selectedStore === 'all') {
+      // Count products that are low in any store
+      return products.filter(p => {
+        const stocks = stockPerStore.filter(s => s.productId === p.id);
+        return stocks.some(s => s.quantity < p.minStock);
+      }).length;
+    }
+    return products.filter(p => {
+      const stock = getProductStock(p.id, selectedStore);
+      return stock < p.minStock;
+    }).length;
+  };
+
+  const lowStockProducts = getLowStockCount();
+
+  const getLowStockProductsList = () => {
+    if (selectedStore === 'all') {
+      return products.filter(p => {
+        const stocks = stockPerStore.filter(s => s.productId === p.id);
+        return stocks.some(s => s.quantity < p.minStock);
+      });
+    }
+    return products.filter(p => {
+      const stock = getProductStock(p.id, selectedStore);
+      return stock < p.minStock;
+    });
+  };
 
   return (
     <div className="space-y-6">
       {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-muted-foreground">Selamat datang di Back Office POS</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
+          <p className="text-muted-foreground">Selamat datang di Back Office POS</p>
+        </div>
+        <Select value={selectedStore} onValueChange={setSelectedStore}>
+          <SelectTrigger className="w-[250px]">
+            <Building2 className="w-4 h-4 mr-2" />
+            <SelectValue placeholder="Pilih Toko" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Semua Toko</SelectItem>
+            {stores.map((store) => (
+              <SelectItem key={store.id} value={store.id}>
+                {store.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Stats Grid */}
@@ -64,7 +123,7 @@ export default function Dashboard() {
           <h2 className="font-semibold text-foreground">Transaksi Terbaru</h2>
         </div>
         <div className="divide-y divide-border">
-          {sampleTransactions.slice(0, 5).map((transaction) => (
+          {filteredTransactions.slice(0, 5).map((transaction) => (
             <div key={transaction.id} className="p-4 flex items-center justify-between hover:bg-accent/50 transition-colors">
               <div className="flex items-center gap-4">
                 <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
@@ -99,15 +158,25 @@ export default function Dashboard() {
             <div>
               <h3 className="font-semibold text-orange-800">Peringatan Stok Menipis</h3>
               <p className="text-sm text-orange-700 mt-1">
-                {lowStockProducts} produk memiliki stok kurang dari 20 unit. 
+                {lowStockProducts} produk memiliki stok di bawah minimum. 
                 Segera lakukan restok untuk menghindari kehabisan stok.
               </p>
               <div className="flex flex-wrap gap-2 mt-3">
-                {products.filter(p => p.stock < 20).map(p => (
-                  <span key={p.id} className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-full">
-                    {p.name} ({p.stock})
+                {getLowStockProductsList().slice(0, 5).map(p => {
+                  const stock = selectedStore === 'all' 
+                    ? Math.min(...stockPerStore.filter(s => s.productId === p.id).map(s => s.quantity))
+                    : getProductStock(p.id, selectedStore);
+                  return (
+                    <span key={p.id} className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-full">
+                      {p.name} ({stock})
+                    </span>
+                  );
+                })}
+                {getLowStockProductsList().length > 5 && (
+                  <span className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-full">
+                    +{getLowStockProductsList().length - 5} lainnya
                   </span>
-                ))}
+                )}
               </div>
             </div>
           </div>
