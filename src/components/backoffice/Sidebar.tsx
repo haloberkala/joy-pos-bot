@@ -1,23 +1,57 @@
 import { NavLink } from '@/components/NavLink';
+import { useAuth, canAccessMenu } from '@/contexts/AuthContext';
 import { 
   LayoutDashboard, 
   Package, 
   Receipt, 
   Settings,
   Store,
-  ChevronLeft
+  ChevronLeft,
+  LogOut,
+  ShieldCheck,
+  UserCog,
+  User
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 
-const navItems = [
-  { to: '/backoffice', icon: LayoutDashboard, label: 'Dashboard', end: true },
-  { to: '/backoffice/products', icon: Package, label: 'Produk' },
-  { to: '/backoffice/stock', icon: Package, label: 'Stok' },
-  { to: '/backoffice/transactions', icon: Receipt, label: 'Transaksi' },
-  { to: '/backoffice/settings', icon: Settings, label: 'Pengaturan' },
+interface NavItem {
+  to: string;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  end?: boolean;
+  menuKey: string;
+}
+
+const navItems: NavItem[] = [
+  { to: '/backoffice', icon: LayoutDashboard, label: 'Dashboard', end: true, menuKey: 'dashboard' },
+  { to: '/backoffice/products', icon: Package, label: 'Produk', menuKey: 'products' },
+  { to: '/backoffice/stock', icon: Package, label: 'Stok', menuKey: 'stock' },
+  { to: '/backoffice/transactions', icon: Receipt, label: 'Transaksi', menuKey: 'transactions' },
+  { to: '/backoffice/settings', icon: Settings, label: 'Pengaturan', menuKey: 'settings' },
 ];
 
 export function Sidebar() {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
+    toast.success('Logout berhasil');
+  };
+
+  const getRoleLabel = (role: string) => {
+    switch (role) {
+      case 'owner': return 'Owner';
+      case 'admin': return 'Admin';
+      case 'cashier': return 'Kasir';
+      default: return 'User';
+    }
+  };
+
+  const RoleIcon = user?.role === 'owner' ? ShieldCheck : user?.role === 'admin' ? UserCog : User;
+
   return (
     <aside className="w-64 bg-card border-r border-border flex flex-col">
       {/* Logo */}
@@ -33,24 +67,39 @@ export function Sidebar() {
         </div>
       </div>
 
+      {/* User Info */}
+      <div className="p-4 border-b border-border">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+            <RoleIcon className="w-5 h-5 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="font-medium text-foreground truncate">{user?.name}</p>
+            <p className="text-xs text-muted-foreground">{getRoleLabel(user?.role || '')}</p>
+          </div>
+        </div>
+      </div>
+
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1">
-        {navItems.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            end={item.end}
-            className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
-            activeClassName="bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground"
-          >
-            <item.icon className="w-5 h-5" />
-            <span className="font-medium">{item.label}</span>
-          </NavLink>
-        ))}
+        {navItems
+          .filter(item => canAccessMenu(user?.role, item.menuKey))
+          .map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+              activeClassName="bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground"
+            >
+              <item.icon className="w-5 h-5" />
+              <span className="font-medium">{item.label}</span>
+            </NavLink>
+          ))}
       </nav>
 
-      {/* Back to POS */}
-      <div className="p-4 border-t border-border">
+      {/* Footer Actions */}
+      <div className="p-4 border-t border-border space-y-2">
         <NavLink
           to="/"
           className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
@@ -58,6 +107,13 @@ export function Sidebar() {
           <ChevronLeft className="w-5 h-5" />
           <span className="font-medium">Kembali ke POS</span>
         </NavLink>
+        <button
+          onClick={handleLogout}
+          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-destructive hover:bg-destructive/10 transition-colors"
+        >
+          <LogOut className="w-5 h-5" />
+          <span className="font-medium">Logout</span>
+        </button>
       </div>
     </aside>
   );
