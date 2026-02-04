@@ -51,18 +51,21 @@
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 173 58% 39%;
 
-    /* POS specific tokens */
-    --pos-background: 222 47% 11%;
-    --pos-foreground: 210 40% 98%;
-    --pos-card: 223 47% 14%;
-    --pos-card-foreground: 210 40% 98%;
-    --pos-muted: 223 47% 18%;
-    --pos-muted-foreground: 215 20% 65%;
-    --pos-border: 223 47% 22%;
-    --pos-accent: 173 58% 39%;
-    --pos-accent-foreground: 0 0% 100%;
-    --pos-success: 142 71% 45%;
-    --pos-destructive: 0 62% 50%;
+    /* POS specific tokens - Hijau Mint Modern */
+    --pos-background: 160 30% 6%;
+    --pos-foreground: 160 20% 98%;
+    --pos-card: 160 25% 10%;
+    --pos-card-foreground: 160 20% 98%;
+    --pos-muted: 160 20% 14%;
+    --pos-muted-foreground: 160 15% 60%;
+    --pos-border: 160 20% 18%;
+    --pos-accent: 158 64% 52%;
+    --pos-accent-foreground: 160 30% 6%;
+    --pos-success: 158 64% 52%;
+    --pos-destructive: 0 72% 55%;
+    --pos-accent-hover: 158 64% 45%;
+    --pos-gradient-start: 158 64% 52%;
+    --pos-gradient-end: 168 55% 42%;
   }
 
   .dark {

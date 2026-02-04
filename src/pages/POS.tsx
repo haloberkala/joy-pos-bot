@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useCart } from '@/hooks/useCart';
+import { useAuth } from '@/contexts/AuthContext';
 import { ProductCard } from '@/components/pos/ProductCard';
 import { CategoryTabs } from '@/components/pos/CategoryTabs';
 import { CartPanel } from '@/components/pos/CartPanel';
@@ -8,15 +9,19 @@ import { ReceiptModal } from '@/components/pos/ReceiptModal';
 import { legacyProducts, legacyCategories } from '@/data/sampleData';
 import { PaymentMethod, Transaction } from '@/types/pos';
 import { generateTransactionId } from '@/lib/format';
-import { Settings, User } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Settings, LogOut, User, ShieldCheck, UserCog } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { canAccessMenu } from '@/contexts/AuthContext';
 
 export default function POS() {
   const [activeCategory, setActiveCategory] = useState('all');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
   const [currentTransaction, setCurrentTransaction] = useState<Transaction | null>(null);
   const [showReceipt, setShowReceipt] = useState(false);
+  
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
 
   const { items, addItem, removeItem, updateQuantity, clearCart, total } = useCart();
 
@@ -36,7 +41,7 @@ export default function POS() {
     
     const transaction: Transaction = {
       id: generateTransactionId(),
-      storeId: 'store-1',
+      storeId: user?.storeIds[0] || 'store-1',
       items: [...items],
       subtotal,
       discount,
@@ -46,8 +51,8 @@ export default function POS() {
       amountPaid,
       change: Math.max(0, amountPaid - total),
       createdAt: new Date(),
-      cashierId: 'user-1',
-      cashierName: 'Admin',
+      cashierId: user?.id || 'user-1',
+      cashierName: user?.name || 'Kasir',
     };
 
     setCurrentTransaction(transaction);
@@ -77,17 +82,35 @@ export default function POS() {
             </p>
           </div>
           <div className="flex items-center gap-3">
-            <Link
-              to="/backoffice"
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[hsl(var(--pos-card))] text-[hsl(var(--pos-foreground))] hover:bg-[hsl(var(--pos-muted))] transition-colors"
-            >
-              <Settings className="w-4 h-4" />
-              <span className="text-sm font-medium">Back Office</span>
-            </Link>
-            <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[hsl(var(--pos-accent))] text-white">
-              <User className="w-4 h-4" />
-              <span className="text-sm font-medium">Admin</span>
+            {canAccessMenu(user?.role, 'dashboard') && (
+              <Link
+                to="/backoffice"
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[hsl(var(--pos-card))] text-[hsl(var(--pos-foreground))] hover:bg-[hsl(var(--pos-muted))] transition-colors"
+              >
+                <Settings className="w-4 h-4" />
+                <span className="text-sm font-medium">Back Office</span>
+              </Link>
+            )}
+            <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[hsl(var(--pos-accent))] text-[hsl(var(--pos-accent-foreground))]">
+              {user?.role === 'owner' ? (
+                <ShieldCheck className="w-4 h-4" />
+              ) : user?.role === 'admin' ? (
+                <UserCog className="w-4 h-4" />
+              ) : (
+                <User className="w-4 h-4" />
+              )}
+              <span className="text-sm font-medium">{user?.name || 'User'}</span>
             </div>
+            <button
+              onClick={() => {
+                logout();
+                navigate('/login');
+                toast.success('Logout berhasil');
+              }}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[hsl(var(--pos-destructive))] text-white hover:opacity-90 transition-opacity"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
         </header>
 
