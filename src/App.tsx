@@ -12,6 +12,8 @@ import Dashboard from "./pages/backoffice/Dashboard";
 import Products from "./pages/backoffice/Products";
 import Stock from "./pages/backoffice/Stock";
 import Transactions from "./pages/backoffice/Transactions";
+import Expenses from "./pages/backoffice/Expenses";
+import Reports from "./pages/backoffice/Reports";
 import Settings from "./pages/backoffice/Settings";
 import NotFound from "./pages/NotFound";
 
@@ -46,6 +48,8 @@ const App = () => (
               <Route path="products" element={<Products />} />
               <Route path="stock" element={<Stock />} />
               <Route path="transactions" element={<Transactions />} />
+              <Route path="expenses" element={<Expenses />} />
+              <Route path="reports" element={<Reports />} />
               <Route
                 path="settings"
                 element={

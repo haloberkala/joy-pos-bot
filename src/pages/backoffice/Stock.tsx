@@ -3,9 +3,7 @@ import {
   products, 
   stores, 
   stockPerStore, 
-  getProductStock, 
   sampleStockOpnames, 
-  sampleStockTransfers,
   categories 
 } from '@/data/sampleData';
 import { formatCurrency, formatDate } from '@/lib/format';
@@ -25,7 +23,6 @@ import {
   Plus, 
   Search, 
   Building2, 
-  ArrowRightLeft, 
   ClipboardCheck,
   Package,
   AlertTriangle,
@@ -50,15 +47,13 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { StockOpname, StockTransfer } from '@/types/pos';
+import { StockOpname } from '@/types/pos';
 
 export default function Stock() {
   const [selectedStore, setSelectedStore] = useState('store-1');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [isOpnameModalOpen, setIsOpnameModalOpen] = useState(false);
   const [selectedOpname, setSelectedOpname] = useState<StockOpname | null>(null);
-  const [selectedTransfer, setSelectedTransfer] = useState<StockTransfer | null>(null);
 
   // Get stock data for selected store
   const storeStock = stockPerStore.filter(s => s.storeId === selectedStore);
@@ -86,9 +81,6 @@ export default function Stock() {
       case 'in_progress': return { label: 'Berlangsung', variant: 'default' as const };
       case 'completed': return { label: 'Selesai', variant: 'outline' as const };
       case 'cancelled': return { label: 'Dibatalkan', variant: 'destructive' as const };
-      case 'pending': return { label: 'Menunggu', variant: 'secondary' as const };
-      case 'in_transit': return { label: 'Dalam Perjalanan', variant: 'default' as const };
-      case 'received': return { label: 'Diterima', variant: 'outline' as const };
       default: return { label: status, variant: 'secondary' as const };
     }
   };
@@ -104,7 +96,7 @@ export default function Stock() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Manajemen Stok</h1>
-          <p className="text-muted-foreground">Kelola stok, opname, dan transfer antar toko</p>
+          <p className="text-muted-foreground">Kelola stok dan stock opname</p>
         </div>
         <Select value={selectedStore} onValueChange={setSelectedStore}>
           <SelectTrigger className="w-[250px]">
@@ -179,10 +171,6 @@ export default function Stock() {
           <TabsTrigger value="opname" className="gap-2">
             <ClipboardCheck className="w-4 h-4" />
             Stock Opname
-          </TabsTrigger>
-          <TabsTrigger value="transfer" className="gap-2">
-            <ArrowRightLeft className="w-4 h-4" />
-            Transfer Stok
           </TabsTrigger>
         </TabsList>
 
@@ -341,119 +329,6 @@ export default function Stock() {
                           size="icon" 
                           className="h-8 w-8"
                           onClick={() => setSelectedOpname(opname)}
-                        >
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        </TabsContent>
-
-        {/* Transfer Tab */}
-        <TabsContent value="transfer" className="space-y-4">
-          <div className="flex justify-between">
-            <p className="text-muted-foreground">
-              Transfer stok antar toko/cabang
-            </p>
-            <Dialog open={isTransferModalOpen} onOpenChange={setIsTransferModalOpen}>
-              <DialogTrigger asChild>
-                <Button className="gap-2">
-                  <Plus className="w-4 h-4" />
-                  Buat Transfer Baru
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Transfer Stok Antar Toko</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Dari Toko</Label>
-                      <Select defaultValue="store-1">
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {stores.map((store) => (
-                            <SelectItem key={store.id} value={store.id}>
-                              {store.name.split(' - ')[1] || store.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Ke Toko</Label>
-                      <Select defaultValue="store-2">
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {stores.map((store) => (
-                            <SelectItem key={store.id} value={store.id}>
-                              {store.name.split(' - ')[1] || store.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Catatan</Label>
-                    <Textarea placeholder="Catatan transfer (opsional)" />
-                  </div>
-                  <div className="flex justify-end gap-2 pt-4">
-                    <Button variant="outline" onClick={() => setIsTransferModalOpen(false)}>
-                      Batal
-                    </Button>
-                    <Button onClick={() => setIsTransferModalOpen(false)}>
-                      Lanjut Pilih Produk
-                    </Button>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-
-          <div className="bg-card rounded-xl border border-border overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>ID Transfer</TableHead>
-                  <TableHead>Dari</TableHead>
-                  <TableHead>Ke</TableHead>
-                  <TableHead>Tanggal Buat</TableHead>
-                  <TableHead>Tanggal Terima</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Aksi</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sampleStockTransfers.map((transfer) => {
-                  const status = getStatusLabel(transfer.status);
-                  return (
-                    <TableRow key={transfer.id}>
-                      <TableCell className="font-medium">{transfer.id}</TableCell>
-                      <TableCell>{getStoreName(transfer.fromStoreId)}</TableCell>
-                      <TableCell>{getStoreName(transfer.toStoreId)}</TableCell>
-                      <TableCell>{formatDate(transfer.createdAt)}</TableCell>
-                      <TableCell>
-                        {transfer.receivedAt ? formatDate(transfer.receivedAt) : '-'}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={status.variant}>{status.label}</Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-8 w-8"
-                          onClick={() => setSelectedTransfer(transfer)}
                         >
                           <Eye className="w-4 h-4" />
                         </Button>

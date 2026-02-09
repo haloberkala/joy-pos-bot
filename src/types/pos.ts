@@ -72,7 +72,7 @@ export interface StockMovement {
   id: string;
   productId: string;
   storeId: string;
-  type: 'in' | 'out' | 'adjustment' | 'transfer_in' | 'transfer_out';
+  type: 'in' | 'out' | 'adjustment';
   quantity: number;
   previousQty: number;
   newQty: number;
@@ -103,25 +103,6 @@ export interface StockOpnameItem {
   notes?: string;
 }
 
-export interface StockTransfer {
-  id: string;
-  fromStoreId: string;
-  toStoreId: string;
-  status: 'pending' | 'in_transit' | 'received' | 'cancelled';
-  createdBy: string;
-  createdAt: Date;
-  receivedBy?: string;
-  receivedAt?: Date;
-  notes?: string;
-}
-
-export interface StockTransferItem {
-  id: string;
-  transferId: string;
-  productId: string;
-  quantitySent: number;
-  quantityReceived?: number;
-}
 
 // ================ SUPPLIER ================
 export interface Supplier {

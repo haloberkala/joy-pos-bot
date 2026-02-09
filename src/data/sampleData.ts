@@ -8,10 +8,11 @@ import {
   Supplier, 
   StockPerStore,
   StockOpname,
-  StockTransfer,
   LegacyProduct,
   LegacyCategory,
-  Customer
+  Customer,
+  Expense,
+  ExpenseCategory
 } from '@/types/pos';
 
 // ================ STORES ================
@@ -383,6 +384,103 @@ export const customers: Customer[] = [
   },
 ];
 
+// ================ EXPENSE CATEGORIES ================
+export const expenseCategories: ExpenseCategory[] = [
+  { id: 'exp-cat-1', name: 'Listrik' },
+  { id: 'exp-cat-2', name: 'Gaji Karyawan' },
+  { id: 'exp-cat-3', name: 'Sewa Tempat' },
+  { id: 'exp-cat-4', name: 'Transportasi' },
+  { id: 'exp-cat-5', name: 'Kebersihan' },
+  { id: 'exp-cat-6', name: 'Internet & Telepon' },
+  { id: 'exp-cat-7', name: 'Peralatan' },
+  { id: 'exp-cat-8', name: 'Lain-lain' },
+];
+
+// ================ SAMPLE EXPENSES ================
+export const sampleExpenses: Expense[] = [
+  {
+    id: 'EXP-20240101-001',
+    storeId: 'store-1',
+    categoryId: 'exp-cat-1',
+    amount: 2500000,
+    description: 'Tagihan listrik bulan Januari',
+    date: new Date('2024-01-05'),
+    createdBy: 'admin-1',
+  },
+  {
+    id: 'EXP-20240101-002',
+    storeId: 'store-1',
+    categoryId: 'exp-cat-2',
+    amount: 8000000,
+    description: 'Gaji karyawan bulan Januari (2 orang)',
+    date: new Date('2024-01-01'),
+    createdBy: 'owner-1',
+  },
+  {
+    id: 'EXP-20240101-003',
+    storeId: 'store-1',
+    categoryId: 'exp-cat-3',
+    amount: 5000000,
+    description: 'Sewa tempat bulan Januari',
+    date: new Date('2024-01-01'),
+    createdBy: 'owner-1',
+  },
+  {
+    id: 'EXP-20240101-004',
+    storeId: 'store-2',
+    categoryId: 'exp-cat-1',
+    amount: 1800000,
+    description: 'Tagihan listrik cabang selatan',
+    date: new Date('2024-01-05'),
+    createdBy: 'admin-1',
+  },
+  {
+    id: 'EXP-20240101-005',
+    storeId: 'store-2',
+    categoryId: 'exp-cat-2',
+    amount: 6000000,
+    description: 'Gaji karyawan cabang selatan',
+    date: new Date('2024-01-01'),
+    createdBy: 'owner-1',
+  },
+  {
+    id: 'EXP-20240115-001',
+    storeId: 'store-1',
+    categoryId: 'exp-cat-6',
+    amount: 500000,
+    description: 'Tagihan internet dan telepon',
+    date: new Date('2024-01-15'),
+    createdBy: 'admin-1',
+  },
+  {
+    id: 'EXP-20240115-002',
+    storeId: 'store-1',
+    categoryId: 'exp-cat-5',
+    amount: 350000,
+    description: 'Perlengkapan kebersihan toko',
+    date: new Date('2024-01-15'),
+    createdBy: 'admin-1',
+  },
+  {
+    id: 'EXP-20240116-001',
+    storeId: 'store-3',
+    categoryId: 'exp-cat-3',
+    amount: 4000000,
+    description: 'Sewa tempat cabang timur',
+    date: new Date('2024-01-16'),
+    createdBy: 'owner-1',
+  },
+  {
+    id: 'EXP-20240116-002',
+    storeId: 'store-3',
+    categoryId: 'exp-cat-7',
+    amount: 1200000,
+    description: 'Pembelian rak display baru',
+    date: new Date('2024-01-16'),
+    createdBy: 'admin-1',
+  },
+];
+
 // ================ SAMPLE TRANSACTIONS ================
 export const sampleTransactions: Transaction[] = [
   {
@@ -480,30 +578,6 @@ export const sampleStockOpnames: StockOpname[] = [
     startedAt: new Date('2024-01-15T09:00:00'),
     createdBy: 'user-2',
     notes: 'Stock opname mingguan',
-  },
-];
-
-// ================ SAMPLE STOCK TRANSFERS ================
-export const sampleStockTransfers: StockTransfer[] = [
-  {
-    id: 'TRF-20240112-001',
-    fromStoreId: 'store-1',
-    toStoreId: 'store-3',
-    status: 'received',
-    createdBy: 'user-admin',
-    createdAt: new Date('2024-01-12T10:00:00'),
-    receivedBy: 'user-3',
-    receivedAt: new Date('2024-01-12T15:30:00'),
-    notes: 'Transfer stok pembukaan cabang baru',
-  },
-  {
-    id: 'TRF-20240114-001',
-    fromStoreId: 'store-1',
-    toStoreId: 'store-2',
-    status: 'in_transit',
-    createdBy: 'user-admin',
-    createdAt: new Date('2024-01-14T14:00:00'),
-    notes: 'Restok produk laris',
   },
 ];
 
