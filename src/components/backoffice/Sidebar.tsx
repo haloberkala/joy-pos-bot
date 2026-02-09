@@ -10,7 +10,9 @@ import {
   LogOut,
   ShieldCheck,
   UserCog,
-  User
+  User,
+  Wallet,
+  FileBarChart,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -28,6 +30,8 @@ const navItems: NavItem[] = [
   { to: '/backoffice/products', icon: Package, label: 'Produk', menuKey: 'products' },
   { to: '/backoffice/stock', icon: Package, label: 'Stok', menuKey: 'stock' },
   { to: '/backoffice/transactions', icon: Receipt, label: 'Transaksi', menuKey: 'transactions' },
+  { to: '/backoffice/expenses', icon: Wallet, label: 'Pengeluaran', menuKey: 'expenses' },
+  { to: '/backoffice/reports', icon: FileBarChart, label: 'Laporan', menuKey: 'reports' },
   { to: '/backoffice/settings', icon: Settings, label: 'Pengaturan', menuKey: 'settings' },
 ];
 

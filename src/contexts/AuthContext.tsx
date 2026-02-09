@@ -96,6 +96,8 @@ export const MENU_ACCESS: Record<string, UserRole[]> = {
   'products': ['owner', 'admin'],
   'stock': ['owner', 'admin'],
   'transactions': ['owner', 'admin', 'cashier'],
+  'expenses': ['owner', 'admin'],
+  'reports': ['owner', 'admin'],
   'settings': ['owner'],
 };
 
