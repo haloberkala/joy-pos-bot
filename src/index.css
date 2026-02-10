@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap');
 
 @layer base {
   :root {
@@ -51,21 +51,21 @@
     --sidebar-border: 220 13% 91%;
     --sidebar-ring: 173 58% 39%;
 
-    /* POS specific tokens - Hijau Mint Modern */
-    --pos-background: 160 30% 6%;
-    --pos-foreground: 160 20% 98%;
-    --pos-card: 160 25% 10%;
-    --pos-card-foreground: 160 20% 98%;
-    --pos-muted: 160 20% 14%;
-    --pos-muted-foreground: 160 15% 60%;
-    --pos-border: 160 20% 18%;
-    --pos-accent: 158 64% 52%;
-    --pos-accent-foreground: 160 30% 6%;
-    --pos-success: 158 64% 52%;
+    /* POS specific tokens - Light Mint Fresh */
+    --pos-background: 150 20% 97%;
+    --pos-foreground: 220 25% 18%;
+    --pos-card: 0 0% 100%;
+    --pos-card-foreground: 220 25% 18%;
+    --pos-muted: 150 15% 93%;
+    --pos-muted-foreground: 220 10% 50%;
+    --pos-border: 150 12% 88%;
+    --pos-accent: 158 64% 42%;
+    --pos-accent-foreground: 0 0% 100%;
+    --pos-success: 158 64% 42%;
     --pos-destructive: 0 72% 55%;
-    --pos-accent-hover: 158 64% 45%;
-    --pos-gradient-start: 158 64% 52%;
-    --pos-gradient-end: 168 55% 42%;
+    --pos-accent-hover: 158 64% 36%;
+    --pos-gradient-start: 158 64% 42%;
+    --pos-gradient-end: 168 55% 36%;
   }
 
   .dark {
@@ -115,7 +115,7 @@
 
   body {
     @apply bg-background text-foreground font-sans antialiased;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Plus Jakarta Sans', 'DM Sans', sans-serif;
   }
 }
 

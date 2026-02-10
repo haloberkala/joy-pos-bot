@@ -38,10 +38,10 @@ export function PaymentModal({
   };
 
   const paymentIcon = {
-    cash: <Wallet className="w-6 h-6" />,
-    card: <CreditCard className="w-6 h-6" />,
-    qris: <QrCode className="w-6 h-6" />,
-    transfer: <CreditCard className="w-6 h-6" />,
+    cash: <Wallet className="w-5 h-5" />,
+    card: <CreditCard className="w-5 h-5" />,
+    qris: <QrCode className="w-5 h-5" />,
+    transfer: <CreditCard className="w-5 h-5" />,
   };
 
   const paymentLabel = {
@@ -53,9 +53,9 @@ export function PaymentModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md bg-[hsl(var(--pos-card))] border-[hsl(var(--pos-border))] text-[hsl(var(--pos-foreground))]">
+      <DialogContent className="sm:max-w-md rounded-2xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-[hsl(var(--pos-foreground))]">
+          <DialogTitle className="flex items-center gap-2">
             {paymentIcon[paymentMethod]}
             Pembayaran {paymentLabel[paymentMethod]}
           </DialogTitle>
@@ -63,19 +63,19 @@ export function PaymentModal({
 
         <div className="space-y-4">
           {/* Order Summary */}
-          <div className="bg-[hsl(var(--pos-muted))] rounded-lg p-3 space-y-2 max-h-32 overflow-y-auto">
+          <div className="bg-muted/50 rounded-xl p-3 space-y-2 max-h-32 overflow-y-auto">
             {items.map((item) => (
               <div key={item.product.id} className="flex justify-between text-sm">
-                <span className="text-[hsl(var(--pos-muted-foreground))]">
+                <span className="text-muted-foreground">
                   {item.product.name} x{item.quantity}
                 </span>
-                <span>{formatCurrency(item.pricePerUnit * item.quantity)}</span>
+                <span className="font-medium">{formatCurrency(item.pricePerUnit * item.quantity)}</span>
               </div>
             ))}
           </div>
 
           {/* Total */}
-          <div className="flex justify-between items-center py-2 border-t border-[hsl(var(--pos-border))]">
+          <div className="flex justify-between items-center py-2 border-t">
             <span className="font-semibold">Total</span>
             <span className="price-text text-xl text-[hsl(var(--pos-accent))]">
               {formatCurrency(total)}
@@ -86,14 +86,14 @@ export function PaymentModal({
           {paymentMethod === 'cash' && (
             <>
               <div>
-                <label className="text-sm text-[hsl(var(--pos-muted-foreground))] mb-2 block">
+                <label className="text-sm text-muted-foreground mb-2 block">
                   Jumlah Dibayar
                 </label>
                 <Input
                   type="number"
                   value={amountPaid}
                   onChange={(e) => setAmountPaid(e.target.value)}
-                  className="text-right text-lg font-bold bg-[hsl(var(--pos-muted))] border-[hsl(var(--pos-border))] text-[hsl(var(--pos-foreground))]"
+                  className="text-right text-lg font-bold rounded-xl"
                 />
               </div>
 
@@ -104,7 +104,7 @@ export function PaymentModal({
                     variant="outline"
                     onClick={() => handleQuickAmount(amount)}
                     className={cn(
-                      'text-xs border-[hsl(var(--pos-border))] hover:bg-[hsl(var(--pos-muted))]',
+                      'text-xs rounded-xl',
                       Number(amountPaid) === amount && 'bg-[hsl(var(--pos-accent))] text-white border-[hsl(var(--pos-accent))]'
                     )}
                   >
@@ -116,15 +116,15 @@ export function PaymentModal({
               <Button
                 variant="outline"
                 onClick={() => handleQuickAmount(total)}
-                className="w-full border-[hsl(var(--pos-border))] hover:bg-[hsl(var(--pos-muted))]"
+                className="w-full rounded-xl"
               >
                 Uang Pas
               </Button>
 
               {/* Change */}
-              <div className="flex justify-between items-center py-3 bg-[hsl(var(--pos-success))]/10 rounded-lg px-3">
-                <span className="font-semibold text-[hsl(var(--pos-success))]">Kembalian</span>
-                <span className="price-text text-xl text-[hsl(var(--pos-success))]">
+              <div className="flex justify-between items-center py-3 bg-emerald-50 rounded-xl px-4">
+                <span className="font-semibold text-emerald-700">Kembalian</span>
+                <span className="price-text text-xl text-emerald-700">
                   {formatCurrency(change)}
                 </span>
               </div>
@@ -133,7 +133,7 @@ export function PaymentModal({
 
           {/* Non-Cash Payment */}
           {paymentMethod !== 'cash' && (
-            <div className="text-center py-6 text-[hsl(var(--pos-muted-foreground))]">
+            <div className="text-center py-6 text-muted-foreground">
               <p className="text-sm">
                 {paymentMethod === 'qris' 
                   ? 'Scan QRIS atau proses pembayaran'
@@ -147,7 +147,7 @@ export function PaymentModal({
           <Button
             onClick={handleConfirm}
             disabled={paymentMethod === 'cash' && Number(amountPaid) < total}
-            className="w-full h-12 success-gradient text-white font-semibold"
+            className="w-full h-12 rounded-xl bg-[hsl(var(--pos-accent))] hover:bg-[hsl(var(--pos-accent-hover))] text-white font-semibold"
           >
             <Check className="w-5 h-5 mr-2" />
             Konfirmasi Pembayaran

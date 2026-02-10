@@ -19,11 +19,11 @@ export function CategoryTabs({
           key={category.id}
           onClick={() => onCategoryChange(category.id)}
           className={cn(
-            'flex items-center gap-2 px-4 py-2.5 rounded-lg whitespace-nowrap transition-all',
+            'flex items-center gap-2 px-4 py-2 rounded-full whitespace-nowrap transition-all',
             'touch-target text-sm font-medium',
             activeCategory === category.id
-              ? 'bg-[hsl(var(--pos-accent))] text-[hsl(var(--pos-accent-foreground))]'
-              : 'bg-[hsl(var(--pos-card))] text-[hsl(var(--pos-muted-foreground))] hover:bg-[hsl(var(--pos-muted))]'
+              ? 'bg-[hsl(var(--pos-accent))] text-[hsl(var(--pos-accent-foreground))] shadow-sm'
+              : 'bg-[hsl(var(--pos-card))] text-[hsl(var(--pos-muted-foreground))] hover:bg-[hsl(var(--pos-muted))] border border-[hsl(var(--pos-border))]'
           )}
         >
           <span>{category.icon}</span>
