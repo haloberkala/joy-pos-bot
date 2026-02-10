@@ -10,52 +10,40 @@ import { formatCurrency, formatDate } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow 
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
-  Plus, 
-  Search, 
-  Building2, 
-  ClipboardCheck,
-  Package,
-  AlertTriangle,
-  TrendingUp,
-  TrendingDown,
-  Eye,
-  FileSpreadsheet
+  Plus, Search, Building2, ClipboardCheck, Package,
+  AlertTriangle, TrendingUp, TrendingDown, Eye, FileSpreadsheet
 } from 'lucide-react';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
-import { StockOpname } from '@/types/pos';
+import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
+import { toast } from 'sonner';
+import { StockOpnameDetail } from '@/components/backoffice/StockOpnameDetail';
 
 export default function Stock() {
   const [selectedStore, setSelectedStore] = useState('store-1');
   const [searchQuery, setSearchQuery] = useState('');
-  const [isOpnameModalOpen, setIsOpnameModalOpen] = useState(false);
-  const [selectedOpname, setSelectedOpname] = useState<StockOpname | null>(null);
+  const [showOpnameDetail, setShowOpnameDetail] = useState(false);
 
-  // Get stock data for selected store
+  // Barcode scanner for stock search
+  useBarcodeScanner({
+    onScan: (barcode) => {
+      const product = products.find(p => p.barcode === barcode);
+      if (product) {
+        setSearchQuery(barcode);
+        toast.success(`Produk ditemukan: ${product.name}`);
+      } else {
+        toast.error(`Produk dengan barcode ${barcode} tidak ditemukan`);
+      }
+    },
+    enabled: !showOpnameDetail,
+  });
+
   const storeStock = stockPerStore.filter(s => s.storeId === selectedStore);
   
   const filteredStock = products.filter((product) => {
@@ -90,9 +78,18 @@ export default function Stock() {
     return store?.name.split(' - ')[1] || store?.name || storeId;
   };
 
+  // Show opname detail view
+  if (showOpnameDetail) {
+    return (
+      <StockOpnameDetail
+        storeId={selectedStore}
+        onBack={() => setShowOpnameDetail(false)}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
-      {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Manajemen Stok</h1>
@@ -161,7 +158,6 @@ export default function Stock() {
         </div>
       </div>
 
-      {/* Tabs */}
       <Tabs defaultValue="stock" className="space-y-4">
         <TabsList>
           <TabsTrigger value="stock" className="gap-2">
@@ -174,16 +170,16 @@ export default function Stock() {
           </TabsTrigger>
         </TabsList>
 
-        {/* Stock Tab */}
         <TabsContent value="stock" className="space-y-4">
           <div className="flex gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Cari nama, SKU, atau barcode..."
+                placeholder="Cari nama, SKU, atau scan barcode..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
+                data-barcode-input="true"
               />
             </div>
             <Button variant="outline" className="gap-2">
@@ -245,54 +241,15 @@ export default function Stock() {
           </div>
         </TabsContent>
 
-        {/* Stock Opname Tab */}
         <TabsContent value="opname" className="space-y-4">
           <div className="flex justify-between">
             <p className="text-muted-foreground">
               Stock opname untuk memastikan keakuratan data stok
             </p>
-            <Dialog open={isOpnameModalOpen} onOpenChange={setIsOpnameModalOpen}>
-              <DialogTrigger asChild>
-                <Button className="gap-2">
-                  <Plus className="w-4 h-4" />
-                  Mulai Stock Opname
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Mulai Stock Opname Baru</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-2">
-                    <Label>Toko</Label>
-                    <Select defaultValue={selectedStore}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {stores.map((store) => (
-                          <SelectItem key={store.id} value={store.id}>
-                            {store.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Catatan</Label>
-                    <Textarea placeholder="Catatan stock opname (opsional)" />
-                  </div>
-                  <div className="flex justify-end gap-2 pt-4">
-                    <Button variant="outline" onClick={() => setIsOpnameModalOpen(false)}>
-                      Batal
-                    </Button>
-                    <Button onClick={() => setIsOpnameModalOpen(false)}>
-                      Mulai Opname
-                    </Button>
-                  </div>
-                </div>
-              </DialogContent>
-            </Dialog>
+            <Button className="gap-2" onClick={() => setShowOpnameDetail(true)}>
+              <Plus className="w-4 h-4" />
+              Mulai Stock Opname
+            </Button>
           </div>
 
           <div className="bg-card rounded-xl border border-border overflow-hidden">
@@ -324,12 +281,7 @@ export default function Stock() {
                         <Badge variant={status.variant}>{status.label}</Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="h-8 w-8"
-                          onClick={() => setSelectedOpname(opname)}
-                        >
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
                           <Eye className="w-4 h-4" />
                         </Button>
                       </TableCell>

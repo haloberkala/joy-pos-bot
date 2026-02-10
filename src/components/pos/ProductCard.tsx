@@ -15,9 +15,9 @@ export function ProductCard({ product, onAdd }: ProductCardProps) {
       onClick={() => !isOutOfStock && onAdd(product)}
       disabled={isOutOfStock}
       className={cn(
-        'group relative flex flex-col rounded-xl p-4 text-left transition-all duration-200',
+        'group relative flex flex-col rounded-2xl p-4 text-left transition-all duration-200',
         'bg-[hsl(var(--pos-card))] border border-[hsl(var(--pos-border))]',
-        'hover:bg-[hsl(var(--pos-muted))] hover:border-[hsl(var(--pos-accent))]',
+        'hover:border-[hsl(var(--pos-accent))] hover:shadow-md',
         'active:scale-[0.98] touch-target',
         isOutOfStock && 'opacity-50 cursor-not-allowed'
       )}
@@ -36,8 +36,8 @@ export function ProductCard({ product, onAdd }: ProductCardProps) {
         </span>
       </div>
       {isOutOfStock && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-xl">
-          <span className="text-sm font-medium text-white">Habis</span>
+        <div className="absolute inset-0 flex items-center justify-center bg-white/70 rounded-2xl backdrop-blur-sm">
+          <span className="text-sm font-semibold text-red-500">Habis</span>
         </div>
       )}
     </button>

@@ -20,7 +20,7 @@ export function CartPanel({
   onCheckout,
 }: CartPanelProps) {
   return (
-    <div className="flex flex-col h-full bg-[hsl(var(--pos-card))] border-l border-[hsl(var(--pos-border))]">
+    <div className="flex flex-col h-full bg-[hsl(var(--pos-card))] border-l border-[hsl(var(--pos-border))] shadow-sm">
       {/* Header */}
       <div className="p-4 border-b border-[hsl(var(--pos-border))]">
         <h2 className="text-lg font-bold text-[hsl(var(--pos-foreground))]">
@@ -32,17 +32,17 @@ export function CartPanel({
       </div>
 
       {/* Cart Items */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
         {items.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-[hsl(var(--pos-muted-foreground))]">
-            <Wallet className="w-12 h-12 mb-2 opacity-50" />
+            <Wallet className="w-12 h-12 mb-2 opacity-30" />
             <p className="text-sm">Keranjang kosong</p>
           </div>
         ) : (
           items.map((item) => (
             <div
               key={item.product.id}
-              className="bg-[hsl(var(--pos-muted))] rounded-lg p-3"
+              className="bg-[hsl(var(--pos-muted))] rounded-xl p-3"
             >
               <div className="flex justify-between items-start mb-2">
                 <div className="flex-1 min-w-0">
@@ -55,31 +55,31 @@ export function CartPanel({
                 </div>
                 <button
                   onClick={() => onRemoveItem(item.product.id)}
-                  className="p-1.5 text-[hsl(var(--pos-destructive))] hover:bg-[hsl(var(--pos-destructive))]/10 rounded-md transition-colors"
+                  className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
               <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <button
                     onClick={() =>
                       onUpdateQuantity(item.product.id, item.quantity - 1)
                     }
-                    className="w-8 h-8 flex items-center justify-center rounded-md bg-[hsl(var(--pos-card))] text-[hsl(var(--pos-foreground))] hover:bg-[hsl(var(--pos-border))] transition-colors"
+                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-[hsl(var(--pos-card))] text-[hsl(var(--pos-foreground))] hover:bg-[hsl(var(--pos-border))] transition-colors border border-[hsl(var(--pos-border))]"
                   >
-                    <Minus className="w-4 h-4" />
+                    <Minus className="w-3.5 h-3.5" />
                   </button>
-                  <span className="w-8 text-center font-semibold text-[hsl(var(--pos-foreground))]">
+                  <span className="w-8 text-center font-semibold text-[hsl(var(--pos-foreground))] text-sm">
                     {item.quantity}
                   </span>
                   <button
                     onClick={() =>
                       onUpdateQuantity(item.product.id, item.quantity + 1)
                     }
-                    className="w-8 h-8 flex items-center justify-center rounded-md bg-[hsl(var(--pos-card))] text-[hsl(var(--pos-foreground))] hover:bg-[hsl(var(--pos-border))] transition-colors"
+                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-[hsl(var(--pos-card))] text-[hsl(var(--pos-foreground))] hover:bg-[hsl(var(--pos-border))] transition-colors border border-[hsl(var(--pos-border))]"
                   >
-                    <Plus className="w-4 h-4" />
+                    <Plus className="w-3.5 h-3.5" />
                   </button>
                 </div>
                 <span className="price-text text-[hsl(var(--pos-accent))]">
@@ -92,10 +92,10 @@ export function CartPanel({
       </div>
 
       {/* Footer */}
-      <div className="p-4 border-t border-[hsl(var(--pos-border))] space-y-4">
+      <div className="p-4 border-t border-[hsl(var(--pos-border))] space-y-3">
         {/* Total */}
         <div className="flex justify-between items-center">
-          <span className="text-[hsl(var(--pos-muted-foreground))]">Total</span>
+          <span className="text-[hsl(var(--pos-muted-foreground))] font-medium">Total</span>
           <span className="price-text text-2xl text-[hsl(var(--pos-foreground))]">
             {formatCurrency(total)}
           </span>
@@ -107,9 +107,9 @@ export function CartPanel({
             onClick={() => onCheckout('cash')}
             disabled={items.length === 0}
             className={cn(
-              'flex flex-col items-center gap-1 h-auto py-3',
-              'bg-[hsl(var(--pos-success))] hover:bg-[hsl(var(--pos-success))]/90',
-              'text-white'
+              'flex flex-col items-center gap-1 h-auto py-3 rounded-xl',
+              'bg-[hsl(var(--pos-accent))] hover:bg-[hsl(var(--pos-accent-hover))]',
+              'text-[hsl(var(--pos-accent-foreground))]'
             )}
           >
             <Wallet className="w-5 h-5" />
@@ -119,8 +119,8 @@ export function CartPanel({
             onClick={() => onCheckout('card')}
             disabled={items.length === 0}
             className={cn(
-              'flex flex-col items-center gap-1 h-auto py-3',
-              'bg-blue-600 hover:bg-blue-700',
+              'flex flex-col items-center gap-1 h-auto py-3 rounded-xl',
+              'bg-blue-500 hover:bg-blue-600',
               'text-white'
             )}
           >
@@ -131,8 +131,8 @@ export function CartPanel({
             onClick={() => onCheckout('qris')}
             disabled={items.length === 0}
             className={cn(
-              'flex flex-col items-center gap-1 h-auto py-3',
-              'bg-purple-600 hover:bg-purple-700',
+              'flex flex-col items-center gap-1 h-auto py-3 rounded-xl',
+              'bg-violet-500 hover:bg-violet-600',
               'text-white'
             )}
           >
