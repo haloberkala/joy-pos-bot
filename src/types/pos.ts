@@ -1,241 +1,248 @@
-// ================ STORE & MULTI-TOKO ================
+// ==========================================
+// 1. MANAJEMEN USER & OTORISASI
+// ==========================================
+
+export type UserRole = 'owner' | 'admin' | 'cashier';
+
 export interface Store {
-  id: string;
+  id: number;
   name: string;
   address: string;
   phone: string;
-  logo?: string;
-  receiptFooter?: string;
-  isActive: boolean;
-  createdAt: Date;
+  created_at: Date;
+  updated_at: Date;
 }
 
-// ================ PRODUCT MANAGEMENT ================
-export interface Category {
-  id: string;
+export interface User {
+  id: number;
+  store_id: number | null;
   name: string;
-  icon: string;
-  description?: string;
+  email: string;
+  password_hash: string;
+  role: UserRole;
+  avatar?: string;
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
+// ==========================================
+// 2. MASTER DATA (TERISOLASI PER TOKO)
+// ==========================================
+
+export interface Category {
+  id: number;
+  store_id: number;
+  name: string;
+  slug: string;
+  icon?: string; // UI-only helper
+  created_at: Date;
+  updated_at: Date;
 }
 
 export interface Brand {
-  id: string;
+  id: number;
+  store_id: number;
   name: string;
-  logo?: string;
+  slug: string;
+  created_at: Date;
+  updated_at: Date;
 }
 
 export interface Unit {
-  id: string;
+  id: number;
+  store_id: number;
   name: string;
-  shortName: string; // e.g., "pcs", "kg", "ltr"
-}
-
-export interface UnitConversion {
-  id: string;
-  productId: string;
-  fromUnitId: string;
-  toUnitId: string;
-  conversionRate: number; // e.g., 1 karton = 12 pcs
-  barcode?: string;
-  buyPrice: number;
-  sellPrice: number;
+  short_name: string;
+  created_at: Date;
+  updated_at: Date;
 }
 
 export interface Product {
-  id: string;
-  sku: string;
-  barcode: string;
+  id: number;
+  store_id: number;
+  category_id: number | null;
+  brand_id: number | null;
+  unit_id: number | null;
   name: string;
-  description?: string;
-  categoryId: string;
-  brandId?: string;
-  baseUnitId: string;
-  buyPrice: number; // Harga modal
-  sellPrice: number; // Harga jual
+  code: string; // Barcode/SKU
+  expiry_date?: string | null;
   image?: string;
-  minStock: number; // Stok minimum untuk alert
-  isActive: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-// ================ STOCK MANAGEMENT ================
-export interface StockPerStore {
-  id: string;
-  productId: string;
-  storeId: string;
   quantity: number;
-  lastUpdated: Date;
+  min_stock_alert: number;
+  cost_price: number;
+  selling_price: number;
+  is_active: boolean;
+  created_at: Date;
+  updated_at: Date;
+  created_by: number | null;
+  updated_by: number | null;
 }
 
-export interface StockMovement {
-  id: string;
-  productId: string;
-  storeId: string;
-  type: 'in' | 'out' | 'adjustment';
-  quantity: number;
-  previousQty: number;
-  newQty: number;
-  reference: string; // TRX ID, SO ID, or Transfer ID
-  notes?: string;
-  createdBy: string;
-  createdAt: Date;
-}
+// ==========================================
+// 3. MODUL PEMBELIAN (RESTOCK / KULAKAN)
+// ==========================================
 
-export interface StockOpname {
-  id: string;
-  storeId: string;
-  status: 'draft' | 'in_progress' | 'completed' | 'cancelled';
-  startedAt: Date;
-  completedAt?: Date;
-  createdBy: string;
-  approvedBy?: string;
-  notes?: string;
-}
-
-export interface StockOpnameItem {
-  id: string;
-  stockOpnameId: string;
-  productId: string;
-  systemQty: number;
-  actualQty: number;
-  difference: number;
-  notes?: string;
-}
-
-
-// ================ SUPPLIER ================
 export interface Supplier {
-  id: string;
+  id: number;
+  store_id: number;
   name: string;
-  contactPerson?: string;
   phone: string;
-  email?: string;
   address?: string;
-  isActive: boolean;
+  created_at: Date;
+  updated_at: Date;
 }
 
-export interface PurchaseOrder {
-  id: string;
-  supplierId: string;
-  storeId: string;
-  status: 'draft' | 'ordered' | 'partial' | 'received' | 'cancelled';
-  totalAmount: number;
-  createdBy: string;
-  createdAt: Date;
-  receivedAt?: Date;
-  notes?: string;
+export interface Purchase {
+  id: number;
+  store_id: number;
+  user_id: number;
+  supplier_id: number | null;
+  date: Date;
+  reference_no: string;
+  image_proof?: string;
+  total_amount: number;
+  note?: string;
+  created_at: Date;
+  updated_at: Date;
 }
 
-export interface PurchaseOrderItem {
-  id: string;
-  purchaseOrderId: string;
-  productId: string;
+export interface PurchaseDetail {
+  id: number;
+  purchase_id: number;
+  product_id: number;
   quantity: number;
-  unitPrice: number;
-  quantityReceived?: number;
+  cost_price: number;
+  sub_total: number;
+  created_at: Date;
+  updated_at: Date;
 }
 
-// ================ TRANSACTION ================
-export interface CartItem {
-  product: Product;
-  quantity: number;
-  unitId: string;
-  pricePerUnit: number;
-  discount?: number;
+// ==========================================
+// 4. MODUL PENJUALAN (KASIR/POS)
+// ==========================================
+
+export interface Customer {
+  id: number;
+  store_id: number;
+  name: string;
+  phone: string;
+  address?: string;
+  created_at: Date;
+  updated_at: Date;
 }
 
-export interface Transaction {
-  id: string;
-  storeId: string;
-  items: CartItem[];
-  subtotal: number;
+export type PaymentMethod = 'cash' | 'qris' | 'transfer' | 'debit';
+
+export interface Sale {
+  id: number;
+  store_id: number;
+  user_id: number;
+  customer_id: number | null;
+  invoice_number: string;
+  date: Date;
+  sub_total: number;
   discount: number;
   tax: number;
-  total: number;
-  paymentMethod: PaymentMethod;
-  amountPaid: number;
-  change: number;
-  customerId?: string;
-  createdAt: Date;
-  cashierId: string;
-  cashierName: string;
-  notes?: string;
+  grand_total: number;
+  payment_method: PaymentMethod;
+  amount_received: number;
+  change_amount: number;
+  note?: string;
+  created_at: Date;
+  updated_at: Date;
 }
 
-export interface TransactionReturn {
-  id: string;
-  originalTransactionId: string;
-  storeId: string;
-  items: ReturnItem[];
-  totalRefund: number;
-  reason: string;
-  createdBy: string;
-  createdAt: Date;
-}
-
-export interface ReturnItem {
-  productId: string;
+export interface SaleDetail {
+  id: number;
+  sale_id: number;
+  product_id: number;
   quantity: number;
-  refundAmount: number;
+  price_at_sale: number;
+  cost_at_sale: number;
+  total_price: number;
+  created_at: Date;
+  updated_at: Date;
 }
 
-export type PaymentMethod = 'cash' | 'card' | 'qris' | 'transfer';
+// ==========================================
+// 5. PENGELUARAN (BIAYA OPERASIONAL)
+// ==========================================
 
-// ================ CUSTOMER ================
-export interface Customer {
-  id: string;
-  name: string;
-  phone: string;
-  email?: string;
-  address?: string;
-  points: number;
-  totalSpent: number;
-  createdAt: Date;
-}
-
-// ================ USER & ROLES ================
-export type UserRole = 'owner' | 'admin' | 'cashier';
-
-export interface User {
-  id: string;
-  email: string;
-  name: string;
-  role: UserRole;
-  storeIds: string[]; // Toko yang bisa diakses
-  isActive: boolean;
-  createdAt: Date;
-}
-
-// ================ EXPENSE ================
 export interface ExpenseCategory {
-  id: string;
+  id: number;
+  store_id: number;
   name: string;
+  created_at: Date;
+  updated_at: Date;
 }
 
 export interface Expense {
-  id: string;
-  storeId: string;
-  categoryId: string;
+  id: number;
+  store_id: number;
+  user_id: number;
+  category_id: number;
+  title: string;
   amount: number;
-  description: string;
   date: Date;
-  createdBy: string;
-  receipt?: string;
+  note?: string;
+  created_at: Date;
+  updated_at: Date;
 }
 
-// ================ LEGACY SUPPORT (for existing components) ================
-export interface LegacyProduct {
-  id: string;
-  name: string;
-  price: number;
-  category: string;
-  image?: string;
-  stock: number;
+// ==========================================
+// 6. RIWAYAT STOK
+// ==========================================
+
+export type StockLogType = 'purchase' | 'sale' | 'adjustment' | 'opname' | 'damage';
+
+export interface StockLog {
+  id: number;
+  store_id: number;
+  product_id: number;
+  previous_qty: number;
+  qty_change: number;
+  current_qty: number;
+  type: StockLogType;
+  reference_id: number | null;
+  note?: string;
+  created_at: Date;
 }
 
-export interface LegacyCategory {
-  id: string;
-  name: string;
-  icon: string;
+// ==========================================
+// 7. STOCK OPNAME (CEK FISIK)
+// ==========================================
+
+export interface StockOpname {
+  id: number;
+  store_id: number;
+  user_id: number;
+  opname_number: string;
+  date: Date;
+  note?: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface StockOpnameDetail {
+  id: number;
+  stock_opname_id: number;
+  product_id: number;
+  system_qty: number;
+  physical_qty: number;
+  difference: number;
+  note?: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+// ==========================================
+// CART (UI-only, not in DB)
+// ==========================================
+
+export interface CartItem {
+  product: Product;
+  quantity: number;
+  price_per_unit: number;
+  discount?: number;
 }

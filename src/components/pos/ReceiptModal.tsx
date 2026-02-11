@@ -1,21 +1,23 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Transaction } from '@/types/pos';
+import { Sale, SaleDetail, Product } from '@/types/pos';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { Printer, X } from 'lucide-react';
 
 interface ReceiptModalProps {
   isOpen: boolean;
   onClose: () => void;
-  transaction: Transaction | null;
+  sale: Sale | null;
+  saleDetails: (SaleDetail & { product?: Product })[];
+  cashierName: string;
 }
 
-export function ReceiptModal({ isOpen, onClose, transaction }: ReceiptModalProps) {
-  if (!transaction) return null;
+export function ReceiptModal({ isOpen, onClose, sale, saleDetails, cashierName }: ReceiptModalProps) {
+  if (!sale) return null;
 
   const paymentLabel = {
     cash: 'Tunai',
-    card: 'Kartu',
+    debit: 'Debit',
     qris: 'QRIS',
     transfer: 'Transfer',
   };
@@ -38,29 +40,29 @@ export function ReceiptModal({ isOpen, onClose, transaction }: ReceiptModalProps
           {/* Transaction Info */}
           <div className="text-xs space-y-1 border-b border-dashed pb-3">
             <div className="flex justify-between">
-              <span>No. Transaksi</span>
-              <span>{transaction.id}</span>
+              <span>No. Invoice</span>
+              <span>{sale.invoice_number}</span>
             </div>
             <div className="flex justify-between">
               <span>Tanggal</span>
-              <span>{formatDate(transaction.createdAt)}</span>
+              <span>{formatDate(sale.date)}</span>
             </div>
             <div className="flex justify-between">
               <span>Kasir</span>
-              <span>{transaction.cashierName}</span>
+              <span>{cashierName}</span>
             </div>
           </div>
 
           {/* Items */}
           <div className="space-y-2 border-b border-dashed pb-3">
-            {transaction.items.map((item) => (
-              <div key={item.product.id} className="space-y-0.5">
-                <div className="font-medium">{item.product.name}</div>
+            {saleDetails.map((item) => (
+              <div key={item.id} className="space-y-0.5">
+                <div className="font-medium">{item.product?.name || `Produk #${item.product_id}`}</div>
                 <div className="flex justify-between text-xs text-gray-600">
                   <span>
-                    {item.quantity} x {formatCurrency(item.pricePerUnit)}
+                    {item.quantity} x {formatCurrency(item.price_at_sale)}
                   </span>
-                  <span>{formatCurrency(item.pricePerUnit * item.quantity)}</span>
+                  <span>{formatCurrency(item.total_price)}</span>
                 </div>
               </div>
             ))}
@@ -68,30 +70,30 @@ export function ReceiptModal({ isOpen, onClose, transaction }: ReceiptModalProps
 
           {/* Totals */}
           <div className="space-y-1">
-            {transaction.discount > 0 && (
+            {sale.discount > 0 && (
               <>
                 <div className="flex justify-between text-xs">
                   <span>Subtotal</span>
-                  <span>{formatCurrency(transaction.subtotal)}</span>
+                  <span>{formatCurrency(sale.sub_total)}</span>
                 </div>
                 <div className="flex justify-between text-xs text-green-600">
                   <span>Diskon</span>
-                  <span>-{formatCurrency(transaction.discount)}</span>
+                  <span>-{formatCurrency(sale.discount)}</span>
                 </div>
               </>
             )}
             <div className="flex justify-between font-bold">
               <span>TOTAL</span>
-              <span>{formatCurrency(transaction.total)}</span>
+              <span>{formatCurrency(sale.grand_total)}</span>
             </div>
             <div className="flex justify-between text-xs">
-              <span>Bayar ({paymentLabel[transaction.paymentMethod]})</span>
-              <span>{formatCurrency(transaction.amountPaid)}</span>
+              <span>Bayar ({paymentLabel[sale.payment_method]})</span>
+              <span>{formatCurrency(sale.amount_received)}</span>
             </div>
-            {transaction.change > 0 && (
+            {sale.change_amount > 0 && (
               <div className="flex justify-between text-xs">
                 <span>Kembalian</span>
-                <span>{formatCurrency(transaction.change)}</span>
+                <span>{formatCurrency(sale.change_amount)}</span>
               </div>
             )}
           </div>

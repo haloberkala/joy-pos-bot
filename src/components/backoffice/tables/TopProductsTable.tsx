@@ -1,58 +1,51 @@
 import { useMemo } from 'react';
-import { Transaction } from '@/types/pos';
+import { Sale } from '@/types/pos';
+import { sampleSaleDetails, getProduct } from '@/data/sampleData';
 import { formatCurrency } from '@/lib/format';
 import { Card } from '@/components/ui/card';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 interface TopProductsTableProps {
-  transactions: Transaction[];
+  sales: Sale[];
   limit?: number;
 }
 
 interface ProductSales {
-  productId: string;
+  productId: number;
   productName: string;
-  categoryId: string;
   quantitySold: number;
   totalRevenue: number;
   avgPrice: number;
 }
 
-export function TopProductsTable({ transactions, limit = 10 }: TopProductsTableProps) {
+export function TopProductsTable({ sales, limit = 10 }: TopProductsTableProps) {
   const productSales = useMemo(() => {
-    const salesMap: Record<string, ProductSales> = {};
-    
-    transactions.forEach(t => {
-      t.items.forEach(item => {
-        const key = item.product.id;
-        if (!salesMap[key]) {
-          salesMap[key] = {
-            productId: item.product.id,
-            productName: item.product.name,
-            categoryId: item.product.categoryId,
+    const salesMap: Record<number, ProductSales> = {};
+    const saleIds = new Set(sales.map(s => s.id));
+
+    sampleSaleDetails
+      .filter(d => saleIds.has(d.sale_id))
+      .forEach(d => {
+        const product = getProduct(d.product_id);
+        if (!salesMap[d.product_id]) {
+          salesMap[d.product_id] = {
+            productId: d.product_id,
+            productName: product?.name || `Produk #${d.product_id}`,
             quantitySold: 0,
             totalRevenue: 0,
-            avgPrice: item.pricePerUnit,
+            avgPrice: d.price_at_sale,
           };
         }
-        salesMap[key].quantitySold += item.quantity;
-        salesMap[key].totalRevenue += item.pricePerUnit * item.quantity;
+        salesMap[d.product_id].quantitySold += d.quantity;
+        salesMap[d.product_id].totalRevenue += d.total_price;
       });
-    });
 
     return Object.values(salesMap)
       .sort((a, b) => b.totalRevenue - a.totalRevenue)
       .slice(0, limit);
-  }, [transactions, limit]);
+  }, [sales, limit]);
 
   const maxRevenue = productSales[0]?.totalRevenue || 1;
 
@@ -64,7 +57,6 @@ export function TopProductsTable({ transactions, limit = 10 }: TopProductsTableP
           <p className="text-sm text-muted-foreground">Top {limit} produk berdasarkan pendapatan</p>
         </div>
       </div>
-      
       <div className="rounded-md border">
         <Table>
           <TableHeader>
@@ -93,16 +85,11 @@ export function TopProductsTable({ transactions, limit = 10 }: TopProductsTableP
                     </div>
                   </TableCell>
                   <TableCell className="text-right font-medium">{product.quantitySold}</TableCell>
-                  <TableCell className="text-right font-medium text-primary">
-                    {formatCurrency(product.totalRevenue)}
-                  </TableCell>
+                  <TableCell className="text-right font-medium text-primary">{formatCurrency(product.totalRevenue)}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-primary rounded-full transition-all"
-                          style={{ width: `${performancePercent}%` }}
-                        />
+                        <div className="h-full bg-primary rounded-full transition-all" style={{ width: `${performancePercent}%` }} />
                       </div>
                       {index === 0 && <TrendingUp className="w-4 h-4 text-green-500" />}
                       {index === productSales.length - 1 && productSales.length > 1 && <TrendingDown className="w-4 h-4 text-orange-500" />}
@@ -114,9 +101,7 @@ export function TopProductsTable({ transactions, limit = 10 }: TopProductsTableP
             })}
             {productSales.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
-                  Tidak ada data penjualan
-                </TableCell>
+                <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Tidak ada data penjualan</TableCell>
               </TableRow>
             )}
           </TableBody>

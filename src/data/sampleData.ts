@@ -1,616 +1,220 @@
-import { 
-  Product, 
-  Category, 
-  Transaction, 
-  Store, 
-  Unit, 
-  Brand, 
-  Supplier, 
-  StockPerStore,
+import {
+  Product,
+  Category,
+  Sale,
+  SaleDetail,
+  Store,
+  Unit,
+  Brand,
+  Supplier,
   StockOpname,
-  LegacyProduct,
-  LegacyCategory,
   Customer,
   Expense,
-  ExpenseCategory
+  ExpenseCategory,
+  Purchase,
+  PurchaseDetail,
+  StockLog,
+  StockOpnameDetail,
 } from '@/types/pos';
 
 // ================ STORES ================
 export const stores: Store[] = [
   {
-    id: 'store-1',
+    id: 1,
     name: 'Minimarket Berkah - Pusat',
     address: 'Jl. Merdeka No. 123, Jakarta Pusat',
     phone: '021-12345678',
-    receiptFooter: 'Terima kasih telah berbelanja!',
-    isActive: true,
-    createdAt: new Date('2023-01-01'),
+    created_at: new Date('2023-01-01'),
+    updated_at: new Date('2023-01-01'),
   },
   {
-    id: 'store-2',
+    id: 2,
     name: 'Minimarket Berkah - Cabang Selatan',
     address: 'Jl. Sudirman No. 456, Jakarta Selatan',
     phone: '021-87654321',
-    receiptFooter: 'Terima kasih telah berbelanja!',
-    isActive: true,
-    createdAt: new Date('2023-06-01'),
+    created_at: new Date('2023-06-01'),
+    updated_at: new Date('2023-06-01'),
   },
   {
-    id: 'store-3',
+    id: 3,
     name: 'Minimarket Berkah - Cabang Timur',
     address: 'Jl. Gatot Subroto No. 789, Jakarta Timur',
     phone: '021-11223344',
-    receiptFooter: 'Terima kasih telah berbelanja!',
-    isActive: true,
-    createdAt: new Date('2024-01-01'),
+    created_at: new Date('2024-01-01'),
+    updated_at: new Date('2024-01-01'),
   },
 ];
 
 // ================ UNITS ================
 export const units: Unit[] = [
-  { id: 'unit-pcs', name: 'Pieces', shortName: 'pcs' },
-  { id: 'unit-box', name: 'Box', shortName: 'box' },
-  { id: 'unit-carton', name: 'Karton', shortName: 'krt' },
-  { id: 'unit-kg', name: 'Kilogram', shortName: 'kg' },
-  { id: 'unit-ltr', name: 'Liter', shortName: 'ltr' },
-  { id: 'unit-pack', name: 'Pack', shortName: 'pack' },
-  { id: 'unit-dozen', name: 'Lusin', shortName: 'lsn' },
+  { id: 1, store_id: 1, name: 'Pieces', short_name: 'pcs', created_at: new Date(), updated_at: new Date() },
+  { id: 2, store_id: 1, name: 'Box', short_name: 'box', created_at: new Date(), updated_at: new Date() },
+  { id: 3, store_id: 1, name: 'Karton', short_name: 'krt', created_at: new Date(), updated_at: new Date() },
+  { id: 4, store_id: 1, name: 'Kilogram', short_name: 'kg', created_at: new Date(), updated_at: new Date() },
+  { id: 5, store_id: 1, name: 'Liter', short_name: 'ltr', created_at: new Date(), updated_at: new Date() },
+  { id: 6, store_id: 1, name: 'Pack', short_name: 'pack', created_at: new Date(), updated_at: new Date() },
+  { id: 7, store_id: 1, name: 'Lusin', short_name: 'lsn', created_at: new Date(), updated_at: new Date() },
 ];
 
 // ================ BRANDS ================
 export const brands: Brand[] = [
-  { id: 'brand-1', name: 'Indomie' },
-  { id: 'brand-2', name: 'Aqua' },
-  { id: 'brand-3', name: 'Kapal Api' },
-  { id: 'brand-4', name: 'Indofood' },
-  { id: 'brand-5', name: 'Unilever' },
-  { id: 'brand-6', name: 'Wings' },
-  { id: 'brand-7', name: 'ABC' },
-  { id: 'brand-8', name: 'Mayora' },
+  { id: 1, store_id: 1, name: 'Indomie', slug: 'indomie', created_at: new Date(), updated_at: new Date() },
+  { id: 2, store_id: 1, name: 'Aqua', slug: 'aqua', created_at: new Date(), updated_at: new Date() },
+  { id: 3, store_id: 1, name: 'Kapal Api', slug: 'kapal-api', created_at: new Date(), updated_at: new Date() },
+  { id: 4, store_id: 1, name: 'Indofood', slug: 'indofood', created_at: new Date(), updated_at: new Date() },
+  { id: 5, store_id: 1, name: 'Unilever', slug: 'unilever', created_at: new Date(), updated_at: new Date() },
+  { id: 6, store_id: 1, name: 'Wings', slug: 'wings', created_at: new Date(), updated_at: new Date() },
+  { id: 7, store_id: 1, name: 'ABC', slug: 'abc', created_at: new Date(), updated_at: new Date() },
+  { id: 8, store_id: 1, name: 'Mayora', slug: 'mayora', created_at: new Date(), updated_at: new Date() },
 ];
 
 // ================ CATEGORIES ================
 export const categories: Category[] = [
-  { id: 'all', name: 'Semua', icon: '🏷️' },
-  { id: 'food', name: 'Makanan', icon: '🍔' },
-  { id: 'drink', name: 'Minuman', icon: '🥤' },
-  { id: 'snack', name: 'Snack', icon: '🍿' },
-  { id: 'dairy', name: 'Susu & Olahan', icon: '🥛' },
-  { id: 'instant', name: 'Makanan Instan', icon: '🍜' },
-  { id: 'personal', name: 'Perawatan Diri', icon: '🧴' },
-  { id: 'household', name: 'Rumah Tangga', icon: '🧹' },
+  { id: 0, store_id: 1, name: 'Semua', slug: 'all', icon: '🏷️', created_at: new Date(), updated_at: new Date() },
+  { id: 1, store_id: 1, name: 'Makanan', slug: 'food', icon: '🍔', created_at: new Date(), updated_at: new Date() },
+  { id: 2, store_id: 1, name: 'Minuman', slug: 'drink', icon: '🥤', created_at: new Date(), updated_at: new Date() },
+  { id: 3, store_id: 1, name: 'Snack', slug: 'snack', icon: '🍿', created_at: new Date(), updated_at: new Date() },
+  { id: 4, store_id: 1, name: 'Susu & Olahan', slug: 'dairy', icon: '🥛', created_at: new Date(), updated_at: new Date() },
+  { id: 5, store_id: 1, name: 'Makanan Instan', slug: 'instant', icon: '🍜', created_at: new Date(), updated_at: new Date() },
+  { id: 6, store_id: 1, name: 'Perawatan Diri', slug: 'personal', icon: '🧴', created_at: new Date(), updated_at: new Date() },
+  { id: 7, store_id: 1, name: 'Rumah Tangga', slug: 'household', icon: '🧹', created_at: new Date(), updated_at: new Date() },
 ];
 
 // ================ SUPPLIERS ================
 export const suppliers: Supplier[] = [
-  {
-    id: 'supp-1',
-    name: 'PT. Indofood Sukses Makmur',
-    contactPerson: 'Budi Santoso',
-    phone: '021-5551234',
-    email: 'order@indofood.co.id',
-    address: 'Jl. Industri No. 1, Jakarta',
-    isActive: true,
-  },
-  {
-    id: 'supp-2',
-    name: 'CV. Mitra Sejahtera',
-    contactPerson: 'Andi Wijaya',
-    phone: '021-5555678',
-    email: 'sales@mitrasejahtera.com',
-    address: 'Jl. Raya Bogor No. 45, Depok',
-    isActive: true,
-  },
-  {
-    id: 'supp-3',
-    name: 'PT. Unilever Indonesia',
-    contactPerson: 'Siti Rahayu',
-    phone: '021-5559999',
-    email: 'supply@unilever.co.id',
-    address: 'Jl. Jenderal Sudirman, Jakarta',
-    isActive: true,
-  },
+  { id: 1, store_id: 1, name: 'PT. Indofood Sukses Makmur', phone: '021-5551234', address: 'Jl. Industri No. 1, Jakarta', created_at: new Date(), updated_at: new Date() },
+  { id: 2, store_id: 1, name: 'CV. Mitra Sejahtera', phone: '021-5555678', address: 'Jl. Raya Bogor No. 45, Depok', created_at: new Date(), updated_at: new Date() },
+  { id: 3, store_id: 1, name: 'PT. Unilever Indonesia', phone: '021-5559999', address: 'Jl. Jenderal Sudirman, Jakarta', created_at: new Date(), updated_at: new Date() },
 ];
 
 // ================ PRODUCTS ================
 export const products: Product[] = [
-  {
-    id: 'prod-1',
-    sku: 'SKU001',
-    barcode: '8991234567890',
-    name: 'Indomie Goreng Original',
-    description: 'Mie goreng instant rasa original',
-    categoryId: 'instant',
-    brandId: 'brand-1',
-    baseUnitId: 'unit-pcs',
-    buyPrice: 2500,
-    sellPrice: 3500,
-    minStock: 50,
-    isActive: true,
-    createdAt: new Date('2023-01-01'),
-    updatedAt: new Date('2024-01-01'),
-  },
-  {
-    id: 'prod-2',
-    sku: 'SKU002',
-    barcode: '8991234567891',
-    name: 'Aqua Botol 600ml',
-    description: 'Air mineral kemasan botol',
-    categoryId: 'drink',
-    brandId: 'brand-2',
-    baseUnitId: 'unit-pcs',
-    buyPrice: 2000,
-    sellPrice: 3000,
-    minStock: 100,
-    isActive: true,
-    createdAt: new Date('2023-01-01'),
-    updatedAt: new Date('2024-01-01'),
-  },
-  {
-    id: 'prod-3',
-    sku: 'SKU003',
-    barcode: '8991234567892',
-    name: 'Kopi Kapal Api Special',
-    description: 'Kopi bubuk sachet',
-    categoryId: 'drink',
-    brandId: 'brand-3',
-    baseUnitId: 'unit-pcs',
-    buyPrice: 1500,
-    sellPrice: 2500,
-    minStock: 100,
-    isActive: true,
-    createdAt: new Date('2023-01-01'),
-    updatedAt: new Date('2024-01-01'),
-  },
-  {
-    id: 'prod-4',
-    sku: 'SKU004',
-    barcode: '8991234567893',
-    name: 'Chitato Rasa Sapi Panggang',
-    description: 'Keripik kentang rasa sapi panggang',
-    categoryId: 'snack',
-    brandId: 'brand-4',
-    baseUnitId: 'unit-pcs',
-    buyPrice: 8000,
-    sellPrice: 12000,
-    minStock: 30,
-    isActive: true,
-    createdAt: new Date('2023-01-01'),
-    updatedAt: new Date('2024-01-01'),
-  },
-  {
-    id: 'prod-5',
-    sku: 'SKU005',
-    barcode: '8991234567894',
-    name: 'Sunlight Sabun Cuci Piring 800ml',
-    description: 'Sabun cuci piring cair',
-    categoryId: 'household',
-    brandId: 'brand-5',
-    baseUnitId: 'unit-pcs',
-    buyPrice: 12000,
-    sellPrice: 16000,
-    minStock: 20,
-    isActive: true,
-    createdAt: new Date('2023-01-01'),
-    updatedAt: new Date('2024-01-01'),
-  },
-  {
-    id: 'prod-6',
-    sku: 'SKU006',
-    barcode: '8991234567895',
-    name: 'So Klin Pewangi 900ml',
-    description: 'Pewangi dan pelembut pakaian',
-    categoryId: 'household',
-    brandId: 'brand-6',
-    baseUnitId: 'unit-pcs',
-    buyPrice: 15000,
-    sellPrice: 22000,
-    minStock: 20,
-    isActive: true,
-    createdAt: new Date('2023-01-01'),
-    updatedAt: new Date('2024-01-01'),
-  },
-  {
-    id: 'prod-7',
-    sku: 'SKU007',
-    barcode: '8991234567896',
-    name: 'ABC Kecap Manis 600ml',
-    description: 'Kecap manis kemasan botol',
-    categoryId: 'food',
-    brandId: 'brand-7',
-    baseUnitId: 'unit-pcs',
-    buyPrice: 18000,
-    sellPrice: 25000,
-    minStock: 15,
-    isActive: true,
-    createdAt: new Date('2023-01-01'),
-    updatedAt: new Date('2024-01-01'),
-  },
-  {
-    id: 'prod-8',
-    sku: 'SKU008',
-    barcode: '8991234567897',
-    name: 'Roma Kelapa 300g',
-    description: 'Biskuit kelapa',
-    categoryId: 'snack',
-    brandId: 'brand-8',
-    baseUnitId: 'unit-pcs',
-    buyPrice: 8000,
-    sellPrice: 12000,
-    minStock: 25,
-    isActive: true,
-    createdAt: new Date('2023-01-01'),
-    updatedAt: new Date('2024-01-01'),
-  },
-  {
-    id: 'prod-9',
-    sku: 'SKU009',
-    barcode: '8991234567898',
-    name: 'Susu Ultra Full Cream 1L',
-    description: 'Susu UHT full cream',
-    categoryId: 'dairy',
-    brandId: 'brand-4',
-    baseUnitId: 'unit-pcs',
-    buyPrice: 16000,
-    sellPrice: 22000,
-    minStock: 30,
-    isActive: true,
-    createdAt: new Date('2023-01-01'),
-    updatedAt: new Date('2024-01-01'),
-  },
-  {
-    id: 'prod-10',
-    sku: 'SKU010',
-    barcode: '8991234567899',
-    name: 'Lifebuoy Sabun Mandi 100g',
-    description: 'Sabun mandi batang',
-    categoryId: 'personal',
-    brandId: 'brand-5',
-    baseUnitId: 'unit-pcs',
-    buyPrice: 4000,
-    sellPrice: 6000,
-    minStock: 40,
-    isActive: true,
-    createdAt: new Date('2023-01-01'),
-    updatedAt: new Date('2024-01-01'),
-  },
-  {
-    id: 'prod-11',
-    sku: 'SKU011',
-    barcode: '8991234567900',
-    name: 'Indomie Kuah Ayam Bawang',
-    description: 'Mie kuah instant rasa ayam bawang',
-    categoryId: 'instant',
-    brandId: 'brand-1',
-    baseUnitId: 'unit-pcs',
-    buyPrice: 2500,
-    sellPrice: 3500,
-    minStock: 50,
-    isActive: true,
-    createdAt: new Date('2023-01-01'),
-    updatedAt: new Date('2024-01-01'),
-  },
-  {
-    id: 'prod-12',
-    sku: 'SKU012',
-    barcode: '8991234567901',
-    name: 'Teh Botol Sosro 450ml',
-    description: 'Teh manis kemasan botol',
-    categoryId: 'drink',
-    brandId: 'brand-7',
-    baseUnitId: 'unit-pcs',
-    buyPrice: 4000,
-    sellPrice: 6000,
-    minStock: 50,
-    isActive: true,
-    createdAt: new Date('2023-01-01'),
-    updatedAt: new Date('2024-01-01'),
-  },
-];
-
-// ================ STOCK PER STORE ================
-export const stockPerStore: StockPerStore[] = [
-  // Store 1 - Pusat (full stock)
-  { id: 'stk-1-1', productId: 'prod-1', storeId: 'store-1', quantity: 120, lastUpdated: new Date() },
-  { id: 'stk-1-2', productId: 'prod-2', storeId: 'store-1', quantity: 200, lastUpdated: new Date() },
-  { id: 'stk-1-3', productId: 'prod-3', storeId: 'store-1', quantity: 150, lastUpdated: new Date() },
-  { id: 'stk-1-4', productId: 'prod-4', storeId: 'store-1', quantity: 45, lastUpdated: new Date() },
-  { id: 'stk-1-5', productId: 'prod-5', storeId: 'store-1', quantity: 30, lastUpdated: new Date() },
-  { id: 'stk-1-6', productId: 'prod-6', storeId: 'store-1', quantity: 25, lastUpdated: new Date() },
-  { id: 'stk-1-7', productId: 'prod-7', storeId: 'store-1', quantity: 18, lastUpdated: new Date() },
-  { id: 'stk-1-8', productId: 'prod-8', storeId: 'store-1', quantity: 35, lastUpdated: new Date() },
-  { id: 'stk-1-9', productId: 'prod-9', storeId: 'store-1', quantity: 40, lastUpdated: new Date() },
-  { id: 'stk-1-10', productId: 'prod-10', storeId: 'store-1', quantity: 60, lastUpdated: new Date() },
-  { id: 'stk-1-11', productId: 'prod-11', storeId: 'store-1', quantity: 100, lastUpdated: new Date() },
-  { id: 'stk-1-12', productId: 'prod-12', storeId: 'store-1', quantity: 80, lastUpdated: new Date() },
-  
-  // Store 2 - Cabang Selatan (medium stock)
-  { id: 'stk-2-1', productId: 'prod-1', storeId: 'store-2', quantity: 80, lastUpdated: new Date() },
-  { id: 'stk-2-2', productId: 'prod-2', storeId: 'store-2', quantity: 150, lastUpdated: new Date() },
-  { id: 'stk-2-3', productId: 'prod-3', storeId: 'store-2', quantity: 90, lastUpdated: new Date() },
-  { id: 'stk-2-4', productId: 'prod-4', storeId: 'store-2', quantity: 25, lastUpdated: new Date() },
-  { id: 'stk-2-5', productId: 'prod-5', storeId: 'store-2', quantity: 15, lastUpdated: new Date() },
-  { id: 'stk-2-6', productId: 'prod-6', storeId: 'store-2', quantity: 12, lastUpdated: new Date() },
-  { id: 'stk-2-7', productId: 'prod-7', storeId: 'store-2', quantity: 10, lastUpdated: new Date() },
-  { id: 'stk-2-8', productId: 'prod-8', storeId: 'store-2', quantity: 20, lastUpdated: new Date() },
-  { id: 'stk-2-9', productId: 'prod-9', storeId: 'store-2', quantity: 25, lastUpdated: new Date() },
-  { id: 'stk-2-10', productId: 'prod-10', storeId: 'store-2', quantity: 35, lastUpdated: new Date() },
-  { id: 'stk-2-11', productId: 'prod-11', storeId: 'store-2', quantity: 70, lastUpdated: new Date() },
-  { id: 'stk-2-12', productId: 'prod-12', storeId: 'store-2', quantity: 50, lastUpdated: new Date() },
-  
-  // Store 3 - Cabang Timur (low stock - new store)
-  { id: 'stk-3-1', productId: 'prod-1', storeId: 'store-3', quantity: 30, lastUpdated: new Date() },
-  { id: 'stk-3-2', productId: 'prod-2', storeId: 'store-3', quantity: 60, lastUpdated: new Date() },
-  { id: 'stk-3-3', productId: 'prod-3', storeId: 'store-3', quantity: 40, lastUpdated: new Date() },
-  { id: 'stk-3-4', productId: 'prod-4', storeId: 'store-3', quantity: 10, lastUpdated: new Date() },
-  { id: 'stk-3-5', productId: 'prod-5', storeId: 'store-3', quantity: 8, lastUpdated: new Date() },
-  { id: 'stk-3-6', productId: 'prod-6', storeId: 'store-3', quantity: 5, lastUpdated: new Date() },
-  { id: 'stk-3-7', productId: 'prod-7', storeId: 'store-3', quantity: 6, lastUpdated: new Date() },
-  { id: 'stk-3-8', productId: 'prod-8', storeId: 'store-3', quantity: 12, lastUpdated: new Date() },
-  { id: 'stk-3-9', productId: 'prod-9', storeId: 'store-3', quantity: 15, lastUpdated: new Date() },
-  { id: 'stk-3-10', productId: 'prod-10', storeId: 'store-3', quantity: 18, lastUpdated: new Date() },
-  { id: 'stk-3-11', productId: 'prod-11', storeId: 'store-3', quantity: 25, lastUpdated: new Date() },
-  { id: 'stk-3-12', productId: 'prod-12', storeId: 'store-3', quantity: 30, lastUpdated: new Date() },
+  { id: 1, store_id: 1, category_id: 5, brand_id: 1, unit_id: 1, name: 'Indomie Goreng Original', code: '8991234567890', quantity: 120, min_stock_alert: 50, cost_price: 2500, selling_price: 3500, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 },
+  { id: 2, store_id: 1, category_id: 2, brand_id: 2, unit_id: 1, name: 'Aqua Botol 600ml', code: '8991234567891', quantity: 200, min_stock_alert: 100, cost_price: 2000, selling_price: 3000, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 },
+  { id: 3, store_id: 1, category_id: 2, brand_id: 3, unit_id: 1, name: 'Kopi Kapal Api Special', code: '8991234567892', quantity: 150, min_stock_alert: 100, cost_price: 1500, selling_price: 2500, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 },
+  { id: 4, store_id: 1, category_id: 3, brand_id: 4, unit_id: 1, name: 'Chitato Rasa Sapi Panggang', code: '8991234567893', quantity: 45, min_stock_alert: 30, cost_price: 8000, selling_price: 12000, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 },
+  { id: 5, store_id: 1, category_id: 7, brand_id: 5, unit_id: 1, name: 'Sunlight Sabun Cuci Piring 800ml', code: '8991234567894', quantity: 30, min_stock_alert: 20, cost_price: 12000, selling_price: 16000, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 },
+  { id: 6, store_id: 1, category_id: 7, brand_id: 6, unit_id: 1, name: 'So Klin Pewangi 900ml', code: '8991234567895', quantity: 25, min_stock_alert: 20, cost_price: 15000, selling_price: 22000, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 },
+  { id: 7, store_id: 1, category_id: 1, brand_id: 7, unit_id: 1, name: 'ABC Kecap Manis 600ml', code: '8991234567896', quantity: 18, min_stock_alert: 15, cost_price: 18000, selling_price: 25000, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 },
+  { id: 8, store_id: 1, category_id: 3, brand_id: 8, unit_id: 1, name: 'Roma Kelapa 300g', code: '8991234567897', quantity: 35, min_stock_alert: 25, cost_price: 8000, selling_price: 12000, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 },
+  { id: 9, store_id: 1, category_id: 4, brand_id: 4, unit_id: 1, name: 'Susu Ultra Full Cream 1L', code: '8991234567898', quantity: 40, min_stock_alert: 30, cost_price: 16000, selling_price: 22000, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 },
+  { id: 10, store_id: 1, category_id: 6, brand_id: 5, unit_id: 1, name: 'Lifebuoy Sabun Mandi 100g', code: '8991234567899', quantity: 60, min_stock_alert: 40, cost_price: 4000, selling_price: 6000, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 },
+  { id: 11, store_id: 1, category_id: 5, brand_id: 1, unit_id: 1, name: 'Indomie Kuah Ayam Bawang', code: '8991234567900', quantity: 100, min_stock_alert: 50, cost_price: 2500, selling_price: 3500, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 },
+  { id: 12, store_id: 1, category_id: 2, brand_id: 7, unit_id: 1, name: 'Teh Botol Sosro 450ml', code: '8991234567901', quantity: 80, min_stock_alert: 50, cost_price: 4000, selling_price: 6000, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 },
 ];
 
 // ================ CUSTOMERS ================
 export const customers: Customer[] = [
-  {
-    id: 'cust-1',
-    name: 'Andi Wijaya',
-    phone: '08123456789',
-    email: 'andi@email.com',
-    address: 'Jl. Mangga No. 10, Jakarta',
-    points: 1500,
-    totalSpent: 2500000,
-    createdAt: new Date('2023-06-01'),
-  },
-  {
-    id: 'cust-2',
-    name: 'Siti Nurhaliza',
-    phone: '08198765432',
-    email: 'siti@email.com',
-    points: 800,
-    totalSpent: 1200000,
-    createdAt: new Date('2023-08-15'),
-  },
-  {
-    id: 'cust-3',
-    name: 'Budi Santoso',
-    phone: '08111222333',
-    points: 2200,
-    totalSpent: 4500000,
-    createdAt: new Date('2023-03-20'),
-  },
+  { id: 1, store_id: 1, name: 'Andi Wijaya', phone: '08123456789', address: 'Jl. Mangga No. 10, Jakarta', created_at: new Date('2023-06-01'), updated_at: new Date('2023-06-01') },
+  { id: 2, store_id: 1, name: 'Siti Nurhaliza', phone: '08198765432', created_at: new Date('2023-08-15'), updated_at: new Date('2023-08-15') },
+  { id: 3, store_id: 1, name: 'Budi Santoso', phone: '08111222333', created_at: new Date('2023-03-20'), updated_at: new Date('2023-03-20') },
 ];
 
 // ================ EXPENSE CATEGORIES ================
 export const expenseCategories: ExpenseCategory[] = [
-  { id: 'exp-cat-1', name: 'Listrik' },
-  { id: 'exp-cat-2', name: 'Gaji Karyawan' },
-  { id: 'exp-cat-3', name: 'Sewa Tempat' },
-  { id: 'exp-cat-4', name: 'Transportasi' },
-  { id: 'exp-cat-5', name: 'Kebersihan' },
-  { id: 'exp-cat-6', name: 'Internet & Telepon' },
-  { id: 'exp-cat-7', name: 'Peralatan' },
-  { id: 'exp-cat-8', name: 'Lain-lain' },
+  { id: 1, store_id: 1, name: 'Listrik', created_at: new Date(), updated_at: new Date() },
+  { id: 2, store_id: 1, name: 'Gaji Karyawan', created_at: new Date(), updated_at: new Date() },
+  { id: 3, store_id: 1, name: 'Sewa Tempat', created_at: new Date(), updated_at: new Date() },
+  { id: 4, store_id: 1, name: 'Transportasi', created_at: new Date(), updated_at: new Date() },
+  { id: 5, store_id: 1, name: 'Kebersihan', created_at: new Date(), updated_at: new Date() },
+  { id: 6, store_id: 1, name: 'Internet & Telepon', created_at: new Date(), updated_at: new Date() },
+  { id: 7, store_id: 1, name: 'Peralatan', created_at: new Date(), updated_at: new Date() },
+  { id: 8, store_id: 1, name: 'Lain-lain', created_at: new Date(), updated_at: new Date() },
 ];
 
 // ================ SAMPLE EXPENSES ================
 export const sampleExpenses: Expense[] = [
+  { id: 1, store_id: 1, user_id: 2, category_id: 1, title: 'Tagihan listrik bulan Januari', amount: 2500000, date: new Date('2024-01-05'), created_at: new Date('2024-01-05'), updated_at: new Date('2024-01-05') },
+  { id: 2, store_id: 1, user_id: 1, category_id: 2, title: 'Gaji karyawan bulan Januari (2 orang)', amount: 8000000, date: new Date('2024-01-01'), created_at: new Date('2024-01-01'), updated_at: new Date('2024-01-01') },
+  { id: 3, store_id: 1, user_id: 1, category_id: 3, title: 'Sewa tempat bulan Januari', amount: 5000000, date: new Date('2024-01-01'), created_at: new Date('2024-01-01'), updated_at: new Date('2024-01-01') },
+  { id: 4, store_id: 2, user_id: 2, category_id: 1, title: 'Tagihan listrik cabang selatan', amount: 1800000, date: new Date('2024-01-05'), created_at: new Date('2024-01-05'), updated_at: new Date('2024-01-05') },
+  { id: 5, store_id: 2, user_id: 1, category_id: 2, title: 'Gaji karyawan cabang selatan', amount: 6000000, date: new Date('2024-01-01'), created_at: new Date('2024-01-01'), updated_at: new Date('2024-01-01') },
+  { id: 6, store_id: 1, user_id: 2, category_id: 6, title: 'Tagihan internet dan telepon', amount: 500000, date: new Date('2024-01-15'), created_at: new Date('2024-01-15'), updated_at: new Date('2024-01-15') },
+  { id: 7, store_id: 1, user_id: 2, category_id: 5, title: 'Perlengkapan kebersihan toko', amount: 350000, date: new Date('2024-01-15'), created_at: new Date('2024-01-15'), updated_at: new Date('2024-01-15') },
+  { id: 8, store_id: 3, user_id: 1, category_id: 3, title: 'Sewa tempat cabang timur', amount: 4000000, date: new Date('2024-01-16'), created_at: new Date('2024-01-16'), updated_at: new Date('2024-01-16') },
+  { id: 9, store_id: 3, user_id: 2, category_id: 7, title: 'Pembelian rak display baru', amount: 1200000, date: new Date('2024-01-16'), created_at: new Date('2024-01-16'), updated_at: new Date('2024-01-16') },
+];
+
+// ================ SAMPLE SALES (replaces Transaction) ================
+export const sampleSales: Sale[] = [
   {
-    id: 'EXP-20240101-001',
-    storeId: 'store-1',
-    categoryId: 'exp-cat-1',
-    amount: 2500000,
-    description: 'Tagihan listrik bulan Januari',
-    date: new Date('2024-01-05'),
-    createdBy: 'admin-1',
+    id: 1, store_id: 1, user_id: 3, customer_id: null, invoice_number: 'INV-20240115-001',
+    date: new Date('2024-01-15T10:30:00'), sub_total: 26500, discount: 0, tax: 0, grand_total: 26500,
+    payment_method: 'cash', amount_received: 50000, change_amount: 23500,
+    created_at: new Date('2024-01-15T10:30:00'), updated_at: new Date('2024-01-15T10:30:00'),
   },
   {
-    id: 'EXP-20240101-002',
-    storeId: 'store-1',
-    categoryId: 'exp-cat-2',
-    amount: 8000000,
-    description: 'Gaji karyawan bulan Januari (2 orang)',
-    date: new Date('2024-01-01'),
-    createdBy: 'owner-1',
+    id: 2, store_id: 1, user_id: 3, customer_id: null, invoice_number: 'INV-20240115-002',
+    date: new Date('2024-01-15T11:45:00'), sub_total: 46000, discount: 0, tax: 0, grand_total: 46000,
+    payment_method: 'qris', amount_received: 46000, change_amount: 0,
+    created_at: new Date('2024-01-15T11:45:00'), updated_at: new Date('2024-01-15T11:45:00'),
   },
   {
-    id: 'EXP-20240101-003',
-    storeId: 'store-1',
-    categoryId: 'exp-cat-3',
-    amount: 5000000,
-    description: 'Sewa tempat bulan Januari',
-    date: new Date('2024-01-01'),
-    createdBy: 'owner-1',
+    id: 3, store_id: 2, user_id: 3, customer_id: null, invoice_number: 'INV-20240115-003',
+    date: new Date('2024-01-15T14:20:00'), sub_total: 57000, discount: 0, tax: 0, grand_total: 57000,
+    payment_method: 'debit', amount_received: 57000, change_amount: 0,
+    created_at: new Date('2024-01-15T14:20:00'), updated_at: new Date('2024-01-15T14:20:00'),
   },
   {
-    id: 'EXP-20240101-004',
-    storeId: 'store-2',
-    categoryId: 'exp-cat-1',
-    amount: 1800000,
-    description: 'Tagihan listrik cabang selatan',
-    date: new Date('2024-01-05'),
-    createdBy: 'admin-1',
-  },
-  {
-    id: 'EXP-20240101-005',
-    storeId: 'store-2',
-    categoryId: 'exp-cat-2',
-    amount: 6000000,
-    description: 'Gaji karyawan cabang selatan',
-    date: new Date('2024-01-01'),
-    createdBy: 'owner-1',
-  },
-  {
-    id: 'EXP-20240115-001',
-    storeId: 'store-1',
-    categoryId: 'exp-cat-6',
-    amount: 500000,
-    description: 'Tagihan internet dan telepon',
-    date: new Date('2024-01-15'),
-    createdBy: 'admin-1',
-  },
-  {
-    id: 'EXP-20240115-002',
-    storeId: 'store-1',
-    categoryId: 'exp-cat-5',
-    amount: 350000,
-    description: 'Perlengkapan kebersihan toko',
-    date: new Date('2024-01-15'),
-    createdBy: 'admin-1',
-  },
-  {
-    id: 'EXP-20240116-001',
-    storeId: 'store-3',
-    categoryId: 'exp-cat-3',
-    amount: 4000000,
-    description: 'Sewa tempat cabang timur',
-    date: new Date('2024-01-16'),
-    createdBy: 'owner-1',
-  },
-  {
-    id: 'EXP-20240116-002',
-    storeId: 'store-3',
-    categoryId: 'exp-cat-7',
-    amount: 1200000,
-    description: 'Pembelian rak display baru',
-    date: new Date('2024-01-16'),
-    createdBy: 'admin-1',
+    id: 4, store_id: 1, user_id: 3, customer_id: 3, invoice_number: 'INV-20240116-001',
+    date: new Date('2024-01-16T09:15:00'), sub_total: 82500, discount: 2500, tax: 0, grand_total: 80000,
+    payment_method: 'cash', amount_received: 100000, change_amount: 20000,
+    created_at: new Date('2024-01-16T09:15:00'), updated_at: new Date('2024-01-16T09:15:00'),
   },
 ];
 
-// ================ SAMPLE TRANSACTIONS ================
-export const sampleTransactions: Transaction[] = [
-  {
-    id: 'TRX-20240115-001',
-    storeId: 'store-1',
-    items: [
-      { product: products[0], quantity: 5, unitId: 'unit-pcs', pricePerUnit: 3500 },
-      { product: products[1], quantity: 3, unitId: 'unit-pcs', pricePerUnit: 3000 },
-    ],
-    subtotal: 26500,
-    discount: 0,
-    tax: 0,
-    total: 26500,
-    paymentMethod: 'cash',
-    amountPaid: 50000,
-    change: 23500,
-    createdAt: new Date('2024-01-15T10:30:00'),
-    cashierId: 'user-1',
-    cashierName: 'Kasir 1',
-  },
-  {
-    id: 'TRX-20240115-002',
-    storeId: 'store-1',
-    items: [
-      { product: products[3], quantity: 2, unitId: 'unit-pcs', pricePerUnit: 12000 },
-      { product: products[8], quantity: 1, unitId: 'unit-pcs', pricePerUnit: 22000 },
-    ],
-    subtotal: 46000,
-    discount: 0,
-    tax: 0,
-    total: 46000,
-    paymentMethod: 'qris',
-    amountPaid: 46000,
-    change: 0,
-    createdAt: new Date('2024-01-15T11:45:00'),
-    cashierId: 'user-1',
-    cashierName: 'Kasir 1',
-  },
-  {
-    id: 'TRX-20240115-003',
-    storeId: 'store-2',
-    items: [
-      { product: products[6], quantity: 1, unitId: 'unit-pcs', pricePerUnit: 25000 },
-      { product: products[4], quantity: 2, unitId: 'unit-pcs', pricePerUnit: 16000 },
-    ],
-    subtotal: 57000,
-    discount: 0,
-    tax: 0,
-    total: 57000,
-    paymentMethod: 'card',
-    amountPaid: 57000,
-    change: 0,
-    createdAt: new Date('2024-01-15T14:20:00'),
-    cashierId: 'user-2',
-    cashierName: 'Kasir 2',
-  },
-  {
-    id: 'TRX-20240116-001',
-    storeId: 'store-1',
-    items: [
-      { product: products[0], quantity: 10, unitId: 'unit-pcs', pricePerUnit: 3500 },
-      { product: products[10], quantity: 10, unitId: 'unit-pcs', pricePerUnit: 3500 },
-      { product: products[2], quantity: 5, unitId: 'unit-pcs', pricePerUnit: 2500 },
-    ],
-    subtotal: 82500,
-    discount: 2500,
-    tax: 0,
-    total: 80000,
-    paymentMethod: 'cash',
-    amountPaid: 100000,
-    change: 20000,
-    customerId: 'cust-3',
-    createdAt: new Date('2024-01-16T09:15:00'),
-    cashierId: 'user-1',
-    cashierName: 'Kasir 1',
-  },
+// ================ SALE DETAILS ================
+export const sampleSaleDetails: SaleDetail[] = [
+  // Sale 1
+  { id: 1, sale_id: 1, product_id: 1, quantity: 5, price_at_sale: 3500, cost_at_sale: 2500, total_price: 17500, created_at: new Date(), updated_at: new Date() },
+  { id: 2, sale_id: 1, product_id: 2, quantity: 3, price_at_sale: 3000, cost_at_sale: 2000, total_price: 9000, created_at: new Date(), updated_at: new Date() },
+  // Sale 2
+  { id: 3, sale_id: 2, product_id: 4, quantity: 2, price_at_sale: 12000, cost_at_sale: 8000, total_price: 24000, created_at: new Date(), updated_at: new Date() },
+  { id: 4, sale_id: 2, product_id: 9, quantity: 1, price_at_sale: 22000, cost_at_sale: 16000, total_price: 22000, created_at: new Date(), updated_at: new Date() },
+  // Sale 3
+  { id: 5, sale_id: 3, product_id: 7, quantity: 1, price_at_sale: 25000, cost_at_sale: 18000, total_price: 25000, created_at: new Date(), updated_at: new Date() },
+  { id: 6, sale_id: 3, product_id: 5, quantity: 2, price_at_sale: 16000, cost_at_sale: 12000, total_price: 32000, created_at: new Date(), updated_at: new Date() },
+  // Sale 4
+  { id: 7, sale_id: 4, product_id: 1, quantity: 10, price_at_sale: 3500, cost_at_sale: 2500, total_price: 35000, created_at: new Date(), updated_at: new Date() },
+  { id: 8, sale_id: 4, product_id: 11, quantity: 10, price_at_sale: 3500, cost_at_sale: 2500, total_price: 35000, created_at: new Date(), updated_at: new Date() },
+  { id: 9, sale_id: 4, product_id: 3, quantity: 5, price_at_sale: 2500, cost_at_sale: 1500, total_price: 12500, created_at: new Date(), updated_at: new Date() },
 ];
 
 // ================ SAMPLE STOCK OPNAME ================
 export const sampleStockOpnames: StockOpname[] = [
-  {
-    id: 'SO-20240110-001',
-    storeId: 'store-1',
-    status: 'completed',
-    startedAt: new Date('2024-01-10T08:00:00'),
-    completedAt: new Date('2024-01-10T12:30:00'),
-    createdBy: 'user-1',
-    approvedBy: 'user-admin',
-    notes: 'Stock opname rutin bulanan',
-  },
-  {
-    id: 'SO-20240115-001',
-    storeId: 'store-2',
-    status: 'in_progress',
-    startedAt: new Date('2024-01-15T09:00:00'),
-    createdBy: 'user-2',
-    notes: 'Stock opname mingguan',
-  },
+  { id: 1, store_id: 1, user_id: 1, opname_number: 'SO-20240110-001', date: new Date('2024-01-10'), note: 'Stock opname rutin bulanan', created_at: new Date('2024-01-10'), updated_at: new Date('2024-01-10') },
+  { id: 2, store_id: 2, user_id: 2, opname_number: 'SO-20240115-001', date: new Date('2024-01-15'), note: 'Stock opname mingguan', created_at: new Date('2024-01-15'), updated_at: new Date('2024-01-15') },
 ];
 
-// ================ LEGACY SUPPORT ================
-// For backward compatibility with existing POS components
-export const legacyCategories: LegacyCategory[] = [
-  { id: 'all', name: 'Semua', icon: '🏷️' },
-  { id: 'instant', name: 'Makanan Instan', icon: '🍜' },
-  { id: 'drink', name: 'Minuman', icon: '🥤' },
-  { id: 'snack', name: 'Snack', icon: '🍿' },
-  { id: 'dairy', name: 'Susu & Olahan', icon: '🥛' },
-  { id: 'food', name: 'Makanan', icon: '🍔' },
-  { id: 'personal', name: 'Perawatan Diri', icon: '🧴' },
-  { id: 'household', name: 'Rumah Tangga', icon: '🧹' },
-];
+// ================ HELPERS ================
 
-// Helper to get stock for a product in a specific store
-export function getProductStock(productId: string, storeId: string = 'store-1'): number {
-  const stock = stockPerStore.find(s => s.productId === productId && s.storeId === storeId);
-  return stock?.quantity ?? 0;
+// Get product by id
+export function getProduct(productId: number): Product | undefined {
+  return products.find(p => p.id === productId);
 }
 
-// Convert new Product to LegacyProduct for POS compatibility
-export function toLegacyProduct(product: Product, storeId: string = 'store-1'): LegacyProduct {
-  return {
-    id: product.id,
-    name: product.name,
-    price: product.sellPrice,
-    category: product.categoryId,
-    image: product.image,
-    stock: getProductStock(product.id, storeId),
-  };
+// Get category for product
+export function getCategoryForProduct(product: Product): Category | undefined {
+  return categories.find(c => c.id === product.category_id);
 }
 
-// Get all products as legacy format for POS
-export const legacyProducts: LegacyProduct[] = products.map(p => toLegacyProduct(p, 'store-1'));
+// Get brand for product
+export function getBrandForProduct(product: Product): Brand | undefined {
+  return brands.find(b => b.id === product.brand_id);
+}
+
+// Get sale details with product info
+export function getSaleDetailsWithProducts(saleId: number) {
+  return sampleSaleDetails
+    .filter(d => d.sale_id === saleId)
+    .map(d => ({
+      ...d,
+      product: getProduct(d.product_id),
+    }));
+}
+
+// Get store name short
+export function getStoreName(storeId: number): string {
+  const store = stores.find(s => s.id === storeId);
+  return store?.name.split(' - ')[1] || store?.name || String(storeId);
+}

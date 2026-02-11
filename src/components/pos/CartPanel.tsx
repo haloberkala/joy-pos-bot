@@ -7,8 +7,8 @@ import { cn } from '@/lib/utils';
 interface CartPanelProps {
   items: CartItem[];
   total: number;
-  onUpdateQuantity: (productId: string, quantity: number) => void;
-  onRemoveItem: (productId: string) => void;
+  onUpdateQuantity: (productId: number, quantity: number) => void;
+  onRemoveItem: (productId: number) => void;
   onCheckout: (paymentMethod: PaymentMethod) => void;
 }
 
@@ -50,7 +50,7 @@ export function CartPanel({
                     {item.product.name}
                   </h4>
                   <p className="text-xs text-[hsl(var(--pos-muted-foreground))]">
-                    {formatCurrency(item.pricePerUnit)} / item
+                    {formatCurrency(item.price_per_unit)} / item
                   </p>
                 </div>
                 <button
@@ -83,7 +83,7 @@ export function CartPanel({
                   </button>
                 </div>
                 <span className="price-text text-[hsl(var(--pos-accent))]">
-                  {formatCurrency(item.pricePerUnit * item.quantity)}
+                  {formatCurrency(item.price_per_unit * item.quantity)}
                 </span>
               </div>
             </div>
@@ -93,7 +93,6 @@ export function CartPanel({
 
       {/* Footer */}
       <div className="p-4 border-t border-[hsl(var(--pos-border))] space-y-3">
-        {/* Total */}
         <div className="flex justify-between items-center">
           <span className="text-[hsl(var(--pos-muted-foreground))] font-medium">Total</span>
           <span className="price-text text-2xl text-[hsl(var(--pos-foreground))]">
@@ -101,7 +100,6 @@ export function CartPanel({
           </span>
         </div>
 
-        {/* Payment Buttons */}
         <div className="grid grid-cols-3 gap-2">
           <Button
             onClick={() => onCheckout('cash')}
@@ -116,7 +114,7 @@ export function CartPanel({
             <span className="text-xs">Tunai</span>
           </Button>
           <Button
-            onClick={() => onCheckout('card')}
+            onClick={() => onCheckout('debit')}
             disabled={items.length === 0}
             className={cn(
               'flex flex-col items-center gap-1 h-auto py-3 rounded-xl',
@@ -125,7 +123,7 @@ export function CartPanel({
             )}
           >
             <CreditCard className="w-5 h-5" />
-            <span className="text-xs">Kartu</span>
+            <span className="text-xs">Debit</span>
           </Button>
           <Button
             onClick={() => onCheckout('qris')}

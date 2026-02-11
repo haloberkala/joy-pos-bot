@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { products, stockPerStore, categories } from '@/data/sampleData';
+import { products, categories } from '@/data/sampleData';
 import { formatCurrency } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,15 +12,14 @@ import { toast } from 'sonner';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 
 interface StockOpnameDetailProps {
-  storeId: string;
+  storeId: number;
   onBack: () => void;
 }
 
 interface OpnameItem {
-  productId: string;
+  productId: number;
   name: string;
-  sku: string;
-  barcode: string;
+  code: string;
   categoryName: string;
   systemQty: number;
   actualQty: number | null;
@@ -31,28 +30,23 @@ interface OpnameItem {
 export function StockOpnameDetail({ storeId, onBack }: StockOpnameDetailProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [opnameItems, setOpnameItems] = useState<OpnameItem[]>(() => {
-    return products.map((p) => {
-      const stock = stockPerStore.find(
-        (s) => s.productId === p.id && s.storeId === storeId
-      );
-      return {
+    return products
+      .filter(p => p.store_id === storeId)
+      .map((p) => ({
         productId: p.id,
         name: p.name,
-        sku: p.sku,
-        barcode: p.barcode,
-        categoryName: categories.find((c) => c.id === p.categoryId)?.name || '',
-        systemQty: stock?.quantity ?? 0,
+        code: p.code,
+        categoryName: categories.find((c) => c.id === p.category_id)?.name || '',
+        systemQty: p.quantity,
         actualQty: null,
         difference: 0,
         notes: '',
-      };
-    });
+      }));
   });
 
-  // Barcode scanner support for quick navigation
   useBarcodeScanner({
     onScan: (barcode) => {
-      const idx = opnameItems.findIndex((item) => item.barcode === barcode);
+      const idx = opnameItems.findIndex((item) => item.code === barcode);
       if (idx >= 0) {
         setSearchQuery(barcode);
         toast.success(`Produk ditemukan: ${opnameItems[idx].name}`);
@@ -62,22 +56,18 @@ export function StockOpnameDetail({ storeId, onBack }: StockOpnameDetailProps) {
     },
   });
 
-  const updateActualQty = (productId: string, value: string) => {
+  const updateActualQty = (productId: number, value: string) => {
     const qty = value === '' ? null : parseInt(value, 10);
     setOpnameItems((prev) =>
       prev.map((item) =>
         item.productId === productId
-          ? {
-              ...item,
-              actualQty: qty,
-              difference: qty !== null ? qty - item.systemQty : 0,
-            }
+          ? { ...item, actualQty: qty, difference: qty !== null ? qty - item.systemQty : 0 }
           : item
       )
     );
   };
 
-  const updateNotes = (productId: string, notes: string) => {
+  const updateNotes = (productId: number, notes: string) => {
     setOpnameItems((prev) =>
       prev.map((item) =>
         item.productId === productId ? { ...item, notes } : item
@@ -91,8 +81,7 @@ export function StockOpnameDetail({ storeId, onBack }: StockOpnameDetailProps) {
     return opnameItems.filter(
       (item) =>
         item.name.toLowerCase().includes(q) ||
-        item.sku.toLowerCase().includes(q) ||
-        item.barcode.includes(q)
+        item.code.toLowerCase().includes(q)
     );
   }, [opnameItems, searchQuery]);
 
@@ -102,9 +91,7 @@ export function StockOpnameDetail({ storeId, onBack }: StockOpnameDetailProps) {
   ).length;
 
   const handleSave = () => {
-    toast.success(
-      `Stock opname disimpan! ${filledCount} produk diperiksa, ${discrepancyCount} selisih ditemukan.`
-    );
+    toast.success(`Stock opname disimpan! ${filledCount} produk diperiksa, ${discrepancyCount} selisih ditemukan.`);
   };
 
   const handleComplete = () => {
@@ -126,8 +113,7 @@ export function StockOpnameDetail({ storeId, onBack }: StockOpnameDetailProps) {
           <div>
             <h2 className="text-xl font-bold text-foreground">Stock Opname</h2>
             <p className="text-sm text-muted-foreground">
-              {filledCount}/{opnameItems.length} produk diperiksa •{' '}
-              {discrepancyCount} selisih
+              {filledCount}/{opnameItems.length} produk diperiksa • {discrepancyCount} selisih
             </p>
           </div>
         </div>
@@ -143,27 +129,25 @@ export function StockOpnameDetail({ storeId, onBack }: StockOpnameDetailProps) {
         </div>
       </div>
 
-      {/* Progress */}
       <div className="bg-card rounded-xl border border-border p-4">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-medium text-foreground">Progress</span>
           <span className="text-sm text-muted-foreground">
-            {Math.round((filledCount / opnameItems.length) * 100)}%
+            {opnameItems.length > 0 ? Math.round((filledCount / opnameItems.length) * 100) : 0}%
           </span>
         </div>
         <div className="w-full bg-muted rounded-full h-2.5">
           <div
             className="bg-primary h-2.5 rounded-full transition-all duration-300"
-            style={{ width: `${(filledCount / opnameItems.length) * 100}%` }}
+            style={{ width: `${opnameItems.length > 0 ? (filledCount / opnameItems.length) * 100 : 0}%` }}
           />
         </div>
       </div>
 
-      {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
         <Input
-          placeholder="Cari nama, SKU, atau scan barcode..."
+          placeholder="Cari nama atau scan barcode..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           className="pl-10"
@@ -171,13 +155,12 @@ export function StockOpnameDetail({ storeId, onBack }: StockOpnameDetailProps) {
         />
       </div>
 
-      {/* Table */}
       <div className="bg-card rounded-xl border border-border overflow-hidden">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>Produk</TableHead>
-              <TableHead>SKU</TableHead>
+              <TableHead>Kode</TableHead>
               <TableHead className="text-right">Stok Sistem</TableHead>
               <TableHead className="text-right">Stok Aktual</TableHead>
               <TableHead className="text-right">Selisih</TableHead>
@@ -199,7 +182,7 @@ export function StockOpnameDetail({ storeId, onBack }: StockOpnameDetailProps) {
                   <div className="text-xs text-muted-foreground">{item.categoryName}</div>
                 </TableCell>
                 <TableCell className="font-mono text-sm text-muted-foreground">
-                  {item.sku}
+                  {item.code}
                 </TableCell>
                 <TableCell className="text-right font-semibold">
                   {item.systemQty}
@@ -218,19 +201,13 @@ export function StockOpnameDetail({ storeId, onBack }: StockOpnameDetailProps) {
                   {item.actualQty !== null ? (
                     <Badge
                       variant={
-                        item.difference === 0
-                          ? 'outline'
-                          : item.difference > 0
-                          ? 'default'
-                          : 'destructive'
+                        item.difference === 0 ? 'outline' : item.difference > 0 ? 'default' : 'destructive'
                       }
                       className="gap-1"
                     >
                       {item.difference > 0 && '+'}
                       {item.difference}
-                      {item.difference !== 0 && (
-                        <AlertTriangle className="w-3 h-3" />
-                      )}
+                      {item.difference !== 0 && <AlertTriangle className="w-3 h-3" />}
                     </Badge>
                   ) : (
                     <span className="text-muted-foreground">—</span>

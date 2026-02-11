@@ -1,47 +1,50 @@
 import { useMemo } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
-import { Transaction } from '@/types/pos';
-import { categories } from '@/data/sampleData';
+import { Sale, SaleDetail } from '@/types/pos';
+import { categories, sampleSaleDetails, getProduct } from '@/data/sampleData';
 import { formatCurrency } from '@/lib/format';
 import { Card } from '@/components/ui/card';
 
 interface CategorySalesChartProps {
-  transactions: Transaction[];
+  sales: Sale[];
 }
 
 const COLORS = [
-  'hsl(158, 64%, 52%)', // Primary mint
-  'hsl(200, 70%, 50%)', // Blue
-  'hsl(280, 60%, 55%)', // Purple
-  'hsl(35, 90%, 55%)',  // Orange
-  'hsl(340, 70%, 55%)', // Pink
-  'hsl(160, 50%, 40%)', // Darker mint
-  'hsl(220, 60%, 50%)', // Indigo
-  'hsl(45, 80%, 55%)',  // Yellow
+  'hsl(158, 64%, 52%)',
+  'hsl(200, 70%, 50%)',
+  'hsl(280, 60%, 55%)',
+  'hsl(35, 90%, 55%)',
+  'hsl(340, 70%, 55%)',
+  'hsl(160, 50%, 40%)',
+  'hsl(220, 60%, 50%)',
+  'hsl(45, 80%, 55%)',
 ];
 
-export function CategorySalesChart({ transactions }: CategorySalesChartProps) {
+export function CategorySalesChart({ sales }: CategorySalesChartProps) {
   const chartData = useMemo(() => {
-    const salesByCategory: Record<string, number> = {};
-    
-    transactions.forEach(t => {
-      t.items.forEach(item => {
-        const categoryId = item.product.categoryId;
-        salesByCategory[categoryId] = (salesByCategory[categoryId] || 0) + (item.pricePerUnit * item.quantity);
+    const salesByCategory: Record<number, number> = {};
+    const saleIds = new Set(sales.map(s => s.id));
+
+    sampleSaleDetails
+      .filter(d => saleIds.has(d.sale_id))
+      .forEach(d => {
+        const product = getProduct(d.product_id);
+        if (product?.category_id) {
+          salesByCategory[product.category_id] = (salesByCategory[product.category_id] || 0) + d.total_price;
+        }
       });
-    });
 
     return Object.entries(salesByCategory)
-      .map(([categoryId, total]) => {
-        const category = categories.find(c => c.id === categoryId);
+      .map(([catId, total]) => {
+        const category = categories.find(c => c.id === Number(catId));
         return {
-          name: category?.name || categoryId,
+          name: category?.name || String(catId),
           value: total,
           icon: category?.icon || '📦',
         };
       })
       .sort((a, b) => b.value - a.value);
-  }, [transactions]);
+  }, [sales]);
 
   const totalSales = chartData.reduce((sum, item) => sum + item.value, 0);
 
@@ -54,33 +57,16 @@ export function CategorySalesChart({ transactions }: CategorySalesChartProps) {
       <div className="h-[300px]">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
-            <Pie
-              data={chartData}
-              cx="50%"
-              cy="50%"
-              innerRadius={60}
-              outerRadius={100}
-              paddingAngle={2}
-              dataKey="value"
-            >
+            <Pie data={chartData} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={2} dataKey="value">
               {chartData.map((_, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
               ))}
             </Pie>
             <Tooltip
-              contentStyle={{
-                backgroundColor: 'hsl(var(--card))',
-                border: '1px solid hsl(var(--border))',
-                borderRadius: '8px',
-              }}
+              contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px' }}
               formatter={(value: number) => [formatCurrency(value), 'Penjualan']}
             />
-            <Legend
-              layout="vertical"
-              align="right"
-              verticalAlign="middle"
-              formatter={(value) => <span className="text-sm text-foreground">{value}</span>}
-            />
+            <Legend layout="vertical" align="right" verticalAlign="middle" formatter={(value) => <span className="text-sm text-foreground">{value}</span>} />
           </PieChart>
         </ResponsiveContainer>
       </div>
