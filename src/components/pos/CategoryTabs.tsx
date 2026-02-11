@@ -3,8 +3,8 @@ import { cn } from '@/lib/utils';
 
 interface CategoryTabsProps {
   categories: Category[];
-  activeCategory: string;
-  onCategoryChange: (categoryId: string) => void;
+  activeCategory: number;
+  onCategoryChange: (categoryId: number) => void;
 }
 
 export function CategoryTabs({

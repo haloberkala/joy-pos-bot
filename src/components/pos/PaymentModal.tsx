@@ -39,14 +39,14 @@ export function PaymentModal({
 
   const paymentIcon = {
     cash: <Wallet className="w-5 h-5" />,
-    card: <CreditCard className="w-5 h-5" />,
+    debit: <CreditCard className="w-5 h-5" />,
     qris: <QrCode className="w-5 h-5" />,
     transfer: <CreditCard className="w-5 h-5" />,
   };
 
   const paymentLabel = {
     cash: 'Tunai',
-    card: 'Kartu',
+    debit: 'Debit',
     qris: 'QRIS',
     transfer: 'Transfer',
   };
@@ -69,7 +69,7 @@ export function PaymentModal({
                 <span className="text-muted-foreground">
                   {item.product.name} x{item.quantity}
                 </span>
-                <span className="font-medium">{formatCurrency(item.pricePerUnit * item.quantity)}</span>
+                <span className="font-medium">{formatCurrency(item.price_per_unit * item.quantity)}</span>
               </div>
             ))}
           </div>
@@ -135,9 +135,9 @@ export function PaymentModal({
           {paymentMethod !== 'cash' && (
             <div className="text-center py-6 text-muted-foreground">
               <p className="text-sm">
-                {paymentMethod === 'qris' 
+                {paymentMethod === 'qris'
                   ? 'Scan QRIS atau proses pembayaran'
-                  : 'Proses pembayaran kartu'
+                  : 'Proses pembayaran debit'
                 }
               </p>
             </div>

@@ -1,14 +1,14 @@
-import { LegacyProduct } from '@/types/pos';
+import { Product } from '@/types/pos';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
 
 interface ProductCardProps {
-  product: LegacyProduct;
-  onAdd: (product: LegacyProduct) => void;
+  product: Product;
+  onAdd: (product: Product) => void;
 }
 
 export function ProductCard({ product, onAdd }: ProductCardProps) {
-  const isOutOfStock = product.stock <= 0;
+  const isOutOfStock = product.quantity <= 0;
 
   return (
     <button
@@ -27,12 +27,12 @@ export function ProductCard({ product, onAdd }: ProductCardProps) {
           {product.name}
         </h3>
         <p className="text-xs text-[hsl(var(--pos-muted-foreground))]">
-          Stok: {product.stock}
+          Stok: {product.quantity}
         </p>
       </div>
       <div className="mt-3">
         <span className="price-text text-lg text-[hsl(var(--pos-accent))]">
-          {formatCurrency(product.price)}
+          {formatCurrency(product.selling_price)}
         </span>
       </div>
       {isOutOfStock && (

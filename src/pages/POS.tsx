@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useCart } from '@/hooks/useCart';
 import { useAuth } from '@/contexts/AuthContext';
 import { ProductCard } from '@/components/pos/ProductCard';
@@ -6,9 +6,8 @@ import { CategoryTabs } from '@/components/pos/CategoryTabs';
 import { CartPanel } from '@/components/pos/CartPanel';
 import { PaymentModal } from '@/components/pos/PaymentModal';
 import { ReceiptModal } from '@/components/pos/ReceiptModal';
-import { legacyProducts, legacyCategories, products } from '@/data/sampleData';
-import { PaymentMethod, Transaction } from '@/types/pos';
-import { generateTransactionId } from '@/lib/format';
+import { products, categories } from '@/data/sampleData';
+import { PaymentMethod, Sale, SaleDetail, Product } from '@/types/pos';
 import { Settings, LogOut, User, ShieldCheck, UserCog, ScanBarcode } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -16,26 +15,25 @@ import { canAccessMenu } from '@/contexts/AuthContext';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 
 export default function POS() {
-  const [activeCategory, setActiveCategory] = useState('all');
+  const [activeCategory, setActiveCategory] = useState(0); // category id=0 is "all"
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
-  const [currentTransaction, setCurrentTransaction] = useState<Transaction | null>(null);
+  const [currentSale, setCurrentSale] = useState<Sale | null>(null);
+  const [currentSaleDetails, setCurrentSaleDetails] = useState<(SaleDetail & { product?: Product })[]>([]);
   const [showReceipt, setShowReceipt] = useState(false);
   const [scannerActive, setScannerActive] = useState(true);
-  
+
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
   const { items, addItem, removeItem, updateQuantity, clearCart, total } = useCart();
 
   // Barcode scanner integration
-  const { lastScanned } = useBarcodeScanner({
+  useBarcodeScanner({
     onScan: (barcode) => {
-      // Find product by barcode
-      const product = products.find(p => p.barcode === barcode);
+      const product = products.find(p => p.code === barcode);
       if (product) {
-        const legacy = legacyProducts.find(lp => lp.id === product.id);
-        if (legacy && legacy.stock > 0) {
-          addItem(legacy);
+        if (product.quantity > 0) {
+          addItem(product);
           toast.success(`${product.name} ditambahkan`, {
             description: `Barcode: ${barcode}`,
             duration: 1500,
@@ -53,8 +51,8 @@ export default function POS() {
   });
 
   const filteredProducts = useMemo(() => {
-    if (activeCategory === 'all') return legacyProducts;
-    return legacyProducts.filter((p) => p.category === activeCategory);
+    if (activeCategory === 0) return products.filter(p => p.is_active);
+    return products.filter((p) => p.category_id === activeCategory && p.is_active);
   }, [activeCategory]);
 
   const handleCheckout = (method: PaymentMethod) => {
@@ -65,24 +63,41 @@ export default function POS() {
     const subtotal = total;
     const discount = 0;
     const tax = 0;
-    
-    const transaction: Transaction = {
-      id: generateTransactionId(),
-      storeId: user?.storeIds[0] || 'store-1',
-      items: [...items],
-      subtotal,
+    const now = new Date();
+
+    const sale: Sale = {
+      id: Date.now(),
+      store_id: 1,
+      user_id: 1,
+      customer_id: null,
+      invoice_number: `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(Date.now()).slice(-3)}`,
+      date: now,
+      sub_total: subtotal,
       discount,
       tax,
-      total: subtotal - discount + tax,
-      paymentMethod: paymentMethod!,
-      amountPaid,
-      change: Math.max(0, amountPaid - total),
-      createdAt: new Date(),
-      cashierId: user?.id || 'user-1',
-      cashierName: user?.name || 'Kasir',
+      grand_total: subtotal - discount + tax,
+      payment_method: paymentMethod!,
+      amount_received: amountPaid,
+      change_amount: Math.max(0, amountPaid - total),
+      created_at: now,
+      updated_at: now,
     };
 
-    setCurrentTransaction(transaction);
+    const details: (SaleDetail & { product?: Product })[] = items.map((item, idx) => ({
+      id: Date.now() + idx,
+      sale_id: sale.id,
+      product_id: item.product.id,
+      quantity: item.quantity,
+      price_at_sale: item.price_per_unit,
+      cost_at_sale: item.product.cost_price,
+      total_price: item.price_per_unit * item.quantity,
+      product: item.product,
+      created_at: now,
+      updated_at: now,
+    }));
+
+    setCurrentSale(sale);
+    setCurrentSaleDetails(details);
     setPaymentMethod(null);
     setShowReceipt(true);
     clearCart();
@@ -100,16 +115,15 @@ export default function POS() {
               Point of Sale
             </h1>
             <p className="text-xs text-[hsl(var(--pos-muted-foreground))]">
-              {new Date().toLocaleDateString('id-ID', { 
-                weekday: 'long', 
-                year: 'numeric', 
-                month: 'long', 
-                day: 'numeric' 
+              {new Date().toLocaleDateString('id-ID', {
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
               })}
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {/* Scanner status indicator */}
             <button
               onClick={() => setScannerActive(!scannerActive)}
               className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
@@ -157,7 +171,7 @@ export default function POS() {
         {/* Categories */}
         <div className="px-6 py-3">
           <CategoryTabs
-            categories={legacyCategories}
+            categories={categories}
             activeCategory={activeCategory}
             onCategoryChange={setActiveCategory}
           />
@@ -204,7 +218,9 @@ export default function POS() {
       <ReceiptModal
         isOpen={showReceipt}
         onClose={() => setShowReceipt(false)}
-        transaction={currentTransaction}
+        sale={currentSale}
+        saleDetails={currentSaleDetails}
+        cashierName={user?.name || 'Kasir'}
       />
     </div>
   );

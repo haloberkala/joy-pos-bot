@@ -1,10 +1,10 @@
 import { useState, useCallback, useMemo } from 'react';
-import { CartItem, LegacyProduct } from '@/types/pos';
+import { CartItem, Product } from '@/types/pos';
 
 export function useCart() {
   const [items, setItems] = useState<CartItem[]>([]);
 
-  const addItem = useCallback((product: LegacyProduct) => {
+  const addItem = useCallback((product: Product) => {
     setItems((prev) => {
       const existing = prev.find((item) => item.product.id === product.id);
       if (existing) {
@@ -14,35 +14,20 @@ export function useCart() {
             : item
         );
       }
-      // Convert LegacyProduct to Product-like structure for CartItem
       const cartItem: CartItem = {
-        product: {
-          id: product.id,
-          sku: product.id,
-          barcode: product.id,
-          name: product.name,
-          categoryId: product.category,
-          baseUnitId: 'unit-pcs',
-          buyPrice: product.price * 0.8, // Estimate
-          sellPrice: product.price,
-          minStock: 10,
-          isActive: true,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
+        product,
         quantity: 1,
-        unitId: 'unit-pcs',
-        pricePerUnit: product.price,
+        price_per_unit: product.selling_price,
       };
       return [...prev, cartItem];
     });
   }, []);
 
-  const removeItem = useCallback((productId: string) => {
+  const removeItem = useCallback((productId: number) => {
     setItems((prev) => prev.filter((item) => item.product.id !== productId));
   }, []);
 
-  const updateQuantity = useCallback((productId: string, quantity: number) => {
+  const updateQuantity = useCallback((productId: number, quantity: number) => {
     if (quantity <= 0) {
       setItems((prev) => prev.filter((item) => item.product.id !== productId));
     } else {
@@ -60,7 +45,7 @@ export function useCart() {
 
   const total = useMemo(() => {
     return items.reduce(
-      (sum, item) => sum + item.pricePerUnit * item.quantity,
+      (sum, item) => sum + item.price_per_unit * item.quantity,
       0
     );
   }, [items]);
