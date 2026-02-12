@@ -10,9 +10,10 @@ interface ReceiptModalProps {
   sale: Sale | null;
   saleDetails: (SaleDetail & { product?: Product })[];
   cashierName: string;
+  customerName?: string;
 }
 
-export function ReceiptModal({ isOpen, onClose, sale, saleDetails, cashierName }: ReceiptModalProps) {
+export function ReceiptModal({ isOpen, onClose, sale, saleDetails, cashierName, customerName }: ReceiptModalProps) {
   if (!sale) return null;
 
   const paymentLabel = {
@@ -32,7 +33,7 @@ export function ReceiptModal({ isOpen, onClose, sale, saleDetails, cashierName }
         <div className="space-y-4 font-mono text-sm">
           {/* Store Info */}
           <div className="text-center border-b border-dashed pb-3">
-            <h3 className="font-bold text-lg">MINIMARKET BERKAH</h3>
+            <h3 className="font-bold text-lg">TOKO BERKAH</h3>
             <p className="text-xs text-gray-600">Jl. Merdeka No. 123</p>
             <p className="text-xs text-gray-600">Telp: 021-12345678</p>
           </div>
@@ -51,6 +52,12 @@ export function ReceiptModal({ isOpen, onClose, sale, saleDetails, cashierName }
               <span>Kasir</span>
               <span>{cashierName}</span>
             </div>
+            {customerName && (
+              <div className="flex justify-between">
+                <span>Pelanggan</span>
+                <span>{customerName}</span>
+              </div>
+            )}
           </div>
 
           {/* Items */}

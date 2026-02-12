@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { PaymentMethod, CartItem } from '@/types/pos';
+import { PaymentMethod, CartItem, Customer } from '@/types/pos';
 import { formatCurrency } from '@/lib/format';
-import { Check, Wallet, CreditCard, QrCode } from 'lucide-react';
+import { Check, Wallet, CreditCard, QrCode, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface PaymentModalProps {
@@ -14,6 +14,7 @@ interface PaymentModalProps {
   total: number;
   paymentMethod: PaymentMethod;
   onConfirm: (amountPaid: number) => void;
+  customer?: Customer | null;
 }
 
 const quickAmounts = [50000, 100000, 150000, 200000];
@@ -25,6 +26,7 @@ export function PaymentModal({
   total,
   paymentMethod,
   onConfirm,
+  customer,
 }: PaymentModalProps) {
   const [amountPaid, setAmountPaid] = useState<string>(total.toString());
   const change = Math.max(0, Number(amountPaid) - total);
@@ -62,6 +64,15 @@ export function PaymentModal({
         </DialogHeader>
 
         <div className="space-y-4">
+          {/* Customer info */}
+          {customer && (
+            <div className="flex items-center gap-2 bg-muted/50 rounded-xl px-3 py-2">
+              <User className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-medium">{customer.name}</span>
+              <span className="text-xs text-muted-foreground">• {customer.phone}</span>
+            </div>
+          )}
+
           {/* Order Summary */}
           <div className="bg-muted/50 rounded-xl p-3 space-y-2 max-h-32 overflow-y-auto">
             {items.map((item) => (

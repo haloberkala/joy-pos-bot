@@ -1,5 +1,6 @@
 import { NavLink } from '@/components/NavLink';
 import { useAuth, canAccessMenu } from '@/contexts/AuthContext';
+import { stores } from '@/data/sampleData';
 import { 
   LayoutDashboard, 
   Package, 
@@ -13,9 +14,12 @@ import {
   User,
   Wallet,
   FileBarChart,
+  ShoppingCart,
+  Building2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface NavItem {
   to: string;
@@ -29,6 +33,7 @@ const navItems: NavItem[] = [
   { to: '/backoffice', icon: LayoutDashboard, label: 'Dashboard', end: true, menuKey: 'dashboard' },
   { to: '/backoffice/products', icon: Package, label: 'Produk', menuKey: 'products' },
   { to: '/backoffice/stock', icon: Package, label: 'Stok', menuKey: 'stock' },
+  { to: '/backoffice/purchases', icon: ShoppingCart, label: 'Pembelian', menuKey: 'purchases' },
   { to: '/backoffice/transactions', icon: Receipt, label: 'Transaksi', menuKey: 'transactions' },
   { to: '/backoffice/expenses', icon: Wallet, label: 'Pengeluaran', menuKey: 'expenses' },
   { to: '/backoffice/reports', icon: FileBarChart, label: 'Laporan', menuKey: 'reports' },
@@ -36,7 +41,7 @@ const navItems: NavItem[] = [
 ];
 
 export function Sidebar() {
-  const { user, logout } = useAuth();
+  const { user, logout, activeStoreId, setActiveStoreId, accessibleStoreIds, canSwitchStore } = useAuth();
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -48,13 +53,16 @@ export function Sidebar() {
   const getRoleLabel = (role: string) => {
     switch (role) {
       case 'owner': return 'Owner';
-      case 'admin': return 'Admin';
+      case 'admin': return 'Kepala Toko';
       case 'cashier': return 'Kasir';
       default: return 'User';
     }
   };
 
   const RoleIcon = user?.role === 'owner' ? ShieldCheck : user?.role === 'admin' ? UserCog : User;
+
+  const activeStore = stores.find(s => s.id === activeStoreId);
+  const accessibleStores = stores.filter(s => accessibleStoreIds.includes(s.id));
 
   return (
     <aside className="w-64 bg-card border-r border-border flex flex-col">
@@ -69,6 +77,30 @@ export function Sidebar() {
             <p className="text-xs text-muted-foreground">Back Office</p>
           </div>
         </div>
+      </div>
+
+      {/* Store Selector */}
+      <div className="p-4 border-b border-border">
+        {canSwitchStore ? (
+          <Select value={String(activeStoreId)} onValueChange={(v) => setActiveStoreId(Number(v))}>
+            <SelectTrigger className="w-full">
+              <Building2 className="w-4 h-4 mr-2" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {stores.map((store) => (
+                <SelectItem key={store.id} value={String(store.id)}>
+                  {store.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <div className="flex items-center gap-2 px-3 py-2 bg-muted rounded-lg">
+            <Building2 className="w-4 h-4 text-muted-foreground" />
+            <span className="text-sm font-medium truncate">{activeStore?.name || 'Toko'}</span>
+          </div>
+        )}
       </div>
 
       {/* User Info */}
