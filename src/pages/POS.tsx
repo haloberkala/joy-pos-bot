@@ -6,31 +6,46 @@ import { CategoryTabs } from '@/components/pos/CategoryTabs';
 import { CartPanel } from '@/components/pos/CartPanel';
 import { PaymentModal } from '@/components/pos/PaymentModal';
 import { ReceiptModal } from '@/components/pos/ReceiptModal';
-import { products, categories } from '@/data/sampleData';
-import { PaymentMethod, Sale, SaleDetail, Product } from '@/types/pos';
-import { Settings, LogOut, User, ShieldCheck, UserCog, ScanBarcode } from 'lucide-react';
+import { CustomerModal } from '@/components/pos/CustomerModal';
+import { getProductsForStore, getCategoriesForStore, stores, customers } from '@/data/sampleData';
+import { PaymentMethod, Sale, SaleDetail, Product, Customer, Category } from '@/types/pos';
+import { Settings, LogOut, User, ShieldCheck, UserCog, ScanBarcode, Building2, UserSearch } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { canAccessMenu } from '@/contexts/AuthContext';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 
 export default function POS() {
-  const [activeCategory, setActiveCategory] = useState(0); // category id=0 is "all"
+  const [activeCategory, setActiveCategory] = useState<number | null>(null); // null = all
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
   const [currentSale, setCurrentSale] = useState<Sale | null>(null);
   const [currentSaleDetails, setCurrentSaleDetails] = useState<(SaleDetail & { product?: Product })[]>([]);
   const [showReceipt, setShowReceipt] = useState(false);
   const [scannerActive, setScannerActive] = useState(true);
+  const [showCustomerModal, setShowCustomerModal] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [pendingPaymentMethod, setPendingPaymentMethod] = useState<PaymentMethod | null>(null);
 
-  const { user, logout } = useAuth();
+  const { user, logout, activeStoreId } = useAuth();
   const navigate = useNavigate();
 
   const { items, addItem, removeItem, updateQuantity, clearCart, total } = useCart();
 
+  // Get products and categories for the active store only
+  const storeProducts = useMemo(() => getProductsForStore(activeStoreId), [activeStoreId]);
+  const storeCategories = useMemo(() => {
+    const cats = getCategoriesForStore(activeStoreId);
+    // Add "Semua" at the beginning
+    const allCategory: Category = { id: 0, store_id: activeStoreId, name: 'Semua', slug: 'all', icon: '🏷️', created_at: new Date(), updated_at: new Date() };
+    return [allCategory, ...cats];
+  }, [activeStoreId]);
+
+  const activeStore = stores.find(s => s.id === activeStoreId);
+
   // Barcode scanner integration
   useBarcodeScanner({
     onScan: (barcode) => {
-      const product = products.find(p => p.code === barcode);
+      const product = storeProducts.find(p => p.code === barcode);
       if (product) {
         if (product.quantity > 0) {
           addItem(product);
@@ -47,16 +62,28 @@ export default function POS() {
         });
       }
     },
-    enabled: scannerActive && !paymentMethod && !showReceipt,
+    enabled: scannerActive && !paymentMethod && !showReceipt && !showCustomerModal,
   });
 
   const filteredProducts = useMemo(() => {
-    if (activeCategory === 0) return products.filter(p => p.is_active);
-    return products.filter((p) => p.category_id === activeCategory && p.is_active);
-  }, [activeCategory]);
+    if (activeCategory === null || activeCategory === 0) return storeProducts;
+    return storeProducts.filter((p) => p.category_id === activeCategory);
+  }, [activeCategory, storeProducts]);
 
+  // Checkout flow: first show customer modal, then payment modal
   const handleCheckout = (method: PaymentMethod) => {
-    setPaymentMethod(method);
+    setPendingPaymentMethod(method);
+    setShowCustomerModal(true);
+  };
+
+  const handleCustomerSelected = (customer: Customer | null) => {
+    setSelectedCustomer(customer);
+    setShowCustomerModal(false);
+    // Now open payment modal
+    if (pendingPaymentMethod) {
+      setPaymentMethod(pendingPaymentMethod);
+      setPendingPaymentMethod(null);
+    }
   };
 
   const handleConfirmPayment = (amountPaid: number) => {
@@ -67,9 +94,9 @@ export default function POS() {
 
     const sale: Sale = {
       id: Date.now(),
-      store_id: 1,
+      store_id: activeStoreId,
       user_id: 1,
-      customer_id: null,
+      customer_id: selectedCustomer?.id || null,
       invoice_number: `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(Date.now()).slice(-3)}`,
       date: now,
       sub_total: subtotal,
@@ -101,6 +128,7 @@ export default function POS() {
     setPaymentMethod(null);
     setShowReceipt(true);
     clearCart();
+    setSelectedCustomer(null);
     toast.success('Pembayaran berhasil!');
   };
 
@@ -114,14 +142,19 @@ export default function POS() {
             <h1 className="text-lg font-bold text-[hsl(var(--pos-foreground))]">
               Point of Sale
             </h1>
-            <p className="text-xs text-[hsl(var(--pos-muted-foreground))]">
-              {new Date().toLocaleDateString('id-ID', {
-                weekday: 'long',
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric'
-              })}
-            </p>
+            <div className="flex items-center gap-2 text-xs text-[hsl(var(--pos-muted-foreground))]">
+              <Building2 className="w-3 h-3" />
+              <span className="font-medium">{activeStore?.name || 'Toko'}</span>
+              <span>•</span>
+              <span>
+                {new Date().toLocaleDateString('id-ID', {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                })}
+              </span>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -171,23 +204,30 @@ export default function POS() {
         {/* Categories */}
         <div className="px-6 py-3">
           <CategoryTabs
-            categories={categories}
-            activeCategory={activeCategory}
-            onCategoryChange={setActiveCategory}
+            categories={storeCategories}
+            activeCategory={activeCategory ?? 0}
+            onCategoryChange={(id) => setActiveCategory(id === 0 ? null : id)}
           />
         </div>
 
         {/* Product Grid */}
         <div className="flex-1 overflow-y-auto px-6 pb-6">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-            {filteredProducts.map((product) => (
-              <ProductCard
-                key={product.id}
-                product={product}
-                onAdd={addItem}
-              />
-            ))}
-          </div>
+          {filteredProducts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-[hsl(var(--pos-muted-foreground))]">
+              <p className="text-lg font-medium">Tidak ada produk</p>
+              <p className="text-sm">Toko ini belum memiliki produk pada kategori ini</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+              {filteredProducts.map((product) => (
+                <ProductCard
+                  key={product.id}
+                  product={product}
+                  onAdd={addItem}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -199,8 +239,21 @@ export default function POS() {
           onUpdateQuantity={updateQuantity}
           onRemoveItem={removeItem}
           onCheckout={handleCheckout}
+          selectedCustomer={selectedCustomer}
         />
       </div>
+
+      {/* Customer Modal - shown before payment */}
+      <CustomerModal
+        isOpen={showCustomerModal}
+        onClose={() => {
+          setShowCustomerModal(false);
+          setPendingPaymentMethod(null);
+        }}
+        storeId={activeStoreId}
+        onSelectCustomer={handleCustomerSelected}
+        selectedCustomer={selectedCustomer}
+      />
 
       {/* Payment Modal */}
       {paymentMethod && (
@@ -211,6 +264,7 @@ export default function POS() {
           total={total}
           paymentMethod={paymentMethod}
           onConfirm={handleConfirmPayment}
+          customer={selectedCustomer}
         />
       )}
 
@@ -221,6 +275,7 @@ export default function POS() {
         sale={currentSale}
         saleDetails={currentSaleDetails}
         cashierName={user?.name || 'Kasir'}
+        customerName={currentSale?.customer_id ? customers.find(c => c.id === currentSale.customer_id)?.name : undefined}
       />
     </div>
   );
