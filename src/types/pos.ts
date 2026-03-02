@@ -35,7 +35,7 @@ export interface Category {
   store_id: number;
   name: string;
   slug: string;
-  icon?: string; // UI-only helper
+  icon?: string;
   created_at: Date;
   updated_at: Date;
 }
@@ -65,13 +65,16 @@ export interface Product {
   brand_id: number | null;
   unit_id: number | null;
   name: string;
-  code: string; // Barcode/SKU
+  code: string;
   expiry_date?: string | null;
   image?: string;
   quantity: number;
   min_stock_alert: number;
   cost_price: number;
-  selling_price: number;
+  selling_price: number; // backward compat alias for retail
+  selling_price_retail: number;
+  selling_price_wholesale: number;
+  wholesale_min_qty: number; // qty threshold for wholesale price
   is_active: boolean;
   created_at: Date;
   updated_at: Date;
@@ -133,6 +136,8 @@ export interface Customer {
 }
 
 export type PaymentMethod = 'cash' | 'qris' | 'transfer' | 'debit';
+export type PaymentStatus = 'paid' | 'debt';
+export type PriceMode = 'retail' | 'wholesale';
 
 export interface Sale {
   id: number;
@@ -146,8 +151,10 @@ export interface Sale {
   tax: number;
   grand_total: number;
   payment_method: PaymentMethod;
+  payment_status: PaymentStatus;
   amount_received: number;
   change_amount: number;
+  due_date?: Date | null;
   note?: string;
   created_at: Date;
   updated_at: Date;
@@ -161,6 +168,7 @@ export interface SaleDetail {
   price_at_sale: number;
   cost_at_sale: number;
   total_price: number;
+  price_mode: PriceMode;
   created_at: Date;
   updated_at: Date;
 }
@@ -237,6 +245,19 @@ export interface StockOpnameDetail {
 }
 
 // ==========================================
+// 8. PEMBAYARAN UTANG
+// ==========================================
+
+export interface DebtPayment {
+  id: number;
+  sale_id: number;
+  amount: number;
+  date: Date;
+  note?: string;
+  created_at: Date;
+}
+
+// ==========================================
 // CART (UI-only, not in DB)
 // ==========================================
 
@@ -244,5 +265,6 @@ export interface CartItem {
   product: Product;
   quantity: number;
   price_per_unit: number;
+  price_mode: PriceMode;
   discount?: number;
 }
