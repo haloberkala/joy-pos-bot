@@ -106,7 +106,7 @@ export default function POS() {
     const sale: Sale = {
       id: Date.now(),
       store_id: activeStoreId,
-      user_id: (user?.id as number) || 1,
+      user_id: 1,
       customer_id: selectedCustomer?.id || null,
       invoice_number: `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(Date.now()).slice(-3)}`,
       date: now,
