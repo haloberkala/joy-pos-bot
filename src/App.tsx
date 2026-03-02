@@ -13,6 +13,7 @@ import Products from "./pages/backoffice/Products";
 import Stock from "./pages/backoffice/Stock";
 import Purchases from "./pages/backoffice/Purchases";
 import Transactions from "./pages/backoffice/Transactions";
+import Debts from "./pages/backoffice/Debts";
 import Expenses from "./pages/backoffice/Expenses";
 import Reports from "./pages/backoffice/Reports";
 import Settings from "./pages/backoffice/Settings";
@@ -29,37 +30,17 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute allowedRoles={['owner', 'admin', 'cashier']}>
-                  <POS />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/backoffice"
-              element={
-                <ProtectedRoute allowedRoles={['owner', 'admin']}>
-                  <BackofficeLayout />
-                </ProtectedRoute>
-              }
-            >
+            <Route path="/" element={<ProtectedRoute allowedRoles={['owner', 'admin', 'cashier']}><POS /></ProtectedRoute>} />
+            <Route path="/backoffice" element={<ProtectedRoute allowedRoles={['owner', 'admin']}><BackofficeLayout /></ProtectedRoute>}>
               <Route index element={<Dashboard />} />
               <Route path="products" element={<Products />} />
               <Route path="stock" element={<Stock />} />
               <Route path="purchases" element={<Purchases />} />
               <Route path="transactions" element={<Transactions />} />
+              <Route path="debts" element={<Debts />} />
               <Route path="expenses" element={<Expenses />} />
               <Route path="reports" element={<Reports />} />
-              <Route
-                path="settings"
-                element={
-                  <ProtectedRoute allowedRoles={['owner']}>
-                    <Settings />
-                  </ProtectedRoute>
-                }
-              />
+              <Route path="settings" element={<ProtectedRoute allowedRoles={['owner']}><Settings /></ProtectedRoute>} />
             </Route>
             <Route path="*" element={<NotFound />} />
           </Routes>
