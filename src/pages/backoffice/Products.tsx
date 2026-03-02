@@ -1,51 +1,163 @@
-import { useState } from 'react';
-import { products, categories, brands, stores } from '@/data/sampleData';
+import { useState, useRef, useMemo } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import {
+  products, categories, brands, units,
+  getProductsForStore, getCategoriesForStore, getBrandsForStore, getUnitsForStore,
+  addProduct, getOrCreateCategory, getOrCreateBrand, getOrCreateUnit,
+} from '@/data/sampleData';
 import { formatCurrency } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Search, Edit, Trash2, Barcode, Building2 } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Barcode, Download, Upload, FileSpreadsheet, AlertCircle, CheckCircle } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
 import { Product } from '@/types/pos';
+import { toast } from 'sonner';
+import * as XLSX from 'xlsx';
 
 export default function Products() {
+  const { activeStoreId } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [selectedStore, setSelectedStore] = useState<string>('1');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [importResults, setImportResults] = useState<{ success: number; errors: string[] } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const filteredProducts = products.filter((product) => {
-    const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         product.code.includes(searchQuery);
+  const storeProducts = useMemo(() => getProductsForStore(activeStoreId), [activeStoreId]);
+  const storeCategories = useMemo(() => getCategoriesForStore(activeStoreId), [activeStoreId]);
+  const storeBrands = useMemo(() => getBrandsForStore(activeStoreId), [activeStoreId]);
+
+  const filteredProducts = storeProducts.filter((product) => {
+    const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) || product.code.includes(searchQuery);
     const matchesCategory = selectedCategory === 'all' || product.category_id === Number(selectedCategory);
     return matchesSearch && matchesCategory;
   });
 
   const getCategoryLabel = (categoryId: number | null) => {
     if (!categoryId) return '-';
-    const category = categories.find(c => c.id === categoryId);
-    return category ? `${category.icon || ''} ${category.name}` : '-';
+    const c = categories.find(c => c.id === categoryId);
+    return c ? `${c.icon || ''} ${c.name}` : '-';
   };
 
   const getBrandName = (brandId: number | null) => {
     if (!brandId) return '-';
-    const brand = brands.find(b => b.id === brandId);
-    return brand?.name || '-';
+    return brands.find(b => b.id === brandId)?.name || '-';
   };
 
-  const getStockStatus = (quantity: number, minStock: number) => {
-    if (quantity <= 0) return { label: 'Habis', variant: 'destructive' as const };
-    if (quantity < minStock) return { label: 'Menipis', variant: 'secondary' as const };
+  const getStockStatus = (qty: number, min: number) => {
+    if (qty <= 0) return { label: 'Habis', variant: 'destructive' as const };
+    if (qty < min) return { label: 'Menipis', variant: 'secondary' as const };
     return { label: 'Tersedia', variant: 'default' as const };
   };
 
-  const calculateMargin = (costPrice: number, sellingPrice: number) => {
-    if (costPrice === 0) return '0.0';
-    return ((sellingPrice - costPrice) / costPrice * 100).toFixed(1);
+  // ======== EXCEL TEMPLATE DOWNLOAD ========
+  const handleDownloadTemplate = () => {
+    const templateData = [
+      {
+        'Nama Produk*': '', 'Kode/Barcode*': '', 'Kategori': '', 'Brand': '',
+        'Satuan': '', 'Singkatan Satuan': '',
+        'Harga Modal*': '', 'Harga Jual Eceran*': '', 'Harga Jual Grosir': '', 'Min Qty Grosir': '',
+        'Stok Awal': '', 'Min Stok Alert': '', 'Tanggal Kadaluarsa': '',
+      },
+    ];
+    const ws = XLSX.utils.json_to_sheet(templateData);
+    ws['!cols'] = [
+      { wch: 30 }, { wch: 18 }, { wch: 18 }, { wch: 15 },
+      { wch: 12 }, { wch: 12 },
+      { wch: 15 }, { wch: 18 }, { wch: 18 }, { wch: 15 },
+      { wch: 12 }, { wch: 14 }, { wch: 18 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Produk');
+    XLSX.writeFile(wb, `template-produk-${activeStoreId}.xlsx`);
+    toast.success('Template Excel berhasil di-download');
+  };
+
+  // ======== EXCEL IMPORT ========
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet);
+
+        let success = 0;
+        const errors: string[] = [];
+        const existingCodes = new Set(products.map(p => p.code));
+
+        rows.forEach((row, idx) => {
+          const rowNum = idx + 2;
+          const name = String(row['Nama Produk*'] || '').trim();
+          const code = String(row['Kode/Barcode*'] || '').trim();
+          const costPrice = parseFloat(row['Harga Modal*']) || 0;
+          const retailPrice = parseFloat(row['Harga Jual Eceran*']) || 0;
+          const wholesalePrice = parseFloat(row['Harga Jual Grosir']) || retailPrice;
+          const wholesaleMinQty = parseInt(row['Min Qty Grosir']) || 10;
+
+          // Validate required
+          if (!name) { errors.push(`Baris ${rowNum}: Nama produk kosong`); return; }
+          if (!code) { errors.push(`Baris ${rowNum}: Kode/Barcode kosong`); return; }
+          if (costPrice <= 0) { errors.push(`Baris ${rowNum}: Harga modal tidak valid`); return; }
+          if (retailPrice <= 0) { errors.push(`Baris ${rowNum}: Harga jual eceran tidak valid`); return; }
+          if (existingCodes.has(code)) { errors.push(`Baris ${rowNum}: Kode "${code}" sudah ada (duplikat)`); return; }
+
+          // Auto-create category/brand/unit
+          const categoryName = String(row['Kategori'] || '').trim();
+          const brandName = String(row['Brand'] || '').trim();
+          const unitName = String(row['Satuan'] || '').trim();
+          const unitShort = String(row['Singkatan Satuan'] || '').trim();
+
+          const categoryId = categoryName ? getOrCreateCategory(categoryName, activeStoreId) : null;
+          const brandId = brandName ? getOrCreateBrand(brandName, activeStoreId) : null;
+          const unitId = unitName ? getOrCreateUnit(unitName, unitShort || unitName.substring(0, 3), activeStoreId) : null;
+
+          const newProduct: Product = {
+            id: Date.now() + idx,
+            store_id: activeStoreId,
+            category_id: categoryId,
+            brand_id: brandId,
+            unit_id: unitId,
+            name,
+            code,
+            expiry_date: row['Tanggal Kadaluarsa'] ? String(row['Tanggal Kadaluarsa']) : null,
+            quantity: parseInt(row['Stok Awal']) || 0,
+            min_stock_alert: parseInt(row['Min Stok Alert']) || 10,
+            cost_price: costPrice,
+            selling_price: retailPrice,
+            selling_price_retail: retailPrice,
+            selling_price_wholesale: wholesalePrice,
+            wholesale_min_qty: wholesaleMinQty,
+            is_active: true,
+            created_at: new Date(),
+            updated_at: new Date(),
+            created_by: null,
+            updated_by: null,
+          };
+
+          addProduct(newProduct);
+          existingCodes.add(code);
+          success++;
+        });
+
+        setImportResults({ success, errors });
+        if (success > 0) toast.success(`${success} produk berhasil diimport`);
+        if (errors.length > 0) toast.error(`${errors.length} baris gagal`);
+      } catch (err) {
+        toast.error('File tidak valid. Pastikan format Excel sesuai template.');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   return (
@@ -53,117 +165,63 @@ export default function Products() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Produk</h1>
-          <p className="text-muted-foreground">Kelola produk, stok, dan harga</p>
+          <p className="text-muted-foreground">Kelola produk, stok, dan harga (eceran & grosir)</p>
         </div>
-        <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="w-4 h-4" />
-              Tambah Produk
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Tambah Produk Baru</DialogTitle>
-            </DialogHeader>
-            <div className="grid grid-cols-2 gap-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="name">Nama Produk</Label>
-                <Input id="name" placeholder="Nama produk" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="code">Barcode/SKU</Label>
-                <div className="relative">
-                  <Input id="code" placeholder="Scan atau input barcode" />
-                  <Barcode className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <div className="flex gap-2">
+          <Button variant="outline" className="gap-2" onClick={() => setShowImportDialog(true)}>
+            <Upload className="w-4 h-4" /> Import Excel
+          </Button>
+          <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
+            <DialogTrigger asChild>
+              <Button className="gap-2"><Plus className="w-4 h-4" />Tambah Produk</Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader><DialogTitle>Tambah Produk Baru</DialogTitle></DialogHeader>
+              <div className="grid grid-cols-2 gap-4 py-4">
+                <div className="space-y-2"><Label>Nama Produk</Label><Input placeholder="Nama produk" /></div>
+                <div className="space-y-2"><Label>Barcode/SKU</Label><div className="relative"><Input placeholder="Scan barcode" /><Barcode className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" /></div></div>
+                <div className="space-y-2"><Label>Kategori</Label>
+                  <Select><SelectTrigger><SelectValue placeholder="Pilih kategori" /></SelectTrigger>
+                    <SelectContent>{storeCategories.map(c => <SelectItem key={c.id} value={String(c.id)}>{c.icon} {c.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2"><Label>Brand</Label>
+                  <Select><SelectTrigger><SelectValue placeholder="Pilih brand" /></SelectTrigger>
+                    <SelectContent>{storeBrands.map(b => <SelectItem key={b.id} value={String(b.id)}>{b.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2"><Label>Harga Modal</Label><Input type="number" placeholder="0" /></div>
+                <div className="space-y-2"><Label>Harga Jual Eceran</Label><Input type="number" placeholder="0" /></div>
+                <div className="space-y-2"><Label>Harga Jual Grosir</Label><Input type="number" placeholder="0" /></div>
+                <div className="space-y-2"><Label>Min Qty Grosir</Label><Input type="number" placeholder="10" /></div>
+                <div className="space-y-2"><Label>Stok Minimum Alert</Label><Input type="number" placeholder="10" /></div>
+                <div className="col-span-2 flex justify-end gap-2 pt-4">
+                  <Button variant="outline" onClick={() => setIsAddModalOpen(false)}>Batal</Button>
+                  <Button onClick={() => setIsAddModalOpen(false)}>Simpan Produk</Button>
                 </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="category">Kategori</Label>
-                <Select>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pilih kategori" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.filter(c => c.id !== 0).map((category) => (
-                      <SelectItem key={category.id} value={String(category.id)}>
-                        {category.icon} {category.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="brand">Brand</Label>
-                <Select>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pilih brand" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {brands.map((brand) => (
-                      <SelectItem key={brand.id} value={String(brand.id)}>
-                        {brand.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="costPrice">Harga Modal</Label>
-                <Input id="costPrice" type="number" placeholder="0" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="sellingPrice">Harga Jual</Label>
-                <Input id="sellingPrice" type="number" placeholder="0" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="minStock">Stok Minimum Alert</Label>
-                <Input id="minStock" type="number" placeholder="10" />
-              </div>
-              <div className="col-span-2 flex justify-end gap-2 pt-4">
-                <Button variant="outline" onClick={() => setIsAddModalOpen(false)}>Batal</Button>
-                <Button onClick={() => setIsAddModalOpen(false)}>Simpan Produk</Button>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
+      {/* Search & Filter */}
       <div className="flex flex-col lg:flex-row gap-4">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input placeholder="Cari nama atau barcode..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <Select value={selectedStore} onValueChange={setSelectedStore}>
-            <SelectTrigger className="w-[200px]">
-              <Building2 className="w-4 h-4 mr-2" />
-              <SelectValue placeholder="Pilih Toko" />
-            </SelectTrigger>
-            <SelectContent>
-              {stores.map((store) => (
-                <SelectItem key={store.id} value={String(store.id)}>
-                  {store.name.split(' - ')[1] || store.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <div className="flex gap-2 overflow-x-auto">
-            {categories.map((category) => (
-              <Button
-                key={category.id}
-                variant={selectedCategory === String(category.id) || (selectedCategory === 'all' && category.id === 0) ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSelectedCategory(category.id === 0 ? 'all' : String(category.id))}
-                className="whitespace-nowrap"
-              >
-                {category.icon} {category.name}
-              </Button>
-            ))}
-          </div>
+        <div className="flex gap-2 overflow-x-auto">
+          <Button variant={selectedCategory === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setSelectedCategory('all')}>Semua</Button>
+          {storeCategories.map(c => (
+            <Button key={c.id} variant={selectedCategory === String(c.id) ? 'default' : 'outline'} size="sm" onClick={() => setSelectedCategory(String(c.id))} className="whitespace-nowrap">
+              {c.icon} {c.name}
+            </Button>
+          ))}
         </div>
       </div>
 
+      {/* Products Table */}
       <div className="bg-card rounded-xl border border-border overflow-hidden">
         <Table>
           <TableHeader>
@@ -171,9 +229,10 @@ export default function Products() {
               <TableHead>Produk</TableHead>
               <TableHead>Kode</TableHead>
               <TableHead>Kategori</TableHead>
-              <TableHead className="text-right">Harga Modal</TableHead>
-              <TableHead className="text-right">Harga Jual</TableHead>
-              <TableHead className="text-right">Margin</TableHead>
+              <TableHead className="text-right">Modal</TableHead>
+              <TableHead className="text-right">Eceran</TableHead>
+              <TableHead className="text-right">Grosir</TableHead>
+              <TableHead className="text-center">Min Grosir</TableHead>
               <TableHead className="text-right">Stok</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Aksi</TableHead>
@@ -195,29 +254,18 @@ export default function Products() {
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell>
-                    <div className="font-mono text-sm text-muted-foreground">{product.code}</div>
-                  </TableCell>
-                  <TableCell>
-                    <span className="text-sm text-muted-foreground">{getCategoryLabel(product.category_id)}</span>
-                  </TableCell>
+                  <TableCell><span className="font-mono text-sm text-muted-foreground">{product.code}</span></TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{getCategoryLabel(product.category_id)}</TableCell>
                   <TableCell className="text-right text-muted-foreground">{formatCurrency(product.cost_price)}</TableCell>
-                  <TableCell className="text-right font-medium">{formatCurrency(product.selling_price)}</TableCell>
-                  <TableCell className="text-right">
-                    <span className="text-green-600 font-medium">{calculateMargin(product.cost_price, product.selling_price)}%</span>
-                  </TableCell>
+                  <TableCell className="text-right font-medium">{formatCurrency(product.selling_price_retail)}</TableCell>
+                  <TableCell className="text-right font-medium text-blue-600">{formatCurrency(product.selling_price_wholesale)}</TableCell>
+                  <TableCell className="text-center">≥{product.wholesale_min_qty}</TableCell>
                   <TableCell className="text-right font-medium">{product.quantity}</TableCell>
-                  <TableCell>
-                    <Badge variant={stockStatus.variant}>{stockStatus.label}</Badge>
-                  </TableCell>
+                  <TableCell><Badge variant={stockStatus.variant}>{stockStatus.label}</Badge></TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingProduct(product)}>
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingProduct(product)}><Edit className="w-4 h-4" /></Button>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive"><Trash2 className="w-4 h-4" /></Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -225,12 +273,58 @@ export default function Products() {
             })}
           </TableBody>
         </Table>
-        {filteredProducts.length === 0 && (
-          <div className="text-center py-12 text-muted-foreground">
-            <p>Tidak ada produk ditemukan</p>
-          </div>
-        )}
+        {filteredProducts.length === 0 && <div className="text-center py-12 text-muted-foreground"><p>Tidak ada produk ditemukan</p></div>}
       </div>
+
+      {/* Import Dialog */}
+      <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><FileSpreadsheet className="w-5 h-5" /> Import Produk dari Excel</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="bg-muted/50 rounded-xl p-4 space-y-3">
+              <h4 className="font-semibold text-sm">Langkah-langkah:</h4>
+              <ol className="text-sm text-muted-foreground space-y-1.5 list-decimal list-inside">
+                <li>Download template Excel di bawah</li>
+                <li>Isi data produk sesuai kolom</li>
+                <li>Upload file yang sudah diisi</li>
+                <li>Kategori, brand, dan satuan otomatis dibuat jika belum ada</li>
+              </ol>
+            </div>
+
+            <Button variant="outline" className="w-full gap-2" onClick={handleDownloadTemplate}>
+              <Download className="w-4 h-4" /> Download Template Excel
+            </Button>
+
+            <div className="border-2 border-dashed border-border rounded-xl p-6 text-center">
+              <input ref={fileInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={handleFileUpload} />
+              <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground mb-2">Klik untuk upload file Excel</p>
+              <Button onClick={() => fileInputRef.current?.click()} className="gap-2">
+                <Upload className="w-4 h-4" /> Pilih File
+              </Button>
+            </div>
+
+            {importResults && (
+              <div className="space-y-2">
+                {importResults.success > 0 && (
+                  <div className="flex items-center gap-2 text-green-700 bg-green-50 rounded-lg px-3 py-2">
+                    <CheckCircle className="w-4 h-4" />
+                    <span className="text-sm font-medium">{importResults.success} produk berhasil diimport</span>
+                  </div>
+                )}
+                {importResults.errors.length > 0 && (
+                  <div className="bg-red-50 rounded-lg px-3 py-2 space-y-1">
+                    <div className="flex items-center gap-2 text-red-700"><AlertCircle className="w-4 h-4" /><span className="text-sm font-medium">{importResults.errors.length} baris gagal</span></div>
+                    <div className="max-h-32 overflow-y-auto space-y-0.5">
+                      {importResults.errors.map((err, i) => <p key={i} className="text-xs text-red-600">{err}</p>)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
