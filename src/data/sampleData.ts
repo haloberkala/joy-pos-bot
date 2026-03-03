@@ -68,6 +68,8 @@ export let units: Unit[] = [
   { id: 6, store_id: 2, name: 'Box', short_name: 'box', created_at: new Date(), updated_at: new Date() },
   { id: 7, store_id: 2, name: 'Karton', short_name: 'krt', created_at: new Date(), updated_at: new Date() },
   { id: 8, store_id: 2, name: 'Liter', short_name: 'ltr', created_at: new Date(), updated_at: new Date() },
+  { id: 9, store_id: 3, name: 'Pieces', short_name: 'pcs', created_at: new Date(), updated_at: new Date() },
+  { id: 10, store_id: 3, name: 'Unit', short_name: 'unit', created_at: new Date(), updated_at: new Date() },
 ];
 
 // ================ BRANDS ================
@@ -80,6 +82,10 @@ export let brands: Brand[] = [
   { id: 6, store_id: 2, name: 'Aqua', slug: 'aqua', created_at: new Date(), updated_at: new Date() },
   { id: 7, store_id: 2, name: 'Kapal Api', slug: 'kapal-api', created_at: new Date(), updated_at: new Date() },
   { id: 8, store_id: 2, name: 'Indofood', slug: 'indofood', created_at: new Date(), updated_at: new Date() },
+  { id: 9, store_id: 3, name: 'Samsung', slug: 'samsung', created_at: new Date(), updated_at: new Date() },
+  { id: 10, store_id: 3, name: 'Polytron', slug: 'polytron', created_at: new Date(), updated_at: new Date() },
+  { id: 11, store_id: 3, name: 'Panasonic', slug: 'panasonic', created_at: new Date(), updated_at: new Date() },
+  { id: 12, store_id: 3, name: 'Miyako', slug: 'miyako', created_at: new Date(), updated_at: new Date() },
 ];
 
 // ================ CATEGORIES ================
@@ -94,6 +100,11 @@ export let categories: Category[] = [
   { id: 8, store_id: 2, name: 'Snack', slug: 'snack', icon: '🍿', created_at: new Date(), updated_at: new Date() },
   { id: 9, store_id: 2, name: 'Makanan Instan', slug: 'instant', icon: '🍜', created_at: new Date(), updated_at: new Date() },
   { id: 10, store_id: 2, name: 'Susu & Olahan', slug: 'dairy', icon: '🥛', created_at: new Date(), updated_at: new Date() },
+  { id: 11, store_id: 3, name: 'TV & Audio', slug: 'tv-audio', icon: '📺', created_at: new Date(), updated_at: new Date() },
+  { id: 12, store_id: 3, name: 'Kulkas & AC', slug: 'kulkas-ac', icon: '❄️', created_at: new Date(), updated_at: new Date() },
+  { id: 13, store_id: 3, name: 'Mesin Cuci', slug: 'mesin-cuci', icon: '🫧', created_at: new Date(), updated_at: new Date() },
+  { id: 14, store_id: 3, name: 'Dapur', slug: 'dapur', icon: '🍳', created_at: new Date(), updated_at: new Date() },
+  { id: 15, store_id: 3, name: 'Kipas & Pemanas', slug: 'kipas', icon: '🌀', created_at: new Date(), updated_at: new Date() },
 ];
 
 // ================ SUPPLIERS ================
@@ -103,11 +114,13 @@ export const suppliers: Supplier[] = [
   { id: 3, store_id: 1, name: 'UD. Cat Jaya', phone: '0511-5559999', address: 'Jl. Kramat Jaya No. 10', created_at: new Date(), updated_at: new Date() },
   { id: 4, store_id: 2, name: 'PT. Indofood Sukses Makmur', phone: '0511-6661234', address: 'Jl. Sudirman, Banjarmasin', created_at: new Date(), updated_at: new Date() },
   { id: 5, store_id: 2, name: 'CV. Mitra Sejahtera', phone: '0511-6665678', address: 'Jl. Raya Bogor No. 45', created_at: new Date(), updated_at: new Date() },
+  { id: 6, store_id: 3, name: 'PT. Samsung Electronics', phone: '0511-7771234', address: 'Jl. Gatot Subroto, Banjarmasin', created_at: new Date(), updated_at: new Date() },
+  { id: 7, store_id: 3, name: 'CV. Elektronik Jaya', phone: '0511-7775678', address: 'Jl. Ahmad Yani No. 88', created_at: new Date(), updated_at: new Date() },
 ];
 
 // ================ PRODUCTS ================
 export let products: Product[] = [
-  // Store 1 - Bangunan
+  // Store 1 - Bangunan (8 produk + 4 tambahan)
   mkProduct({ id: 1, store_id: 1, category_id: 1, brand_id: 1, unit_id: 2, name: 'Semen Tiga Roda 50kg', code: '8880001001', quantity: 200, min_stock_alert: 50, cost_price: 55000, selling_price_retail: 72000, selling_price_wholesale: 68000, wholesale_min_qty: 10, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
   mkProduct({ id: 2, store_id: 1, category_id: 1, brand_id: 2, unit_id: 2, name: 'Semen Holcim 40kg', code: '8880001002', quantity: 150, min_stock_alert: 40, cost_price: 48000, selling_price_retail: 65000, selling_price_wholesale: 60000, wholesale_min_qty: 10, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
   mkProduct({ id: 3, store_id: 1, category_id: 2, brand_id: 3, unit_id: 1, name: 'Cat Dulux Weathershield 5L', code: '8880001003', quantity: 30, min_stock_alert: 10, cost_price: 280000, selling_price_retail: 350000, selling_price_wholesale: 320000, wholesale_min_qty: 5, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
@@ -116,8 +129,12 @@ export let products: Product[] = [
   mkProduct({ id: 6, store_id: 1, category_id: 4, brand_id: null, unit_id: 3, name: 'Pipa PVC 3/4 inch 4m', code: '8880001006', quantity: 80, min_stock_alert: 20, cost_price: 28000, selling_price_retail: 38000, selling_price_wholesale: 34000, wholesale_min_qty: 20, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
   mkProduct({ id: 7, store_id: 1, category_id: 5, brand_id: null, unit_id: 1, name: 'Kabel NYM 2x1.5mm 50m', code: '8880001007', quantity: 25, min_stock_alert: 10, cost_price: 450000, selling_price_retail: 580000, selling_price_wholesale: 540000, wholesale_min_qty: 3, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
   mkProduct({ id: 8, store_id: 1, category_id: 5, brand_id: null, unit_id: 1, name: 'Saklar Broco', code: '8880001008', quantity: 60, min_stock_alert: 20, cost_price: 15000, selling_price_retail: 25000, selling_price_wholesale: 21000, wholesale_min_qty: 12, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
+  mkProduct({ id: 17, store_id: 1, category_id: 4, brand_id: null, unit_id: 1, name: 'Kran Air Wasser', code: '8880001009', quantity: 40, min_stock_alert: 10, cost_price: 35000, selling_price_retail: 55000, selling_price_wholesale: 48000, wholesale_min_qty: 10, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
+  mkProduct({ id: 18, store_id: 1, category_id: 3, brand_id: null, unit_id: 4, name: 'Paku 5cm 1kg', code: '8880001010', quantity: 50, min_stock_alert: 15, cost_price: 18000, selling_price_retail: 28000, selling_price_wholesale: 24000, wholesale_min_qty: 10, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
+  mkProduct({ id: 19, store_id: 1, category_id: 1, brand_id: null, unit_id: 2, name: 'Pasir Cor 1 Sak', code: '8880001011', quantity: 300, min_stock_alert: 100, cost_price: 45000, selling_price_retail: 60000, selling_price_wholesale: 55000, wholesale_min_qty: 20, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
+  mkProduct({ id: 20, store_id: 1, category_id: 5, brand_id: null, unit_id: 1, name: 'Stop Kontak 3 Lubang', code: '8880001012', quantity: 35, min_stock_alert: 10, cost_price: 22000, selling_price_retail: 35000, selling_price_wholesale: 30000, wholesale_min_qty: 12, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
 
-  // Store 2 - Makanan
+  // Store 2 - Makanan (8 produk + 4 tambahan)
   mkProduct({ id: 9, store_id: 2, category_id: 9, brand_id: 5, unit_id: 5, name: 'Indomie Goreng Original', code: '8991234567890', quantity: 120, min_stock_alert: 50, cost_price: 2500, selling_price_retail: 3500, selling_price_wholesale: 3000, wholesale_min_qty: 40, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
   mkProduct({ id: 10, store_id: 2, category_id: 7, brand_id: 6, unit_id: 5, name: 'Aqua Botol 600ml', code: '8991234567891', quantity: 200, min_stock_alert: 100, cost_price: 2000, selling_price_retail: 3000, selling_price_wholesale: 2500, wholesale_min_qty: 24, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
   mkProduct({ id: 11, store_id: 2, category_id: 7, brand_id: 7, unit_id: 5, name: 'Kopi Kapal Api Special', code: '8991234567892', quantity: 150, min_stock_alert: 100, cost_price: 1500, selling_price_retail: 2500, selling_price_wholesale: 2000, wholesale_min_qty: 50, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
@@ -126,6 +143,22 @@ export let products: Product[] = [
   mkProduct({ id: 14, store_id: 2, category_id: 10, brand_id: 8, unit_id: 5, name: 'Susu Ultra Full Cream 1L', code: '8991234567898', quantity: 40, min_stock_alert: 30, cost_price: 16000, selling_price_retail: 22000, selling_price_wholesale: 19000, wholesale_min_qty: 6, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
   mkProduct({ id: 15, store_id: 2, category_id: 6, brand_id: null, unit_id: 5, name: 'ABC Kecap Manis 600ml', code: '8991234567896', quantity: 18, min_stock_alert: 15, cost_price: 18000, selling_price_retail: 25000, selling_price_wholesale: 22000, wholesale_min_qty: 6, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
   mkProduct({ id: 16, store_id: 2, category_id: 8, brand_id: null, unit_id: 5, name: 'Roma Kelapa 300g', code: '8991234567897', quantity: 35, min_stock_alert: 25, cost_price: 8000, selling_price_retail: 12000, selling_price_wholesale: 10000, wholesale_min_qty: 12, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
+  mkProduct({ id: 21, store_id: 2, category_id: 7, brand_id: null, unit_id: 5, name: 'Teh Botol Sosro 450ml', code: '8991234567901', quantity: 180, min_stock_alert: 60, cost_price: 2500, selling_price_retail: 4000, selling_price_wholesale: 3500, wholesale_min_qty: 24, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
+  mkProduct({ id: 22, store_id: 2, category_id: 6, brand_id: 8, unit_id: 5, name: 'Bimoli Minyak Goreng 2L', code: '8991234567902', quantity: 55, min_stock_alert: 20, cost_price: 28000, selling_price_retail: 38000, selling_price_wholesale: 34000, wholesale_min_qty: 6, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
+  mkProduct({ id: 23, store_id: 2, category_id: 6, brand_id: null, unit_id: 5, name: 'Gula Pasir 1kg', code: '8991234567903', quantity: 90, min_stock_alert: 30, cost_price: 14000, selling_price_retail: 18000, selling_price_wholesale: 16000, wholesale_min_qty: 10, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
+  mkProduct({ id: 24, store_id: 2, category_id: 9, brand_id: 5, unit_id: 7, name: 'Indomie Goreng 1 Karton (40pcs)', code: '8991234567904', quantity: 25, min_stock_alert: 10, cost_price: 95000, selling_price_retail: 130000, selling_price_wholesale: 115000, wholesale_min_qty: 3, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
+
+  // Store 3 - Elektronik (10 produk)
+  mkProduct({ id: 25, store_id: 3, category_id: 11, brand_id: 9, unit_id: 10, name: 'Samsung LED TV 32 inch', code: '8993001001', quantity: 8, min_stock_alert: 3, cost_price: 2200000, selling_price_retail: 2800000, selling_price_wholesale: 2600000, wholesale_min_qty: 3, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
+  mkProduct({ id: 26, store_id: 3, category_id: 11, brand_id: 10, unit_id: 10, name: 'Polytron LED TV 24 inch', code: '8993001002', quantity: 12, min_stock_alert: 5, cost_price: 1400000, selling_price_retail: 1850000, selling_price_wholesale: 1700000, wholesale_min_qty: 3, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
+  mkProduct({ id: 27, store_id: 3, category_id: 12, brand_id: 9, unit_id: 10, name: 'Samsung Kulkas 2 Pintu 250L', code: '8993001003', quantity: 5, min_stock_alert: 2, cost_price: 3500000, selling_price_retail: 4500000, selling_price_wholesale: 4200000, wholesale_min_qty: 2, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
+  mkProduct({ id: 28, store_id: 3, category_id: 12, brand_id: 11, unit_id: 10, name: 'Panasonic AC 1 PK', code: '8993001004', quantity: 10, min_stock_alert: 3, cost_price: 3800000, selling_price_retail: 4800000, selling_price_wholesale: 4500000, wholesale_min_qty: 2, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
+  mkProduct({ id: 29, store_id: 3, category_id: 13, brand_id: 9, unit_id: 10, name: 'Samsung Mesin Cuci 8kg', code: '8993001005', quantity: 6, min_stock_alert: 2, cost_price: 2800000, selling_price_retail: 3600000, selling_price_wholesale: 3300000, wholesale_min_qty: 2, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
+  mkProduct({ id: 30, store_id: 3, category_id: 14, brand_id: 12, unit_id: 10, name: 'Miyako Rice Cooker 1.8L', code: '8993001006', quantity: 20, min_stock_alert: 5, cost_price: 250000, selling_price_retail: 350000, selling_price_wholesale: 310000, wholesale_min_qty: 5, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
+  mkProduct({ id: 31, store_id: 3, category_id: 14, brand_id: 12, unit_id: 10, name: 'Miyako Blender 1.5L', code: '8993001007', quantity: 15, min_stock_alert: 5, cost_price: 180000, selling_price_retail: 280000, selling_price_wholesale: 250000, wholesale_min_qty: 5, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
+  mkProduct({ id: 32, store_id: 3, category_id: 15, brand_id: 11, unit_id: 10, name: 'Panasonic Kipas Angin Berdiri', code: '8993001008', quantity: 18, min_stock_alert: 5, cost_price: 320000, selling_price_retail: 450000, selling_price_wholesale: 400000, wholesale_min_qty: 3, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
+  mkProduct({ id: 33, store_id: 3, category_id: 14, brand_id: 11, unit_id: 10, name: 'Panasonic Setrika Listrik', code: '8993001009', quantity: 22, min_stock_alert: 8, cost_price: 180000, selling_price_retail: 265000, selling_price_wholesale: 235000, wholesale_min_qty: 5, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
+  mkProduct({ id: 34, store_id: 3, category_id: 11, brand_id: 10, unit_id: 10, name: 'Polytron Speaker Aktif', code: '8993001010', quantity: 14, min_stock_alert: 4, cost_price: 450000, selling_price_retail: 650000, selling_price_wholesale: 580000, wholesale_min_qty: 3, is_active: true, created_at: new Date('2023-01-01'), updated_at: new Date('2024-01-01'), created_by: 1, updated_by: 1 }),
 ];
 
 // ================ CUSTOMERS ================
@@ -134,6 +167,8 @@ export let customers: Customer[] = [
   { id: 2, store_id: 1, name: 'Ibu Rina Renovasi', phone: '08198765432', address: 'Jl. Durian No. 5, Banjarbaru', created_at: new Date('2023-08-15'), updated_at: new Date('2023-08-15') },
   { id: 3, store_id: 2, name: 'Budi Santoso', phone: '08111222333', created_at: new Date('2023-03-20'), updated_at: new Date('2023-03-20') },
   { id: 4, store_id: 2, name: 'Siti Nurhaliza', phone: '08155666777', address: 'Jl. Anggrek No. 8, Banjarmasin', created_at: new Date('2023-05-10'), updated_at: new Date('2023-05-10') },
+  { id: 5, store_id: 3, name: 'Haji Rahman', phone: '08177888999', address: 'Jl. Pahlawan No. 15, Banjarmasin', created_at: new Date('2023-09-01'), updated_at: new Date('2023-09-01') },
+  { id: 6, store_id: 3, name: 'Ibu Fatimah', phone: '08199000111', address: 'Jl. Cempaka No. 22, Banjarbaru', created_at: new Date('2023-10-10'), updated_at: new Date('2023-10-10') },
 ];
 
 export function addCustomer(customer: Customer) {
