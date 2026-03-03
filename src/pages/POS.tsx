@@ -6,7 +6,7 @@ import { ReceiptModal } from '@/components/pos/ReceiptModal';
 import { CustomerModal } from '@/components/pos/CustomerModal';
 import { getProductsForStore, stores, customers } from '@/data/sampleData';
 import { PaymentMethod, Sale, SaleDetail, Product, Customer, PriceMode } from '@/types/pos';
-import { Settings, LogOut, User, ShieldCheck, UserCog, ScanBarcode, Building2, Trash2, Search } from 'lucide-react';
+import { Settings, LogOut, User, ShieldCheck, UserCog, ScanBarcode, Building2, Trash2, Search, ChevronDown } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { canAccessMenu } from '@/contexts/AuthContext';
@@ -28,7 +28,7 @@ export default function POS() {
   const [dueDate, setDueDate] = useState('');
 
   const searchRef = useRef<HTMLInputElement>(null);
-  const { user, logout, activeStoreId } = useAuth();
+  const { user, logout, activeStoreId, setActiveStoreId, canSwitchStore, accessibleStoreIds } = useAuth();
   const navigate = useNavigate();
 
   const { items, addItem, removeItem, updateQuantity, clearCart, total, setPriceMode, setItems } = useCart();
@@ -162,10 +162,26 @@ export default function POS() {
       <header className="flex items-center justify-between px-4 py-2 border-b border-[hsl(var(--pos-border))] bg-[hsl(var(--pos-card))]">
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-extrabold text-[hsl(var(--pos-foreground))]">KASIR</h1>
-          <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--pos-muted-foreground))]">
-            <Building2 className="w-3.5 h-3.5" />
-            <span className="font-semibold">{activeStore?.name || 'Toko'}</span>
-          </div>
+          {canSwitchStore ? (
+            <div className="relative">
+              <select
+                value={activeStoreId}
+                onChange={(e) => { setActiveStoreId(Number(e.target.value)); clearCart(); }}
+                className="appearance-none pl-7 pr-6 py-1.5 rounded-lg text-sm font-semibold border border-[hsl(var(--pos-border))] bg-[hsl(var(--pos-card))] text-[hsl(var(--pos-foreground))] cursor-pointer focus:outline-none focus:border-[hsl(var(--pos-accent))]"
+              >
+                {stores.filter(s => accessibleStoreIds.includes(s.id) || user?.role === 'owner').map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
+              <Building2 className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[hsl(var(--pos-muted-foreground))] pointer-events-none" />
+              <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[hsl(var(--pos-muted-foreground))] pointer-events-none" />
+            </div>
+          ) : (
+            <div className="flex items-center gap-1.5 text-xs text-[hsl(var(--pos-muted-foreground))]">
+              <Building2 className="w-3.5 h-3.5" />
+              <span className="font-semibold">{activeStore?.name || 'Toko'}</span>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <button
