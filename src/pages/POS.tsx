@@ -41,6 +41,14 @@ export default function POS() {
     searchRef.current?.focus();
   }, []);
 
+  // Auto-confirm debt when paymentMethod is set
+  useEffect(() => {
+    if (paymentMethod && isDebt) {
+      handleConfirmPayment(0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paymentMethod, isDebt]);
+
   // Barcode scanner
   useBarcodeScanner({
     onScan: (barcode) => {
@@ -402,12 +410,7 @@ export default function POS() {
         />
       )}
 
-      {/* For debt, skip payment modal and confirm directly */}
-      {paymentMethod && isDebt && (() => {
-        // Auto-confirm debt
-        handleConfirmPayment(0);
-        return null;
-      })()}
+      {/* For debt, auto-confirm via effect */}
 
       {/* Receipt Modal */}
       <ReceiptModal
