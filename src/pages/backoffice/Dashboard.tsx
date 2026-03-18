@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import { StatCard } from '@/components/backoffice/StatCard';
 import { DateFilter, DateFilterType, DateRange, getDateRangeFromFilter } from '@/components/backoffice/DateFilter';
 import { RevenueChart } from '@/components/backoffice/charts/RevenueChart';
@@ -6,14 +7,13 @@ import { CategorySalesChart } from '@/components/backoffice/charts/CategorySales
 import { PaymentMethodChart } from '@/components/backoffice/charts/PaymentMethodChart';
 import { TopProductsTable } from '@/components/backoffice/tables/TopProductsTable';
 import { TransactionsTable } from '@/components/backoffice/tables/TransactionsTable';
-import { sampleSales, products, stores } from '@/data/sampleData';
+import { sampleSales, products } from '@/data/sampleData';
 import { formatCurrency } from '@/lib/format';
-import { TrendingUp, ShoppingCart, Package, Building2, Users } from 'lucide-react';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { TrendingUp, ShoppingCart, Package, Users } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 export default function Dashboard() {
-  const [selectedStore, setSelectedStore] = useState<string>('all');
+  const { activeStoreId } = useAuth();
   const [dateFilterType, setDateFilterType] = useState<DateFilterType>('all');
   const [dateRange, setDateRange] = useState<DateRange>(getDateRangeFromFilter('all'));
 
@@ -22,27 +22,21 @@ export default function Dashboard() {
     setDateRange(range);
   };
 
+  const storeProducts = useMemo(() => products.filter(p => p.store_id === activeStoreId), [activeStoreId]);
+
   const filteredSales = useMemo(() => {
-    let filtered = sampleSales;
-    if (selectedStore !== 'all') {
-      filtered = filtered.filter(s => s.store_id === Number(selectedStore));
-    }
+    let filtered = sampleSales.filter(s => s.store_id === activeStoreId);
     if (dateRange.from) filtered = filtered.filter(s => s.date >= dateRange.from!);
     if (dateRange.to) filtered = filtered.filter(s => s.date <= dateRange.to!);
     return filtered;
-  }, [selectedStore, dateRange]);
+  }, [activeStoreId, dateRange]);
 
   const totalRevenue = filteredSales.reduce((sum, s) => sum + s.grand_total, 0);
   const totalTransactions = filteredSales.length;
-  const totalProducts = products.length;
+  const totalProducts = storeProducts.length;
   const avgTransactionValue = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
   const uniqueCustomers = new Set(filteredSales.filter(s => s.customer_id).map(s => s.customer_id)).size;
-
-  const lowStockProducts = products.filter(p => p.quantity < p.min_stock_alert).length;
-
-  const getLowStockProductsList = () => {
-    return products.filter(p => p.quantity < p.min_stock_alert);
-  };
+  const lowStockProducts = storeProducts.filter(p => p.quantity < p.min_stock_alert).length;
 
   return (
     <div className="space-y-6">
@@ -51,23 +45,7 @@ export default function Dashboard() {
           <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
           <p className="text-muted-foreground">Selamat datang di Back Office POS</p>
         </div>
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-          <DateFilter value={dateFilterType} dateRange={dateRange} onChange={handleDateFilterChange} />
-          <Select value={selectedStore} onValueChange={setSelectedStore}>
-            <SelectTrigger className="w-[220px]">
-              <Building2 className="w-4 h-4 mr-2" />
-              <SelectValue placeholder="Pilih Toko" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Semua Toko</SelectItem>
-              {stores.map((store) => (
-                <SelectItem key={store.id} value={String(store.id)}>
-                  {store.name.replace('Minimarket Berkah - ', '')}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <DateFilter value={dateFilterType} dateRange={dateRange} onChange={handleDateFilterChange} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -90,19 +68,19 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <CategorySalesChart sales={filteredSales} />
         {lowStockProducts > 0 && (
-          <div className="bg-orange-50 dark:bg-orange-950/20 border border-orange-200 dark:border-orange-800 rounded-xl p-4">
+          <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
             <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-900/50 flex items-center justify-center flex-shrink-0">
-                <Package className="w-5 h-5 text-orange-600 dark:text-orange-400" />
+              <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
+                <Package className="w-5 h-5 text-orange-600" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-orange-800 dark:text-orange-300">Peringatan Stok Menipis</h3>
-                <p className="text-sm text-orange-700 dark:text-orange-400 mt-1">
+                <h3 className="font-semibold text-orange-800">Peringatan Stok Menipis</h3>
+                <p className="text-sm text-orange-700 mt-1">
                   {lowStockProducts} produk memiliki stok di bawah minimum.
                 </p>
                 <div className="flex flex-wrap gap-2 mt-3">
-                  {getLowStockProductsList().slice(0, 5).map(p => (
-                    <span key={p.id} className="text-xs bg-orange-100 dark:bg-orange-900/50 text-orange-800 dark:text-orange-300 px-2 py-1 rounded-full">
+                  {storeProducts.filter(p => p.quantity < p.min_stock_alert).slice(0, 5).map(p => (
+                    <span key={p.id} className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-full">
                       {p.name} ({p.quantity})
                     </span>
                   ))}

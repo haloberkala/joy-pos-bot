@@ -4,19 +4,24 @@ import {
   products, categories, brands, units,
   getProductsForStore, getCategoriesForStore, getBrandsForStore, getUnitsForStore,
   addProduct, getOrCreateCategory, getOrCreateBrand, getOrCreateUnit,
+  sampleStockOpnames,
 } from '@/data/sampleData';
 import { formatCurrency } from '@/lib/format';
+import { formatDate } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Search, Edit, Trash2, Barcode, Download, Upload, FileSpreadsheet, AlertCircle, CheckCircle } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Plus, Search, Edit, Trash2, Barcode, Download, Upload, FileSpreadsheet, AlertCircle, CheckCircle, Package, ClipboardCheck, TrendingUp, TrendingDown, AlertTriangle, Eye } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
 import { Product } from '@/types/pos';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
+import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
+import { StockOpnameDetail } from '@/components/backoffice/StockOpnameDetail';
 
 export default function Products() {
   const { activeStoreId } = useAuth();
@@ -26,11 +31,26 @@ export default function Products() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importResults, setImportResults] = useState<{ success: number; errors: string[] } | null>(null);
+  const [showOpnameDetail, setShowOpnameDetail] = useState(false);
+  const [activeTab, setActiveTab] = useState('products');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const storeProducts = useMemo(() => getProductsForStore(activeStoreId), [activeStoreId]);
   const storeCategories = useMemo(() => getCategoriesForStore(activeStoreId), [activeStoreId]);
   const storeBrands = useMemo(() => getBrandsForStore(activeStoreId), [activeStoreId]);
+
+  useBarcodeScanner({
+    onScan: (barcode) => {
+      const product = products.find(p => p.code === barcode);
+      if (product) {
+        setSearchQuery(barcode);
+        toast.success(`Produk ditemukan: ${product.name}`);
+      } else {
+        toast.error(`Produk dengan barcode ${barcode} tidak ditemukan`);
+      }
+    },
+    enabled: !showOpnameDetail && !isAddModalOpen && !showImportDialog,
+  });
 
   const filteredProducts = storeProducts.filter((product) => {
     const matchesSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase()) || product.code.includes(searchQuery);
@@ -54,6 +74,11 @@ export default function Products() {
     if (qty < min) return { label: 'Menipis', variant: 'secondary' as const };
     return { label: 'Tersedia', variant: 'default' as const };
   };
+
+  // Stock summary stats
+  const lowStockCount = storeProducts.filter(p => p.quantity < p.min_stock_alert && p.quantity > 0).length;
+  const outOfStockCount = storeProducts.filter(p => p.quantity === 0).length;
+  const totalStockValue = storeProducts.reduce((sum, p) => sum + (p.quantity * p.cost_price), 0);
 
   // ======== EXCEL TEMPLATE DOWNLOAD ========
   const handleDownloadTemplate = () => {
@@ -104,14 +129,12 @@ export default function Products() {
           const wholesalePrice = parseFloat(row['Harga Jual Grosir']) || retailPrice;
           const wholesaleMinQty = parseInt(row['Min Qty Grosir']) || 10;
 
-          // Validate required
           if (!name) { errors.push(`Baris ${rowNum}: Nama produk kosong`); return; }
           if (!code) { errors.push(`Baris ${rowNum}: Kode/Barcode kosong`); return; }
           if (costPrice <= 0) { errors.push(`Baris ${rowNum}: Harga modal tidak valid`); return; }
           if (retailPrice <= 0) { errors.push(`Baris ${rowNum}: Harga jual eceran tidak valid`); return; }
           if (existingCodes.has(code)) { errors.push(`Baris ${rowNum}: Kode "${code}" sudah ada (duplikat)`); return; }
 
-          // Auto-create category/brand/unit
           const categoryName = String(row['Kategori'] || '').trim();
           const brandName = String(row['Brand'] || '').trim();
           const unitName = String(row['Satuan'] || '').trim();
@@ -160,12 +183,21 @@ export default function Products() {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  if (showOpnameDetail) {
+    return (
+      <StockOpnameDetail
+        storeId={activeStoreId}
+        onBack={() => setShowOpnameDetail(false)}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Produk</h1>
-          <p className="text-muted-foreground">Kelola produk, stok, dan harga (eceran & grosir)</p>
+          <h1 className="text-2xl font-bold text-foreground">Produk & Stok</h1>
+          <p className="text-muted-foreground">Kelola produk, stok, harga, dan stock opname</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" className="gap-2" onClick={() => setShowImportDialog(true)}>
@@ -205,76 +237,224 @@ export default function Products() {
         </div>
       </div>
 
-      {/* Search & Filter */}
-      <div className="flex flex-col lg:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Cari nama atau barcode..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
+      {/* Stock Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-card rounded-xl border border-border p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+              <Package className="w-5 h-5 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Total SKU</p>
+              <p className="text-xl font-bold">{storeProducts.length}</p>
+            </div>
+          </div>
         </div>
-        <div className="flex gap-2 overflow-x-auto">
-          <Button variant={selectedCategory === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setSelectedCategory('all')}>Semua</Button>
-          {storeCategories.map(c => (
-            <Button key={c.id} variant={selectedCategory === String(c.id) ? 'default' : 'outline'} size="sm" onClick={() => setSelectedCategory(String(c.id))} className="whitespace-nowrap">
-              {c.icon} {c.name}
-            </Button>
-          ))}
+        <div className="bg-card rounded-xl border border-border p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+              <TrendingUp className="w-5 h-5 text-green-600" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Nilai Stok</p>
+              <p className="text-xl font-bold">{formatCurrency(totalStockValue)}</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-card rounded-xl border border-border p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
+              <TrendingDown className="w-5 h-5 text-orange-600" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Stok Menipis</p>
+              <p className="text-xl font-bold">{lowStockCount}</p>
+            </div>
+          </div>
+        </div>
+        <div className="bg-card rounded-xl border border-border p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center">
+              <AlertTriangle className="w-5 h-5 text-red-600" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Stok Habis</p>
+              <p className="text-xl font-bold">{outOfStockCount}</p>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Products Table */}
-      <div className="bg-card rounded-xl border border-border overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Produk</TableHead>
-              <TableHead>Kode</TableHead>
-              <TableHead>Kategori</TableHead>
-              <TableHead className="text-right">Modal</TableHead>
-              <TableHead className="text-right">Eceran</TableHead>
-              <TableHead className="text-right">Grosir</TableHead>
-              <TableHead className="text-center">Min Grosir</TableHead>
-              <TableHead className="text-right">Stok</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Aksi</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filteredProducts.map((product) => {
-              const stockStatus = getStockStatus(product.quantity, product.min_stock_alert);
-              return (
-                <TableRow key={product.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center text-lg">
-                        {categories.find(c => c.id === product.category_id)?.icon || '📦'}
-                      </div>
-                      <div>
-                        <span className="font-medium block">{product.name}</span>
-                        <span className="text-xs text-muted-foreground">{getBrandName(product.brand_id)}</span>
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell><span className="font-mono text-sm text-muted-foreground">{product.code}</span></TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{getCategoryLabel(product.category_id)}</TableCell>
-                  <TableCell className="text-right text-muted-foreground">{formatCurrency(product.cost_price)}</TableCell>
-                  <TableCell className="text-right font-medium">{formatCurrency(product.selling_price_retail)}</TableCell>
-                  <TableCell className="text-right font-medium text-blue-600">{formatCurrency(product.selling_price_wholesale)}</TableCell>
-                  <TableCell className="text-center">≥{product.wholesale_min_qty}</TableCell>
-                  <TableCell className="text-right font-medium">{product.quantity}</TableCell>
-                  <TableCell><Badge variant={stockStatus.variant}>{stockStatus.label}</Badge></TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingProduct(product)}><Edit className="w-4 h-4" /></Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive"><Trash2 className="w-4 h-4" /></Button>
-                    </div>
-                  </TableCell>
+      {/* Tabs: Produk, Stok, Opname */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        <TabsList>
+          <TabsTrigger value="products" className="gap-2"><Package className="w-4 h-4" />Daftar Produk</TabsTrigger>
+          <TabsTrigger value="stock" className="gap-2"><TrendingUp className="w-4 h-4" />Stok</TabsTrigger>
+          <TabsTrigger value="opname" className="gap-2"><ClipboardCheck className="w-4 h-4" />Stock Opname</TabsTrigger>
+        </TabsList>
+
+        {/* ========== PRODUCTS TAB ========== */}
+        <TabsContent value="products" className="space-y-4">
+          {/* Search & Filter */}
+          <div className="flex flex-col lg:flex-row gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input placeholder="Cari nama atau barcode..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" data-barcode-input="true" />
+            </div>
+            <div className="flex gap-2 overflow-x-auto">
+              <Button variant={selectedCategory === 'all' ? 'default' : 'outline'} size="sm" onClick={() => setSelectedCategory('all')}>Semua</Button>
+              {storeCategories.map(c => (
+                <Button key={c.id} variant={selectedCategory === String(c.id) ? 'default' : 'outline'} size="sm" onClick={() => setSelectedCategory(String(c.id))} className="whitespace-nowrap">
+                  {c.icon} {c.name}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {/* Products Table */}
+          <div className="bg-card rounded-xl border border-border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Produk</TableHead>
+                  <TableHead>Kode</TableHead>
+                  <TableHead>Kategori</TableHead>
+                  <TableHead className="text-right">Modal</TableHead>
+                  <TableHead className="text-right">Eceran</TableHead>
+                  <TableHead className="text-right">Grosir</TableHead>
+                  <TableHead className="text-center">Min Grosir</TableHead>
+                  <TableHead className="text-right">Stok</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Aksi</TableHead>
                 </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-        {filteredProducts.length === 0 && <div className="text-center py-12 text-muted-foreground"><p>Tidak ada produk ditemukan</p></div>}
-      </div>
+              </TableHeader>
+              <TableBody>
+                {filteredProducts.map((product) => {
+                  const stockStatus = getStockStatus(product.quantity, product.min_stock_alert);
+                  return (
+                    <TableRow key={product.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center text-lg">
+                            {categories.find(c => c.id === product.category_id)?.icon || '📦'}
+                          </div>
+                          <div>
+                            <span className="font-medium block">{product.name}</span>
+                            <span className="text-xs text-muted-foreground">{getBrandName(product.brand_id)}</span>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell><span className="font-mono text-sm text-muted-foreground">{product.code}</span></TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{getCategoryLabel(product.category_id)}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{formatCurrency(product.cost_price)}</TableCell>
+                      <TableCell className="text-right font-medium">{formatCurrency(product.selling_price_retail)}</TableCell>
+                      <TableCell className="text-right font-medium text-blue-600">{formatCurrency(product.selling_price_wholesale)}</TableCell>
+                      <TableCell className="text-center">≥{product.wholesale_min_qty}</TableCell>
+                      <TableCell className="text-right font-medium">{product.quantity}</TableCell>
+                      <TableCell><Badge variant={stockStatus.variant}>{stockStatus.label}</Badge></TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingProduct(product)}><Edit className="w-4 h-4" /></Button>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive"><Trash2 className="w-4 h-4" /></Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+            {filteredProducts.length === 0 && <div className="text-center py-12 text-muted-foreground"><p>Tidak ada produk ditemukan</p></div>}
+          </div>
+        </TabsContent>
+
+        {/* ========== STOCK TAB ========== */}
+        <TabsContent value="stock" className="space-y-4">
+          <div className="flex gap-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input placeholder="Cari nama atau scan barcode..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" data-barcode-input="true" />
+            </div>
+            <Button variant="outline" className="gap-2"><FileSpreadsheet className="w-4 h-4" />Export</Button>
+          </div>
+
+          <div className="bg-card rounded-xl border border-border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Produk</TableHead>
+                  <TableHead>Kode</TableHead>
+                  <TableHead>Kategori</TableHead>
+                  <TableHead className="text-right">Stok</TableHead>
+                  <TableHead className="text-right">Min. Alert</TableHead>
+                  <TableHead className="text-right">Nilai Stok</TableHead>
+                  <TableHead>Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredProducts.map((product) => {
+                  const isLow = product.quantity < product.min_stock_alert && product.quantity > 0;
+                  const isOut = product.quantity === 0;
+                  return (
+                    <TableRow key={product.id}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center text-lg">
+                            {categories.find(c => c.id === product.category_id)?.icon || '📦'}
+                          </div>
+                          <span className="font-medium">{product.name}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="font-mono text-muted-foreground">{product.code}</TableCell>
+                      <TableCell className="text-muted-foreground">{categories.find(c => c.id === product.category_id)?.name}</TableCell>
+                      <TableCell className="text-right font-bold">{product.quantity}</TableCell>
+                      <TableCell className="text-right text-muted-foreground">{product.min_stock_alert}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(product.quantity * product.cost_price)}</TableCell>
+                      <TableCell>
+                        {isOut ? <Badge variant="destructive">Habis</Badge> : isLow ? <Badge variant="secondary">Menipis</Badge> : <Badge variant="outline">Tersedia</Badge>}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
+
+        {/* ========== OPNAME TAB ========== */}
+        <TabsContent value="opname" className="space-y-4">
+          <div className="flex justify-between">
+            <p className="text-muted-foreground">Stock opname untuk memastikan keakuratan data stok</p>
+            <Button className="gap-2" onClick={() => setShowOpnameDetail(true)}>
+              <Plus className="w-4 h-4" />Mulai Stock Opname
+            </Button>
+          </div>
+
+          <div className="bg-card rounded-xl border border-border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>No. Opname</TableHead>
+                  <TableHead>Tanggal</TableHead>
+                  <TableHead>Catatan</TableHead>
+                  <TableHead className="text-right">Aksi</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {sampleStockOpnames.filter(o => o.store_id === activeStoreId).map((opname) => (
+                  <TableRow key={opname.id}>
+                    <TableCell className="font-medium">{opname.opname_number}</TableCell>
+                    <TableCell>{formatDate(opname.date)}</TableCell>
+                    <TableCell className="text-muted-foreground">{opname.note || '-'}</TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="icon" className="h-8 w-8"><Eye className="w-4 h-4" /></Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
+      </Tabs>
 
       {/* Import Dialog */}
       <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>

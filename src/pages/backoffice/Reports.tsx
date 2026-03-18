@@ -1,23 +1,23 @@
 import { useState, useMemo } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import {
   sampleSales, sampleSaleDetails, sampleExpenses, expenseCategories,
-  products, stores, categories, getProduct,
+  products, categories, getProduct,
 } from '@/data/sampleData';
 import { formatCurrency } from '@/lib/format';
 import { exportToPDF, exportToExcel } from '@/lib/exportUtils';
 import { Button } from '@/components/ui/button';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { DateFilter, DateFilterType, DateRange, getDateRangeFromFilter } from '@/components/backoffice/DateFilter';
 import {
-  FileDown, FileSpreadsheet, Building2, TrendingUp, TrendingDown,
+  FileDown, FileSpreadsheet, TrendingUp, TrendingDown,
   DollarSign, Package, ShoppingCart, Receipt,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function Reports() {
-  const [selectedStore, setSelectedStore] = useState<string>('all');
+  const { activeStoreId } = useAuth();
   const [dateFilterType, setDateFilterType] = useState<DateFilterType>('all');
   const [dateRange, setDateRange] = useState<DateRange>(getDateRangeFromFilter('all'));
 
@@ -26,23 +26,22 @@ export default function Reports() {
     setDateRange(range);
   };
 
+  const storeProducts = useMemo(() => products.filter(p => p.store_id === activeStoreId), [activeStoreId]);
+
   const filteredSales = useMemo(() => {
-    let filtered = sampleSales;
-    if (selectedStore !== 'all') filtered = filtered.filter(s => s.store_id === Number(selectedStore));
+    let filtered = sampleSales.filter(s => s.store_id === activeStoreId);
     if (dateRange.from) filtered = filtered.filter(s => s.date >= dateRange.from!);
     if (dateRange.to) filtered = filtered.filter(s => s.date <= dateRange.to!);
     return filtered;
-  }, [selectedStore, dateRange]);
+  }, [activeStoreId, dateRange]);
 
   const filteredExpenses = useMemo(() => {
-    let filtered = sampleExpenses;
-    if (selectedStore !== 'all') filtered = filtered.filter(e => e.store_id === Number(selectedStore));
+    let filtered = sampleExpenses.filter(e => e.store_id === activeStoreId);
     if (dateRange.from) filtered = filtered.filter(e => e.date >= dateRange.from!);
     if (dateRange.to) filtered = filtered.filter(e => e.date <= dateRange.to!);
     return filtered;
-  }, [selectedStore, dateRange]);
+  }, [activeStoreId, dateRange]);
 
-  // Get sale details for filtered sales
   const filteredSaleDetails = useMemo(() => {
     const saleIds = new Set(filteredSales.map(s => s.id));
     return sampleSaleDetails.filter(d => saleIds.has(d.sale_id));
@@ -53,11 +52,6 @@ export default function Reports() {
   const grossProfit = totalRevenue - totalCOGS;
   const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
   const netProfit = grossProfit - totalExpenses;
-
-  const getStoreName = (storeId: number) => {
-    const store = stores.find(s => s.id === storeId);
-    return store?.name.split(' - ')[1] || store?.name || String(storeId);
-  };
 
   const salesByProduct = useMemo(() => {
     const map = new Map<number, { name: string; qty: number; revenue: number; cost: number }>();
@@ -90,7 +84,6 @@ export default function Reports() {
   ], [totalRevenue, totalCOGS, grossProfit, totalExpenses, netProfit]);
 
   const stockReport = useMemo(() => {
-    const storeProducts = selectedStore === 'all' ? products : products.filter(p => p.store_id === Number(selectedStore));
     return storeProducts.map(p => {
       const category = categories.find(c => c.id === p.category_id)?.name || '-';
       return {
@@ -101,13 +94,12 @@ export default function Reports() {
         status: p.quantity === 0 ? 'Habis' : p.quantity < p.min_stock_alert ? 'Menipis' : 'Tersedia',
       };
     });
-  }, [selectedStore]);
+  }, [storeProducts]);
 
-  // Export handlers
   const handleExportSalesPDF = () => {
     exportToPDF({
       title: 'Laporan Penjualan',
-      subtitle: `Toko: ${selectedStore === 'all' ? 'Semua' : getStoreName(Number(selectedStore))}`,
+      subtitle: `Toko ID: ${activeStoreId}`,
       filename: `laporan-penjualan-${Date.now()}`,
       columns: [
         { header: 'Produk', key: 'name', width: 25 },
@@ -143,7 +135,7 @@ export default function Reports() {
   const handleExportStockPDF = () => {
     exportToPDF({
       title: 'Laporan Stok',
-      subtitle: `Toko: ${selectedStore === 'all' ? 'Semua' : getStoreName(Number(selectedStore))}`,
+      subtitle: `Toko ID: ${activeStoreId}`,
       filename: `laporan-stok-${Date.now()}`,
       columns: [
         { header: 'Produk', key: 'name', width: 25 }, { header: 'Kode', key: 'code', width: 15 },
@@ -173,7 +165,7 @@ export default function Reports() {
   const handleExportProfitLossPDF = () => {
     exportToPDF({
       title: 'Laporan Laba Rugi',
-      subtitle: `Toko: ${selectedStore === 'all' ? 'Semua' : getStoreName(Number(selectedStore))}`,
+      subtitle: `Toko ID: ${activeStoreId}`,
       filename: `laporan-laba-rugi-${Date.now()}`,
       columns: [
         { header: 'Keterangan', key: 'label', width: 30 },
@@ -221,23 +213,7 @@ export default function Reports() {
           <h1 className="text-2xl font-bold text-foreground">Laporan</h1>
           <p className="text-muted-foreground">Unduh laporan penjualan, stok, dan laba rugi</p>
         </div>
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-          <DateFilter value={dateFilterType} dateRange={dateRange} onChange={handleDateFilterChange} />
-          <Select value={selectedStore} onValueChange={setSelectedStore}>
-            <SelectTrigger className="w-[220px]">
-              <Building2 className="w-4 h-4 mr-2" />
-              <SelectValue placeholder="Pilih Toko" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Semua Toko</SelectItem>
-              {stores.map(store => (
-                <SelectItem key={store.id} value={String(store.id)}>
-                  {store.name.replace('Minimarket Berkah - ', '')}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <DateFilter value={dateFilterType} dateRange={dateRange} onChange={handleDateFilterChange} />
       </div>
 
       {/* Summary Cards */}
@@ -355,7 +331,11 @@ export default function Reports() {
                     <TableCell className="text-right text-muted-foreground">{p.minStock}</TableCell>
                     <TableCell className="text-right">{formatCurrency(p.stockValue)}</TableCell>
                     <TableCell>
-                      <span className={`text-xs font-medium px-2 py-1 rounded-full ${p.status === 'Habis' ? 'bg-red-100 text-red-700' : p.status === 'Menipis' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>{p.status}</span>
+                      <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                        p.status === 'Habis' ? 'bg-red-100 text-red-700' :
+                        p.status === 'Menipis' ? 'bg-orange-100 text-orange-700' :
+                        'bg-green-100 text-green-700'
+                      }`}>{p.status}</span>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -366,7 +346,7 @@ export default function Reports() {
 
         <TabsContent value="profitloss" className="space-y-4">
           <div className="flex justify-between items-center">
-            <p className="text-muted-foreground">Laporan laba rugi</p>
+            <p className="text-muted-foreground">Laporan laba rugi lengkap</p>
             <div className="flex gap-2">
               <Button variant="outline" className="gap-2" onClick={handleExportProfitLossPDF}><FileDown className="w-4 h-4" />PDF</Button>
               <Button variant="outline" className="gap-2" onClick={handleExportProfitLossExcel}><FileSpreadsheet className="w-4 h-4" />Excel</Button>
@@ -375,18 +355,20 @@ export default function Reports() {
           <div className="bg-card rounded-xl border border-border overflow-hidden">
             <Table>
               <TableHeader>
-                <TableRow><TableHead>Keterangan</TableHead><TableHead className="text-right">Jumlah</TableHead></TableRow>
+                <TableRow>
+                  <TableHead>Keterangan</TableHead>
+                  <TableHead className="text-right">Jumlah</TableHead>
+                </TableRow>
               </TableHeader>
               <TableBody>
                 <TableRow><TableCell className="font-medium">Total Pendapatan</TableCell><TableCell className="text-right font-semibold">{formatCurrency(totalRevenue)}</TableCell></TableRow>
-                <TableRow><TableCell className="text-muted-foreground">Harga Pokok Penjualan (HPP)</TableCell><TableCell className="text-right text-muted-foreground">({formatCurrency(totalCOGS)})</TableCell></TableRow>
-                <TableRow className="border-t-2"><TableCell className="font-semibold">Laba Kotor</TableCell><TableCell className="text-right font-bold text-green-600">{formatCurrency(grossProfit)}</TableCell></TableRow>
-                <TableRow><TableCell colSpan={2} className="font-medium pt-4">Pengeluaran Operasional</TableCell></TableRow>
-                {expenseBreakdown.map((e, i) => (
-                  <TableRow key={i}><TableCell className="pl-8 text-muted-foreground">{e.name}</TableCell><TableCell className="text-right text-muted-foreground">({formatCurrency(e.amount)})</TableCell></TableRow>
+                <TableRow><TableCell className="text-muted-foreground">Harga Pokok Penjualan (HPP)</TableCell><TableCell className="text-right text-muted-foreground">{formatCurrency(totalCOGS)}</TableCell></TableRow>
+                <TableRow className="bg-muted/50"><TableCell className="font-semibold">Laba Kotor</TableCell><TableCell className="text-right font-bold text-green-600">{formatCurrency(grossProfit)}</TableCell></TableRow>
+                {expenseBreakdown.map(e => (
+                  <TableRow key={e.name}><TableCell className="text-muted-foreground pl-8">{e.name}</TableCell><TableCell className="text-right text-red-600">-{formatCurrency(e.amount)}</TableCell></TableRow>
                 ))}
-                <TableRow className="border-t"><TableCell className="font-medium">Total Pengeluaran</TableCell><TableCell className="text-right font-semibold text-red-600">({formatCurrency(totalExpenses)})</TableCell></TableRow>
-                <TableRow className="border-t-2 bg-muted/30">
+                <TableRow><TableCell className="font-medium">Total Pengeluaran</TableCell><TableCell className="text-right font-semibold text-red-600">-{formatCurrency(totalExpenses)}</TableCell></TableRow>
+                <TableRow className={netProfit >= 0 ? 'bg-emerald-50' : 'bg-red-50'}>
                   <TableCell className="font-bold text-lg">LABA BERSIH</TableCell>
                   <TableCell className={`text-right font-bold text-lg ${netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatCurrency(netProfit)}</TableCell>
                 </TableRow>

@@ -1,25 +1,37 @@
 import { useState, useMemo } from 'react';
-import { sampleSales, sampleSaleDetails, getProduct, stores } from '@/data/sampleData';
+import { useAuth } from '@/contexts/AuthContext';
+import { sampleSales, sampleSaleDetails, getProduct } from '@/data/sampleData';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Search, Download, Eye, Wallet, CreditCard, QrCode, Building2 } from 'lucide-react';
+import { Search, Download, Eye, Wallet, CreditCard, QrCode } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Sale } from '@/types/pos';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DateFilter, DateFilterType, DateRange, getDateRangeFromFilter } from '@/components/backoffice/DateFilter';
 
 export default function Transactions() {
+  const { activeStoreId } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
-  const [selectedStore, setSelectedStore] = useState<string>('all');
+  const [dateFilterType, setDateFilterType] = useState<DateFilterType>('all');
+  const [dateRange, setDateRange] = useState<DateRange>(getDateRangeFromFilter('all'));
 
-  const filteredSales = sampleSales.filter((sale) => {
-    const matchesSearch = sale.invoice_number.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStore = selectedStore === 'all' || sale.store_id === Number(selectedStore);
-    return matchesSearch && matchesStore;
-  });
+  const handleDateFilterChange = (type: DateFilterType, range: DateRange) => {
+    setDateFilterType(type);
+    setDateRange(range);
+  };
+
+  const filteredSales = useMemo(() => {
+    let filtered = sampleSales.filter(s => s.store_id === activeStoreId);
+    if (dateRange.from) filtered = filtered.filter(s => s.date >= dateRange.from!);
+    if (dateRange.to) filtered = filtered.filter(s => s.date <= dateRange.to!);
+    if (searchQuery) {
+      filtered = filtered.filter(s => s.invoice_number.toLowerCase().includes(searchQuery.toLowerCase()));
+    }
+    return filtered.sort((a, b) => b.date.getTime() - a.date.getTime());
+  }, [activeStoreId, dateRange, searchQuery]);
 
   const getPaymentIcon = (method: string) => {
     switch (method) {
@@ -40,11 +52,6 @@ export default function Transactions() {
     }
   };
 
-  const getStoreName = (storeId: number) => {
-    const store = stores.find(s => s.id === storeId);
-    return store?.name || String(storeId);
-  };
-
   const selectedSaleDetails = useMemo(() => {
     if (!selectedSale) return [];
     return sampleSaleDetails
@@ -52,33 +59,41 @@ export default function Transactions() {
       .map(d => ({ ...d, product: getProduct(d.product_id) }));
   }, [selectedSale]);
 
+  const totalRevenue = filteredSales.reduce((sum, s) => sum + s.grand_total, 0);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Transaksi</h1>
-          <p className="text-muted-foreground">Riwayat semua transaksi penjualan</p>
+          <p className="text-muted-foreground">Riwayat transaksi penjualan</p>
         </div>
         <Button variant="outline" className="gap-2"><Download className="w-4 h-4" />Export</Button>
       </div>
 
+      {/* Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-card rounded-xl border border-border p-5">
+          <p className="text-sm text-muted-foreground">Total Transaksi</p>
+          <p className="text-2xl font-bold text-foreground mt-1">{filteredSales.length}</p>
+        </div>
+        <div className="bg-card rounded-xl border border-border p-5">
+          <p className="text-sm text-muted-foreground">Total Pendapatan</p>
+          <p className="text-2xl font-bold text-foreground mt-1">{formatCurrency(totalRevenue)}</p>
+        </div>
+        <div className="bg-card rounded-xl border border-border p-5">
+          <p className="text-sm text-muted-foreground">Rata-rata / Transaksi</p>
+          <p className="text-2xl font-bold text-foreground mt-1">{formatCurrency(filteredSales.length > 0 ? totalRevenue / filteredSales.length : 0)}</p>
+        </div>
+      </div>
+
+      {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input placeholder="Cari invoice..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
         </div>
-        <Select value={selectedStore} onValueChange={setSelectedStore}>
-          <SelectTrigger className="w-full sm:w-[250px]">
-            <Building2 className="w-4 h-4 mr-2" />
-            <SelectValue placeholder="Pilih Toko" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Semua Toko</SelectItem>
-            {stores.map((store) => (
-              <SelectItem key={store.id} value={String(store.id)}>{store.name}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <DateFilter value={dateFilterType} dateRange={dateRange} onChange={handleDateFilterChange} />
       </div>
 
       <div className="bg-card rounded-xl border border-border overflow-hidden">
@@ -86,9 +101,9 @@ export default function Transactions() {
           <TableHeader>
             <TableRow>
               <TableHead>Invoice</TableHead>
-              <TableHead>Toko</TableHead>
               <TableHead>Tanggal</TableHead>
               <TableHead>Pembayaran</TableHead>
+              <TableHead>Status</TableHead>
               <TableHead className="text-right">Total</TableHead>
               <TableHead className="text-right">Aksi</TableHead>
             </TableRow>
@@ -96,18 +111,20 @@ export default function Transactions() {
           <TableBody>
             {filteredSales.map((sale) => (
               <TableRow key={sale.id}>
-                <TableCell className="font-medium">{sale.invoice_number}</TableCell>
-                <TableCell>
-                  <span className="text-sm text-muted-foreground">
-                    {getStoreName(sale.store_id).split(' - ')[1] || getStoreName(sale.store_id)}
-                  </span>
-                </TableCell>
+                <TableCell className="font-medium font-mono">{sale.invoice_number}</TableCell>
                 <TableCell className="text-muted-foreground">{formatDate(sale.date)}</TableCell>
                 <TableCell>
                   <Badge variant="outline" className="gap-1">
                     {getPaymentIcon(sale.payment_method)}
                     {getPaymentLabel(sale.payment_method)}
                   </Badge>
+                </TableCell>
+                <TableCell>
+                  {sale.payment_status === 'paid' ? (
+                    <Badge variant="default" className="bg-green-100 text-green-700 hover:bg-green-100">Lunas</Badge>
+                  ) : (
+                    <Badge variant="secondary" className="bg-orange-100 text-orange-700 hover:bg-orange-100">Utang</Badge>
+                  )}
                 </TableCell>
                 <TableCell className="text-right font-semibold">{formatCurrency(sale.grand_total)}</TableCell>
                 <TableCell className="text-right">
@@ -141,12 +158,12 @@ export default function Transactions() {
                   <p className="font-medium">{formatDate(selectedSale.date)}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Toko</p>
-                  <p className="font-medium">{getStoreName(selectedSale.store_id)}</p>
-                </div>
-                <div>
                   <p className="text-muted-foreground">Metode Pembayaran</p>
                   <p className="font-medium">{getPaymentLabel(selectedSale.payment_method)}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Status</p>
+                  <p className="font-medium">{selectedSale.payment_status === 'paid' ? 'Lunas' : 'Utang'}</p>
                 </div>
               </div>
 
