@@ -1,11 +1,12 @@
 import { useState, useMemo } from 'react';
-import { sampleExpenses, expenseCategories, stores } from '@/data/sampleData';
+import { useAuth } from '@/contexts/AuthContext';
+import { sampleExpenses, expenseCategories } from '@/data/sampleData';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Search, Building2, Wallet, TrendingDown, Trash2, Receipt } from 'lucide-react';
+import { Plus, Search, Wallet, TrendingDown, Trash2, Receipt } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
@@ -21,14 +22,13 @@ const COLORS = [
 ];
 
 export default function Expenses() {
+  const { activeStoreId } = useAuth();
   const [expenses, setExpenses] = useState<Expense[]>(sampleExpenses);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedStore, setSelectedStore] = useState<string>('all');
   const [dateFilterType, setDateFilterType] = useState<DateFilterType>('all');
   const [dateRange, setDateRange] = useState<DateRange>(getDateRangeFromFilter('all'));
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
-  const [formStore, setFormStore] = useState<string>('1');
   const [formCategory, setFormCategory] = useState<string>('1');
   const [formAmount, setFormAmount] = useState('');
   const [formTitle, setFormTitle] = useState('');
@@ -41,10 +41,7 @@ export default function Expenses() {
   };
 
   const filteredExpenses = useMemo(() => {
-    let filtered = expenses;
-    if (selectedStore !== 'all') {
-      filtered = filtered.filter((e) => e.store_id === Number(selectedStore));
-    }
+    let filtered = expenses.filter(e => e.store_id === activeStoreId);
     if (dateRange.from) filtered = filtered.filter((e) => e.date >= dateRange.from!);
     if (dateRange.to) filtered = filtered.filter((e) => e.date <= dateRange.to!);
     if (searchQuery) {
@@ -54,7 +51,7 @@ export default function Expenses() {
       );
     }
     return filtered.sort((a, b) => b.date.getTime() - a.date.getTime());
-  }, [expenses, selectedStore, dateRange, searchQuery]);
+  }, [expenses, activeStoreId, dateRange, searchQuery]);
 
   const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
 
@@ -72,11 +69,6 @@ export default function Expenses() {
     return expenseCategories.find((c) => c.id === categoryId)?.name || String(categoryId);
   };
 
-  const getStoreName = (storeId: number) => {
-    const store = stores.find((s) => s.id === storeId);
-    return store?.name.split(' - ')[1] || store?.name || String(storeId);
-  };
-
   const handleAddExpense = () => {
     if (!formAmount || !formTitle) {
       toast.error('Isi semua field yang wajib');
@@ -84,7 +76,7 @@ export default function Expenses() {
     }
     const newExpense: Expense = {
       id: Date.now(),
-      store_id: Number(formStore),
+      store_id: activeStoreId,
       user_id: 1,
       category_id: Number(formCategory),
       title: formTitle,
@@ -114,23 +106,7 @@ export default function Expenses() {
           <h1 className="text-2xl font-bold text-foreground">Manajemen Pengeluaran</h1>
           <p className="text-muted-foreground">Catat dan pantau biaya operasional toko</p>
         </div>
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-          <DateFilter value={dateFilterType} dateRange={dateRange} onChange={handleDateFilterChange} />
-          <Select value={selectedStore} onValueChange={setSelectedStore}>
-            <SelectTrigger className="w-[220px]">
-              <Building2 className="w-4 h-4 mr-2" />
-              <SelectValue placeholder="Pilih Toko" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Semua Toko</SelectItem>
-              {stores.map((store) => (
-                <SelectItem key={store.id} value={String(store.id)}>
-                  {store.name.replace('Minimarket Berkah - ', '')}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <DateFilter value={dateFilterType} dateRange={dateRange} onChange={handleDateFilterChange} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -208,25 +184,14 @@ export default function Expenses() {
               <DialogContent>
                 <DialogHeader><DialogTitle>Tambah Pengeluaran Baru</DialogTitle></DialogHeader>
                 <div className="space-y-4 py-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label>Toko</Label>
-                      <Select value={formStore} onValueChange={setFormStore}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {stores.map((store) => (<SelectItem key={store.id} value={String(store.id)}>{store.name.split(' - ')[1] || store.name}</SelectItem>))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Kategori</Label>
-                      <Select value={formCategory} onValueChange={setFormCategory}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          {expenseCategories.map((cat) => (<SelectItem key={cat.id} value={String(cat.id)}>{cat.name}</SelectItem>))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                  <div className="space-y-2">
+                    <Label>Kategori</Label>
+                    <Select value={formCategory} onValueChange={setFormCategory}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {expenseCategories.map((cat) => (<SelectItem key={cat.id} value={String(cat.id)}>{cat.name}</SelectItem>))}
+                      </SelectContent>
+                    </Select>
                   </div>
                   <div className="space-y-2">
                     <Label>Judul</Label>
@@ -260,7 +225,6 @@ export default function Expenses() {
                   <TableHead>Tanggal</TableHead>
                   <TableHead>Judul</TableHead>
                   <TableHead>Kategori</TableHead>
-                  <TableHead>Toko</TableHead>
                   <TableHead className="text-right">Jumlah</TableHead>
                   <TableHead className="text-right">Aksi</TableHead>
                 </TableRow>
@@ -271,7 +235,6 @@ export default function Expenses() {
                     <TableCell className="text-muted-foreground">{formatDate(expense.date)}</TableCell>
                     <TableCell className="font-medium max-w-[200px] truncate">{expense.title}</TableCell>
                     <TableCell><Badge variant="secondary">{getCategoryName(expense.category_id)}</Badge></TableCell>
-                    <TableCell className="text-muted-foreground">{getStoreName(expense.store_id)}</TableCell>
                     <TableCell className="text-right font-semibold text-red-600">-{formatCurrency(expense.amount)}</TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => handleDeleteExpense(expense.id)}>
