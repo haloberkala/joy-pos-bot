@@ -55,7 +55,9 @@ export default function Login() {
       const success = await login(email, password);
       if (success) {
         toast.success(`Login sebagai ${roleName} berhasil!`);
-        navigate('/');
+        const storedUser = localStorage.getItem('demo_user');
+        const parsed = storedUser ? JSON.parse(storedUser) : null;
+        navigate(parsed?.role === 'owner' ? '/owner' : '/');
       }
     } finally {
       setIsLoading(false);

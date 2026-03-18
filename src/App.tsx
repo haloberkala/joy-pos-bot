@@ -17,6 +17,7 @@ import Debts from "./pages/backoffice/Debts";
 import Expenses from "./pages/backoffice/Expenses";
 import Reports from "./pages/backoffice/Reports";
 import Settings from "./pages/backoffice/Settings";
+import OwnerPortal from "./pages/OwnerPortal";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />
+            <Route path="/owner" element={<ProtectedRoute allowedRoles={['owner']}><OwnerPortal /></ProtectedRoute>} />
             <Route path="/" element={<ProtectedRoute allowedRoles={['owner', 'admin', 'cashier']}><POS /></ProtectedRoute>} />
             <Route path="/backoffice" element={<ProtectedRoute allowedRoles={['owner', 'admin']}><BackofficeLayout /></ProtectedRoute>}>
               <Route index element={<Dashboard />} />
