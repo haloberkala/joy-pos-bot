@@ -78,6 +78,11 @@ export function Sidebar() {
       </nav>
 
       <div className="p-4 border-t border-border space-y-2">
+        {user?.role === 'owner' && (
+          <NavLink to="/owner" className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 transition-colors">
+            <Building2 className="w-5 h-5" /><span className="font-medium">Portal Owner</span>
+          </NavLink>
+        )}
         <NavLink to="/" className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
           <ChevronLeft className="w-5 h-5" /><span className="font-medium">Kembali ke POS</span>
         </NavLink>
