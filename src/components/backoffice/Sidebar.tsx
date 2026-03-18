@@ -3,11 +3,10 @@ import { useAuth, canAccessMenu } from '@/contexts/AuthContext';
 import { stores } from '@/data/sampleData';
 import {
   LayoutDashboard, Package, Receipt, Settings, Store, ChevronLeft, LogOut,
-  ShieldCheck, UserCog, User, Wallet, FileBarChart, ShoppingCart, Building2, AlertTriangle,
+  ShieldCheck, UserCog, User, Wallet, FileBarChart, ShoppingCart, Building2, AlertTriangle, Truck,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface NavItem {
   to: string;
@@ -19,18 +18,18 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { to: '/backoffice', icon: LayoutDashboard, label: 'Dashboard', end: true, menuKey: 'dashboard' },
-  { to: '/backoffice/products', icon: Package, label: 'Produk', menuKey: 'products' },
-  { to: '/backoffice/stock', icon: Package, label: 'Stok', menuKey: 'stock' },
+  { to: '/backoffice/products', icon: Package, label: 'Produk & Stok', menuKey: 'products' },
   { to: '/backoffice/purchases', icon: ShoppingCart, label: 'Pembelian', menuKey: 'purchases' },
   { to: '/backoffice/transactions', icon: Receipt, label: 'Transaksi', menuKey: 'transactions' },
   { to: '/backoffice/debts', icon: AlertTriangle, label: 'Utang', menuKey: 'transactions' },
+  { to: '/backoffice/shipping', icon: Truck, label: 'Pengiriman', menuKey: 'transactions' },
   { to: '/backoffice/expenses', icon: Wallet, label: 'Pengeluaran', menuKey: 'expenses' },
   { to: '/backoffice/reports', icon: FileBarChart, label: 'Laporan', menuKey: 'reports' },
   { to: '/backoffice/settings', icon: Settings, label: 'Pengaturan', menuKey: 'settings' },
 ];
 
 export function Sidebar() {
-  const { user, logout, activeStoreId, setActiveStoreId, accessibleStoreIds, canSwitchStore } = useAuth();
+  const { user, logout, activeStoreId } = useAuth();
   const navigate = useNavigate();
 
   const handleLogout = () => { logout(); navigate('/login'); toast.success('Logout berhasil'); };
@@ -51,15 +50,12 @@ export function Sidebar() {
         </div>
       </div>
 
+      {/* Active Store Display */}
       <div className="p-4 border-b border-border">
-        {canSwitchStore ? (
-          <Select value={String(activeStoreId)} onValueChange={(v) => setActiveStoreId(Number(v))}>
-            <SelectTrigger className="w-full"><Building2 className="w-4 h-4 mr-2" /><SelectValue /></SelectTrigger>
-            <SelectContent>{stores.map(s => <SelectItem key={s.id} value={String(s.id)}>{s.name}</SelectItem>)}</SelectContent>
-          </Select>
-        ) : (
-          <div className="flex items-center gap-2 px-3 py-2 bg-muted rounded-lg"><Building2 className="w-4 h-4 text-muted-foreground" /><span className="text-sm font-medium truncate">{activeStore?.name}</span></div>
-        )}
+        <div className="flex items-center gap-2 px-3 py-2 bg-muted rounded-lg">
+          <Building2 className="w-4 h-4 text-muted-foreground" />
+          <span className="text-sm font-medium truncate">{activeStore?.name}</span>
+        </div>
       </div>
 
       <div className="p-4 border-b border-border">
@@ -79,11 +75,11 @@ export function Sidebar() {
 
       <div className="p-4 border-t border-border space-y-2">
         {user?.role === 'owner' && (
-          <NavLink to="/owner" className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 transition-colors">
+          <NavLink to="/owner" className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
             <Building2 className="w-5 h-5" /><span className="font-medium">Portal Owner</span>
           </NavLink>
         )}
-        <NavLink to="/" className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+        <NavLink to="/" className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-accent text-accent-foreground hover:bg-accent/80 transition-colors">
           <ChevronLeft className="w-5 h-5" /><span className="font-medium">Kembali ke POS</span>
         </NavLink>
         <button onClick={handleLogout} className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-destructive hover:bg-destructive/10 transition-colors">

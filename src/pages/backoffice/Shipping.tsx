@@ -1,0 +1,410 @@
+import { useState, useMemo } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { sampleSales, customers, getCustomersForStore } from '@/data/sampleData';
+import { formatCurrency, formatDate } from '@/lib/format';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+  Plus, Search, Eye, Truck, MapPin, Phone, User, Package, Clock, CheckCircle, XCircle,
+} from 'lucide-react';
+import { toast } from 'sonner';
+
+type ShippingStatus = 'pending' | 'shipped' | 'delivered' | 'cancelled';
+
+interface Shipment {
+  id: number;
+  store_id: number;
+  sale_id: number | null;
+  invoice_number: string;
+  customer_id: number;
+  recipient_name: string;
+  recipient_phone: string;
+  recipient_address: string;
+  note?: string;
+  shipping_cost: number;
+  status: ShippingStatus;
+  created_at: Date;
+  updated_at: Date;
+}
+
+// Sample shipments
+const initialShipments: Shipment[] = [
+  {
+    id: 1, store_id: 1, sale_id: 1, invoice_number: 'INV-20240115-001',
+    customer_id: 1, recipient_name: 'Pak Joko Kontraktor', recipient_phone: '08123456789',
+    recipient_address: 'Jl. Mangga No. 10, Banjarmasin', note: 'Antar pagi sebelum jam 10',
+    shipping_cost: 50000, status: 'delivered',
+    created_at: new Date('2024-01-15'), updated_at: new Date('2024-01-16'),
+  },
+  {
+    id: 2, store_id: 1, sale_id: 4, invoice_number: 'INV-20240116-001',
+    customer_id: 1, recipient_name: 'Pak Joko Kontraktor', recipient_phone: '08123456789',
+    recipient_address: 'Proyek Jl. Ahmad Yani KM 5, Banjarmasin', note: 'Bawa ke lokasi proyek',
+    shipping_cost: 75000, status: 'shipped',
+    created_at: new Date('2024-01-16'), updated_at: new Date('2024-01-16'),
+  },
+  {
+    id: 3, store_id: 2, sale_id: 3, invoice_number: 'INV-20240115-003',
+    customer_id: 3, recipient_name: 'Budi Santoso', recipient_phone: '08111222333',
+    recipient_address: 'Jl. Rambutan No. 5, Banjarmasin',
+    shipping_cost: 25000, status: 'pending',
+    created_at: new Date('2024-01-15'), updated_at: new Date('2024-01-15'),
+  },
+];
+
+const statusConfig: Record<ShippingStatus, { label: string; icon: React.ElementType; className: string }> = {
+  pending: { label: 'Menunggu', icon: Clock, className: 'bg-yellow-100 text-yellow-700' },
+  shipped: { label: 'Dikirim', icon: Truck, className: 'bg-blue-100 text-blue-700' },
+  delivered: { label: 'Sampai', icon: CheckCircle, className: 'bg-green-100 text-green-700' },
+  cancelled: { label: 'Dibatalkan', icon: XCircle, className: 'bg-red-100 text-red-700' },
+};
+
+export default function Shipping() {
+  const { activeStoreId } = useAuth();
+  const [shipments, setShipments] = useState<Shipment[]>(initialShipments);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [viewShipment, setViewShipment] = useState<Shipment | null>(null);
+
+  // Form state
+  const [formCustomerId, setFormCustomerId] = useState('');
+  const [formRecipientName, setFormRecipientName] = useState('');
+  const [formRecipientPhone, setFormRecipientPhone] = useState('');
+  const [formRecipientAddress, setFormRecipientAddress] = useState('');
+  const [formShippingCost, setFormShippingCost] = useState('');
+  const [formNote, setFormNote] = useState('');
+  const [formInvoice, setFormInvoice] = useState('');
+
+  const storeCustomers = useMemo(() => getCustomersForStore(activeStoreId), [activeStoreId]);
+
+  const storeShipments = useMemo(() => {
+    let filtered = shipments.filter(s => s.store_id === activeStoreId);
+    if (filterStatus !== 'all') filtered = filtered.filter(s => s.status === filterStatus);
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter(s =>
+        s.invoice_number.toLowerCase().includes(q) ||
+        s.recipient_name.toLowerCase().includes(q) ||
+        s.recipient_phone.includes(q)
+      );
+    }
+    return filtered.sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
+  }, [shipments, activeStoreId, filterStatus, searchQuery]);
+
+  const stats = useMemo(() => {
+    const all = shipments.filter(s => s.store_id === activeStoreId);
+    return {
+      total: all.length,
+      pending: all.filter(s => s.status === 'pending').length,
+      shipped: all.filter(s => s.status === 'shipped').length,
+      delivered: all.filter(s => s.status === 'delivered').length,
+    };
+  }, [shipments, activeStoreId]);
+
+  const handleCustomerSelect = (customerId: string) => {
+    setFormCustomerId(customerId);
+    const customer = customers.find(c => c.id === Number(customerId));
+    if (customer) {
+      setFormRecipientName(customer.name);
+      setFormRecipientPhone(customer.phone);
+      setFormRecipientAddress(customer.address || '');
+    }
+  };
+
+  const handleAddShipment = () => {
+    if (!formRecipientName || !formRecipientPhone || !formRecipientAddress) {
+      toast.error('Nama, telepon, dan alamat penerima wajib diisi');
+      return;
+    }
+    const newShipment: Shipment = {
+      id: Date.now(),
+      store_id: activeStoreId,
+      sale_id: null,
+      invoice_number: formInvoice || `SHP-${Date.now().toString().slice(-6)}`,
+      customer_id: Number(formCustomerId) || 0,
+      recipient_name: formRecipientName,
+      recipient_phone: formRecipientPhone,
+      recipient_address: formRecipientAddress,
+      note: formNote || undefined,
+      shipping_cost: parseFloat(formShippingCost) || 0,
+      status: 'pending',
+      created_at: new Date(),
+      updated_at: new Date(),
+    };
+    setShipments(prev => [newShipment, ...prev]);
+    setIsAddOpen(false);
+    resetForm();
+    toast.success('Pengiriman berhasil ditambahkan');
+  };
+
+  const resetForm = () => {
+    setFormCustomerId('');
+    setFormRecipientName('');
+    setFormRecipientPhone('');
+    setFormRecipientAddress('');
+    setFormShippingCost('');
+    setFormNote('');
+    setFormInvoice('');
+  };
+
+  const updateStatus = (id: number, status: ShippingStatus) => {
+    setShipments(prev => prev.map(s =>
+      s.id === id ? { ...s, status, updated_at: new Date() } : s
+    ));
+    toast.success(`Status diperbarui ke "${statusConfig[status].label}"`);
+    setViewShipment(null);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Pengiriman Barang</h1>
+          <p className="text-muted-foreground">Kelola pengiriman barang ke pelanggan</p>
+        </div>
+        <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+          <DialogTrigger asChild>
+            <Button className="gap-2"><Plus className="w-4 h-4" />Tambah Pengiriman</Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-lg">
+            <DialogHeader><DialogTitle>Tambah Pengiriman Baru</DialogTitle></DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Pilih Pelanggan (opsional)</Label>
+                <Select value={formCustomerId} onValueChange={handleCustomerSelect}>
+                  <SelectTrigger><SelectValue placeholder="Pilih pelanggan..." /></SelectTrigger>
+                  <SelectContent>
+                    {storeCustomers.map(c => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        {c.name} - {c.phone}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label>No. Invoice / Referensi</Label>
+                <Input value={formInvoice} onChange={e => setFormInvoice(e.target.value)} placeholder="INV-XXXXXX (opsional)" />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Nama Penerima *</Label>
+                  <Input value={formRecipientName} onChange={e => setFormRecipientName(e.target.value)} placeholder="Nama penerima" />
+                </div>
+                <div className="space-y-2">
+                  <Label>Telepon Penerima *</Label>
+                  <Input value={formRecipientPhone} onChange={e => setFormRecipientPhone(e.target.value)} placeholder="08xxxxxxxxxx" />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Alamat Pengiriman *</Label>
+                <Textarea value={formRecipientAddress} onChange={e => setFormRecipientAddress(e.target.value)} placeholder="Alamat lengkap tujuan pengiriman" />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Biaya Pengiriman (Rp)</Label>
+                <Input type="number" value={formShippingCost} onChange={e => setFormShippingCost(e.target.value)} placeholder="0" />
+              </div>
+
+              <div className="space-y-2">
+                <Label>Catatan (opsional)</Label>
+                <Input value={formNote} onChange={e => setFormNote(e.target.value)} placeholder="Catatan pengiriman" />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-4">
+                <Button variant="outline" onClick={() => { setIsAddOpen(false); resetForm(); }}>Batal</Button>
+                <Button onClick={handleAddShipment}>Simpan Pengiriman</Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="bg-card rounded-xl border border-border p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center"><Package className="w-5 h-5 text-blue-600" /></div>
+            <div><p className="text-sm text-muted-foreground">Total</p><p className="text-xl font-bold">{stats.total}</p></div>
+          </div>
+        </div>
+        <div className="bg-card rounded-xl border border-border p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-yellow-100 flex items-center justify-center"><Clock className="w-5 h-5 text-yellow-600" /></div>
+            <div><p className="text-sm text-muted-foreground">Menunggu</p><p className="text-xl font-bold">{stats.pending}</p></div>
+          </div>
+        </div>
+        <div className="bg-card rounded-xl border border-border p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center"><Truck className="w-5 h-5 text-blue-600" /></div>
+            <div><p className="text-sm text-muted-foreground">Dikirim</p><p className="text-xl font-bold">{stats.shipped}</p></div>
+          </div>
+        </div>
+        <div className="bg-card rounded-xl border border-border p-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center"><CheckCircle className="w-5 h-5 text-green-600" /></div>
+            <div><p className="text-sm text-muted-foreground">Sampai</p><p className="text-xl font-bold">{stats.delivered}</p></div>
+          </div>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input placeholder="Cari invoice atau penerima..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-10" />
+        </div>
+        <div className="flex gap-2">
+          {['all', 'pending', 'shipped', 'delivered', 'cancelled'].map(s => (
+            <Button key={s} variant={filterStatus === s ? 'default' : 'outline'} size="sm" onClick={() => setFilterStatus(s)}>
+              {s === 'all' ? 'Semua' : statusConfig[s as ShippingStatus].label}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      {/* Table */}
+      <div className="bg-card rounded-xl border border-border overflow-hidden">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Invoice</TableHead>
+              <TableHead>Penerima</TableHead>
+              <TableHead>Alamat</TableHead>
+              <TableHead className="text-right">Ongkir</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Tanggal</TableHead>
+              <TableHead className="text-right">Aksi</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {storeShipments.map(shipment => {
+              const config = statusConfig[shipment.status];
+              const StatusIcon = config.icon;
+              return (
+                <TableRow key={shipment.id}>
+                  <TableCell className="font-mono font-medium">{shipment.invoice_number}</TableCell>
+                  <TableCell>
+                    <div>
+                      <span className="font-medium">{shipment.recipient_name}</span>
+                      <div className="text-xs text-muted-foreground">{shipment.recipient_phone}</div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="max-w-[200px] truncate text-muted-foreground">{shipment.recipient_address}</TableCell>
+                  <TableCell className="text-right font-medium">{formatCurrency(shipment.shipping_cost)}</TableCell>
+                  <TableCell>
+                    <Badge variant="secondary" className={config.className}>
+                      <StatusIcon className="w-3.5 h-3.5 mr-1" />
+                      {config.label}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">{formatDate(shipment.created_at)}</TableCell>
+                  <TableCell className="text-right">
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setViewShipment(shipment)}>
+                      <Eye className="w-4 h-4" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+            {storeShipments.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">Tidak ada data pengiriman</TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+
+      {/* Detail Dialog */}
+      <Dialog open={!!viewShipment} onOpenChange={() => setViewShipment(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>Detail Pengiriman</DialogTitle></DialogHeader>
+          {viewShipment && (() => {
+            const config = statusConfig[viewShipment.status];
+            const StatusIcon = config.icon;
+            return (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className={`${config.className} text-base px-3 py-1`}>
+                    <StatusIcon className="w-4 h-4 mr-1.5" />
+                    {config.label}
+                  </Badge>
+                  <span className="font-mono text-muted-foreground">{viewShipment.invoice_number}</span>
+                </div>
+
+                <div className="bg-muted/50 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <User className="w-4 h-4 text-muted-foreground" />
+                    <span className="font-medium">{viewShipment.recipient_name}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Phone className="w-4 h-4 text-muted-foreground" />
+                    <span>{viewShipment.recipient_phone}</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <MapPin className="w-4 h-4 text-muted-foreground mt-0.5" />
+                    <span>{viewShipment.recipient_address}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Biaya Pengiriman</span>
+                    <p className="font-bold text-lg">{formatCurrency(viewShipment.shipping_cost)}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground">Tanggal</span>
+                    <p className="font-medium">{formatDate(viewShipment.created_at)}</p>
+                  </div>
+                </div>
+
+                {viewShipment.note && (
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Catatan:</span>
+                    <p className="font-medium">{viewShipment.note}</p>
+                  </div>
+                )}
+
+                {/* Status actions */}
+                <div className="border-t pt-4">
+                  <Label className="mb-2 block">Ubah Status</Label>
+                  <div className="flex gap-2 flex-wrap">
+                    {viewShipment.status === 'pending' && (
+                      <>
+                        <Button size="sm" onClick={() => updateStatus(viewShipment.id, 'shipped')} className="gap-1">
+                          <Truck className="w-3.5 h-3.5" /> Kirim
+                        </Button>
+                        <Button size="sm" variant="destructive" onClick={() => updateStatus(viewShipment.id, 'cancelled')} className="gap-1">
+                          <XCircle className="w-3.5 h-3.5" /> Batalkan
+                        </Button>
+                      </>
+                    )}
+                    {viewShipment.status === 'shipped' && (
+                      <Button size="sm" onClick={() => updateStatus(viewShipment.id, 'delivered')} className="gap-1">
+                        <CheckCircle className="w-3.5 h-3.5" /> Sampai
+                      </Button>
+                    )}
+                    {(viewShipment.status === 'delivered' || viewShipment.status === 'cancelled') && (
+                      <p className="text-sm text-muted-foreground">Pengiriman telah selesai.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
