@@ -32,7 +32,10 @@ export default function Login() {
       
       if (success) {
         toast.success('Login berhasil!');
-        navigate('/');
+        // Owner goes to portal, others go to POS
+        const storedUser = localStorage.getItem('demo_user');
+        const parsed = storedUser ? JSON.parse(storedUser) : null;
+        navigate(parsed?.role === 'owner' ? '/owner' : '/');
       } else {
         toast.error('Email atau password salah');
       }
