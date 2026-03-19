@@ -6,7 +6,7 @@ import { ReceiptModal } from '@/components/pos/ReceiptModal';
 import { CustomerModal } from '@/components/pos/CustomerModal';
 import { getProductsForStore, stores, customers } from '@/data/sampleData';
 import { PaymentMethod, Sale, SaleDetail, Product, Customer, PriceMode } from '@/types/pos';
-import { Settings, LogOut, User, ShieldCheck, UserCog, ScanBarcode, Building2, Trash2, Search, ChevronDown } from 'lucide-react';
+import { Settings, LogOut, User, ShieldCheck, UserCog, ScanBarcode, Building2, Trash2, Search, ChevronDown, Truck } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { canAccessMenu } from '@/contexts/AuthContext';
