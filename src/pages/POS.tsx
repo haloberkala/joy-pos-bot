@@ -6,13 +6,15 @@ import { ReceiptModal } from '@/components/pos/ReceiptModal';
 import { CustomerModal } from '@/components/pos/CustomerModal';
 import { getProductsForStore, stores, customers } from '@/data/sampleData';
 import { PaymentMethod, Sale, SaleDetail, Product, Customer, PriceMode } from '@/types/pos';
-import { Settings, LogOut, User, ShieldCheck, UserCog, ScanBarcode, Building2, Trash2, Search, ChevronDown } from 'lucide-react';
+import { Settings, LogOut, User, ShieldCheck, UserCog, ScanBarcode, Building2, Trash2, Search, ChevronDown, Truck } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { canAccessMenu } from '@/contexts/AuthContext';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { ProductListPanel } from '@/components/pos/ProductListPanel';
+import { ShippingModal } from '@/components/pos/ShippingModal';
 
 export default function POS() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
@@ -26,6 +28,7 @@ export default function POS() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isDebt, setIsDebt] = useState(false);
   const [dueDate, setDueDate] = useState('');
+  const [showShipping, setShowShipping] = useState(false);
 
   const searchRef = useRef<HTMLInputElement>(null);
   const { user, logout, activeStoreId, setActiveStoreId, canSwitchStore, accessibleStoreIds } = useAuth();
@@ -225,6 +228,19 @@ export default function POS() {
         </div>
       </div>
 
+      {/* Product List Panel */}
+      <ProductListPanel
+        products={storeProducts}
+        onAddProduct={(product) => {
+          if (product.quantity > 0) {
+            addItem(product);
+            toast.success(`${product.name} ditambahkan`, { duration: 1000 });
+          } else {
+            toast.error(`${product.name} stok habis`);
+          }
+        }}
+      />
+
       {/* Main content - Spreadsheet table */}
       <div className="flex-1 overflow-hidden flex flex-col">
         <div className="flex-1 overflow-y-auto">
@@ -246,7 +262,7 @@ export default function POS() {
                   <td colSpan={7} className="text-center py-16 text-[hsl(var(--pos-muted-foreground))]">
                     <div className="text-5xl mb-3">📦</div>
                     <p className="text-xl font-bold">Belum ada barang</p>
-                    <p className="text-base mt-1">Ketik nama/scan barcode di atas, lalu tekan ENTER</p>
+                    <p className="text-base mt-1">Ketik nama/scan barcode di atas, atau klik barang dari daftar</p>
                   </td>
                 </tr>
               ) : (
@@ -361,6 +377,18 @@ export default function POS() {
 
             {/* Payment buttons */}
             <div className="flex items-center gap-2">
+              {/* Shipping button */}
+              <button
+                onClick={() => {
+                  if (items.length === 0) { toast.error('Keranjang kosong'); return; }
+                  setShowShipping(true);
+                }}
+                disabled={items.length === 0}
+                className="px-4 py-3 rounded-xl bg-[hsl(var(--pos-muted))] hover:bg-[hsl(var(--pos-border))] text-[hsl(var(--pos-foreground))] text-lg font-extrabold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+              >
+                <Truck className="w-5 h-5" /> KIRIM
+              </button>
+
               {isDebt ? (
                 <button
                   onClick={() => {
@@ -426,7 +454,14 @@ export default function POS() {
         />
       )}
 
-      {/* For debt, auto-confirm via effect */}
+      {/* Shipping Modal */}
+      <ShippingModal
+        isOpen={showShipping}
+        onClose={() => setShowShipping(false)}
+        items={items}
+        total={total}
+        customer={selectedCustomer}
+      />
 
       {/* Receipt Modal */}
       <ReceiptModal
