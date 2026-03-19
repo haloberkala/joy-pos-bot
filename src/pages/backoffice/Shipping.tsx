@@ -1,6 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { sampleSales, customers, getCustomersForStore } from '@/data/sampleData';
+import { getCustomersForStore } from '@/data/sampleData';
+import {
+  getShipmentsForStore, addShipment, updateShipmentStatus, handleCustomerSelectForShipping,
+  statusConfig, subscribeShipments,
+  type Shipment, type ShippingStatus,
+} from '@/data/shippingStore';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -15,59 +20,13 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-type ShippingStatus = 'pending' | 'shipped' | 'delivered' | 'cancelled';
-
-interface Shipment {
-  id: number;
-  store_id: number;
-  sale_id: number | null;
-  invoice_number: string;
-  customer_id: number;
-  recipient_name: string;
-  recipient_phone: string;
-  recipient_address: string;
-  note?: string;
-  shipping_cost: number;
-  status: ShippingStatus;
-  created_at: Date;
-  updated_at: Date;
-}
-
-// Sample shipments
-const initialShipments: Shipment[] = [
-  {
-    id: 1, store_id: 1, sale_id: 1, invoice_number: 'INV-20240115-001',
-    customer_id: 1, recipient_name: 'Pak Joko Kontraktor', recipient_phone: '08123456789',
-    recipient_address: 'Jl. Mangga No. 10, Banjarmasin', note: 'Antar pagi sebelum jam 10',
-    shipping_cost: 50000, status: 'delivered',
-    created_at: new Date('2024-01-15'), updated_at: new Date('2024-01-16'),
-  },
-  {
-    id: 2, store_id: 1, sale_id: 4, invoice_number: 'INV-20240116-001',
-    customer_id: 1, recipient_name: 'Pak Joko Kontraktor', recipient_phone: '08123456789',
-    recipient_address: 'Proyek Jl. Ahmad Yani KM 5, Banjarmasin', note: 'Bawa ke lokasi proyek',
-    shipping_cost: 75000, status: 'shipped',
-    created_at: new Date('2024-01-16'), updated_at: new Date('2024-01-16'),
-  },
-  {
-    id: 3, store_id: 2, sale_id: 3, invoice_number: 'INV-20240115-003',
-    customer_id: 3, recipient_name: 'Budi Santoso', recipient_phone: '08111222333',
-    recipient_address: 'Jl. Rambutan No. 5, Banjarmasin',
-    shipping_cost: 25000, status: 'pending',
-    created_at: new Date('2024-01-15'), updated_at: new Date('2024-01-15'),
-  },
-];
-
-const statusConfig: Record<ShippingStatus, { label: string; icon: React.ElementType; className: string }> = {
-  pending: { label: 'Menunggu', icon: Clock, className: 'bg-yellow-100 text-yellow-700' },
-  shipped: { label: 'Dikirim', icon: Truck, className: 'bg-blue-100 text-blue-700' },
-  delivered: { label: 'Sampai', icon: CheckCircle, className: 'bg-green-100 text-green-700' },
-  cancelled: { label: 'Dibatalkan', icon: XCircle, className: 'bg-red-100 text-red-700' },
+const statusIcons: Record<ShippingStatus, React.ElementType> = {
+  pending: Clock, shipped: Truck, delivered: CheckCircle, cancelled: XCircle,
 };
 
 export default function Shipping() {
   const { activeStoreId } = useAuth();
-  const [shipments, setShipments] = useState<Shipment[]>(initialShipments);
+  const [, setTick] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -82,10 +41,15 @@ export default function Shipping() {
   const [formNote, setFormNote] = useState('');
   const [formInvoice, setFormInvoice] = useState('');
 
+  // Subscribe to shared shipment store
+  useEffect(() => {
+    return subscribeShipments(() => setTick(t => t + 1));
+  }, []);
+
   const storeCustomers = useMemo(() => getCustomersForStore(activeStoreId), [activeStoreId]);
 
   const storeShipments = useMemo(() => {
-    let filtered = shipments.filter(s => s.store_id === activeStoreId);
+    let filtered = getShipmentsForStore(activeStoreId);
     if (filterStatus !== 'all') filtered = filtered.filter(s => s.status === filterStatus);
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
@@ -96,25 +60,27 @@ export default function Shipping() {
       );
     }
     return filtered.sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
-  }, [shipments, activeStoreId, filterStatus, searchQuery]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStoreId, filterStatus, searchQuery, setTick]);
 
   const stats = useMemo(() => {
-    const all = shipments.filter(s => s.store_id === activeStoreId);
+    const all = getShipmentsForStore(activeStoreId);
     return {
       total: all.length,
       pending: all.filter(s => s.status === 'pending').length,
       shipped: all.filter(s => s.status === 'shipped').length,
       delivered: all.filter(s => s.status === 'delivered').length,
     };
-  }, [shipments, activeStoreId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStoreId, setTick]);
 
   const handleCustomerSelect = (customerId: string) => {
     setFormCustomerId(customerId);
-    const customer = customers.find(c => c.id === Number(customerId));
-    if (customer) {
-      setFormRecipientName(customer.name);
-      setFormRecipientPhone(customer.phone);
-      setFormRecipientAddress(customer.address || '');
+    const info = handleCustomerSelectForShipping(Number(customerId));
+    if (info) {
+      setFormRecipientName(info.name);
+      setFormRecipientPhone(info.phone);
+      setFormRecipientAddress(info.address);
     }
   };
 
@@ -123,7 +89,7 @@ export default function Shipping() {
       toast.error('Nama, telepon, dan alamat penerima wajib diisi');
       return;
     }
-    const newShipment: Shipment = {
+    addShipment({
       id: Date.now(),
       store_id: activeStoreId,
       sale_id: null,
@@ -137,8 +103,7 @@ export default function Shipping() {
       status: 'pending',
       created_at: new Date(),
       updated_at: new Date(),
-    };
-    setShipments(prev => [newShipment, ...prev]);
+    });
     setIsAddOpen(false);
     resetForm();
     toast.success('Pengiriman berhasil ditambahkan');
@@ -154,10 +119,8 @@ export default function Shipping() {
     setFormInvoice('');
   };
 
-  const updateStatus = (id: number, status: ShippingStatus) => {
-    setShipments(prev => prev.map(s =>
-      s.id === id ? { ...s, status, updated_at: new Date() } : s
-    ));
+  const handleUpdateStatus = (id: number, status: ShippingStatus) => {
+    updateShipmentStatus(id, status);
     toast.success(`Status diperbarui ke "${statusConfig[status].label}"`);
     setViewShipment(null);
   };
@@ -281,6 +244,7 @@ export default function Shipping() {
               <TableHead>Invoice</TableHead>
               <TableHead>Penerima</TableHead>
               <TableHead>Alamat</TableHead>
+              <TableHead>Barang</TableHead>
               <TableHead className="text-right">Ongkir</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Tanggal</TableHead>
@@ -290,7 +254,7 @@ export default function Shipping() {
           <TableBody>
             {storeShipments.map(shipment => {
               const config = statusConfig[shipment.status];
-              const StatusIcon = config.icon;
+              const StatusIcon = statusIcons[shipment.status];
               return (
                 <TableRow key={shipment.id}>
                   <TableCell className="font-mono font-medium">{shipment.invoice_number}</TableCell>
@@ -301,6 +265,7 @@ export default function Shipping() {
                     </div>
                   </TableCell>
                   <TableCell className="max-w-[200px] truncate text-muted-foreground">{shipment.recipient_address}</TableCell>
+                  <TableCell className="max-w-[180px] truncate text-xs text-muted-foreground">{shipment.items_description || '-'}</TableCell>
                   <TableCell className="text-right font-medium">{formatCurrency(shipment.shipping_cost)}</TableCell>
                   <TableCell>
                     <Badge variant="secondary" className={config.className}>
@@ -319,7 +284,7 @@ export default function Shipping() {
             })}
             {storeShipments.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">Tidak ada data pengiriman</TableCell>
+                <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">Tidak ada data pengiriman</TableCell>
               </TableRow>
             )}
           </TableBody>
@@ -332,7 +297,7 @@ export default function Shipping() {
           <DialogHeader><DialogTitle>Detail Pengiriman</DialogTitle></DialogHeader>
           {viewShipment && (() => {
             const config = statusConfig[viewShipment.status];
-            const StatusIcon = config.icon;
+            const StatusIcon = statusIcons[viewShipment.status];
             return (
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
@@ -358,6 +323,13 @@ export default function Shipping() {
                   </div>
                 </div>
 
+                {viewShipment.items_description && (
+                  <div className="text-sm">
+                    <span className="text-muted-foreground">Barang:</span>
+                    <p className="font-medium">{viewShipment.items_description}</p>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
                     <span className="text-muted-foreground">Biaya Pengiriman</span>
@@ -382,21 +354,21 @@ export default function Shipping() {
                   <div className="flex gap-2 flex-wrap">
                     {viewShipment.status === 'pending' && (
                       <>
-                        <Button size="sm" onClick={() => updateStatus(viewShipment.id, 'shipped')} className="gap-1">
+                        <Button size="sm" onClick={() => handleUpdateStatus(viewShipment.id, 'shipped')} className="gap-1">
                           <Truck className="w-3.5 h-3.5" /> Kirim
                         </Button>
-                        <Button size="sm" variant="destructive" onClick={() => updateStatus(viewShipment.id, 'cancelled')} className="gap-1">
+                        <Button size="sm" variant="destructive" onClick={() => handleUpdateStatus(viewShipment.id, 'cancelled')} className="gap-1">
                           <XCircle className="w-3.5 h-3.5" /> Batalkan
                         </Button>
                       </>
                     )}
                     {viewShipment.status === 'shipped' && (
-                      <Button size="sm" onClick={() => updateStatus(viewShipment.id, 'delivered')} className="gap-1">
+                      <Button size="sm" onClick={() => handleUpdateStatus(viewShipment.id, 'delivered')} className="gap-1 bg-green-600 hover:bg-green-700">
                         <CheckCircle className="w-3.5 h-3.5" /> Sampai
                       </Button>
                     )}
                     {(viewShipment.status === 'delivered' || viewShipment.status === 'cancelled') && (
-                      <p className="text-sm text-muted-foreground">Pengiriman telah selesai.</p>
+                      <p className="text-sm text-muted-foreground italic">Pengiriman sudah selesai</p>
                     )}
                   </div>
                 </div>
