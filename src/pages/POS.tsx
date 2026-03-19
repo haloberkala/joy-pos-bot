@@ -26,6 +26,7 @@ export default function POS() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isDebt, setIsDebt] = useState(false);
   const [dueDate, setDueDate] = useState('');
+  const [showShipping, setShowShipping] = useState(false);
 
   const searchRef = useRef<HTMLInputElement>(null);
   const { user, logout, activeStoreId, setActiveStoreId, canSwitchStore, accessibleStoreIds } = useAuth();
