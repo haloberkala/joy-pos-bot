@@ -13,6 +13,8 @@ import { canAccessMenu } from '@/contexts/AuthContext';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { ProductListPanel } from '@/components/pos/ProductListPanel';
+import { ShippingModal } from '@/components/pos/ShippingModal';
 
 export default function POS() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
