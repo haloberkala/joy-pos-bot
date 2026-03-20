@@ -10,9 +10,8 @@ export function useCart() {
       const existing = prev.find((item) => item.product.id === product.id);
       if (existing) {
         const newQty = existing.quantity + 1;
-        // Auto-switch to wholesale if qty >= threshold
-        const mode = priceMode || (newQty >= product.wholesale_min_qty ? 'wholesale' : existing.price_mode);
-        const price = mode === 'wholesale' ? product.selling_price_wholesale : product.selling_price_retail;
+        const mode = priceMode || getAutoMode(product, newQty, existing.price_mode);
+        const price = getPriceForMode(product, mode);
         return prev.map((item) =>
           item.product.id === product.id
             ? { ...item, quantity: newQty, price_mode: mode, price_per_unit: price }
@@ -20,7 +19,7 @@ export function useCart() {
         );
       }
       const mode = priceMode || globalPriceMode;
-      const price = mode === 'wholesale' ? product.selling_price_wholesale : product.selling_price_retail;
+      const price = getPriceForMode(product, mode);
       const cartItem: CartItem = {
         product,
         quantity: 1,
