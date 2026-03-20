@@ -282,19 +282,27 @@ export default function POS() {
                         <span>Eceran: {formatCurrency(item.product.selling_price_retail)}</span>
                         <span>•</span>
                         <span>Grosir: {formatCurrency(item.product.selling_price_wholesale)} (≥{item.product.wholesale_min_qty})</span>
+                        <span>•</span>
+                        <span>Spesial: {formatCurrency(item.product.selling_price_special)} (≥{item.product.special_min_qty})</span>
                       </div>
                     </td>
                     <td className="px-2 py-2.5 text-center border-r border-[hsl(var(--pos-border))]">
                       <button
-                        onClick={() => setPriceMode(item.product.id, item.price_mode === 'retail' ? 'wholesale' : 'retail')}
+                        onClick={() => {
+                          const modes: PriceMode[] = ['retail', 'wholesale', 'special'];
+                          const idx = modes.indexOf(item.price_mode);
+                          setPriceMode(item.product.id, modes[(idx + 1) % modes.length]);
+                        }}
                         className={cn(
                           'px-2 py-1 rounded-lg text-sm font-bold transition-colors w-full',
-                          item.price_mode === 'wholesale'
+                          item.price_mode === 'special'
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                            : item.price_mode === 'wholesale'
                             ? 'bg-blue-100 text-blue-800 border border-blue-300'
                             : 'bg-orange-100 text-orange-800 border border-orange-300'
                         )}
                       >
-                        {item.price_mode === 'wholesale' ? 'GROSIR' : 'ECER'}
+                        {item.price_mode === 'special' ? 'SPESIAL' : item.price_mode === 'wholesale' ? 'GROSIR' : 'ECER'}
                       </button>
                     </td>
                     <td className="px-3 py-2.5 text-right text-lg font-bold text-[hsl(var(--pos-foreground))] border-r border-[hsl(var(--pos-border))] tabular-nums">
