@@ -315,7 +315,7 @@ export default function Products() {
 
           {/* Products Table */}
           <div className="bg-card rounded-xl border border-border overflow-hidden">
-            <Table>
+             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Produk</TableHead>
@@ -324,9 +324,10 @@ export default function Products() {
                   <TableHead className="text-right">Modal</TableHead>
                   <TableHead className="text-right">Eceran</TableHead>
                   <TableHead className="text-right">Grosir</TableHead>
-                  <TableHead className="text-center">Min Grosir</TableHead>
+                  <TableHead className="text-right">Spesial</TableHead>
                   <TableHead className="text-right">Stok</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="text-center">QR</TableHead>
                   <TableHead className="text-right">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
@@ -351,9 +352,14 @@ export default function Products() {
                       <TableCell className="text-right text-muted-foreground">{formatCurrency(product.cost_price)}</TableCell>
                       <TableCell className="text-right font-medium">{formatCurrency(product.selling_price_retail)}</TableCell>
                       <TableCell className="text-right font-medium text-blue-600">{formatCurrency(product.selling_price_wholesale)}</TableCell>
-                      <TableCell className="text-center">≥{product.wholesale_min_qty}</TableCell>
+                      <TableCell className="text-right font-medium text-emerald-600">{formatCurrency(product.selling_price_special)}</TableCell>
                       <TableCell className="text-right font-medium">{product.quantity}</TableCell>
                       <TableCell><Badge variant={stockStatus.variant}>{stockStatus.label}</Badge></TableCell>
+                      <TableCell className="text-center">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setQrProduct(product)}>
+                          <QrCode className="w-4 h-4" />
+                        </Button>
+                      </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingProduct(product)}><Edit className="w-4 h-4" /></Button>
