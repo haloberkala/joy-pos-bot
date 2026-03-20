@@ -1,6 +1,18 @@
 import { useState, useCallback, useMemo } from 'react';
 import { CartItem, Product, PriceMode } from '@/types/pos';
 
+function getPriceForMode(product: Product, mode: PriceMode): number {
+  if (mode === 'special') return product.selling_price_special;
+  if (mode === 'wholesale') return product.selling_price_wholesale;
+  return product.selling_price_retail;
+}
+
+function getAutoMode(product: Product, qty: number, currentMode: PriceMode): PriceMode {
+  if (qty >= product.special_min_qty) return 'special';
+  if (qty >= product.wholesale_min_qty) return 'wholesale';
+  return currentMode === 'special' || currentMode === 'wholesale' ? 'retail' : currentMode;
+}
+
 export function useCart() {
   const [items, setItems] = useState<CartItem[]>([]);
   const [globalPriceMode, setGlobalPriceMode] = useState<PriceMode>('retail');
@@ -10,9 +22,8 @@ export function useCart() {
       const existing = prev.find((item) => item.product.id === product.id);
       if (existing) {
         const newQty = existing.quantity + 1;
-        // Auto-switch to wholesale if qty >= threshold
-        const mode = priceMode || (newQty >= product.wholesale_min_qty ? 'wholesale' : existing.price_mode);
-        const price = mode === 'wholesale' ? product.selling_price_wholesale : product.selling_price_retail;
+        const mode = priceMode || getAutoMode(product, newQty, existing.price_mode);
+        const price = getPriceForMode(product, mode);
         return prev.map((item) =>
           item.product.id === product.id
             ? { ...item, quantity: newQty, price_mode: mode, price_per_unit: price }
@@ -20,7 +31,7 @@ export function useCart() {
         );
       }
       const mode = priceMode || globalPriceMode;
-      const price = mode === 'wholesale' ? product.selling_price_wholesale : product.selling_price_retail;
+      const price = getPriceForMode(product, mode);
       const cartItem: CartItem = {
         product,
         quantity: 1,
@@ -42,9 +53,8 @@ export function useCart() {
       setItems((prev) =>
         prev.map((item) => {
           if (item.product.id !== productId) return item;
-          // Auto-switch pricing based on qty
-          const mode = quantity >= item.product.wholesale_min_qty ? 'wholesale' : 'retail';
-          const price = mode === 'wholesale' ? item.product.selling_price_wholesale : item.product.selling_price_retail;
+          const mode = getAutoMode(item.product, quantity, item.price_mode);
+          const price = getPriceForMode(item.product, mode);
           return { ...item, quantity, price_mode: mode, price_per_unit: price };
         })
       );
@@ -55,7 +65,7 @@ export function useCart() {
     setItems((prev) =>
       prev.map((item) => {
         if (item.product.id !== productId) return item;
-        const price = mode === 'wholesale' ? item.product.selling_price_wholesale : item.product.selling_price_retail;
+        const price = getPriceForMode(item.product, mode);
         return { ...item, price_mode: mode, price_per_unit: price };
       })
     );

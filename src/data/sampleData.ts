@@ -46,15 +46,19 @@ export const stores: Store[] = [
   },
 ];
 
-// Helper to create product with dual pricing
-function mkProduct(p: Omit<Product, 'selling_price_retail' | 'selling_price_wholesale' | 'wholesale_min_qty' | 'selling_price'> & {
+// Helper to create product with triple pricing
+function mkProduct(p: Omit<Product, 'selling_price_retail' | 'selling_price_wholesale' | 'selling_price_special' | 'wholesale_min_qty' | 'special_min_qty' | 'selling_price'> & {
   selling_price_retail: number;
   selling_price_wholesale: number;
+  selling_price_special?: number;
   wholesale_min_qty: number;
+  special_min_qty?: number;
 }): Product {
   return {
     ...p,
     selling_price: p.selling_price_retail, // backward compat
+    selling_price_special: p.selling_price_special ?? Math.round(p.selling_price_wholesale * 0.9),
+    special_min_qty: p.special_min_qty ?? Math.round(p.wholesale_min_qty * 2),
   };
 }
 

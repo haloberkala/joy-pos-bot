@@ -12,7 +12,7 @@ import Dashboard from "./pages/backoffice/Dashboard";
 import Products from "./pages/backoffice/Products";
 import Purchases from "./pages/backoffice/Purchases";
 import Transactions from "./pages/backoffice/Transactions";
-import Debts from "./pages/backoffice/Debts";
+
 import Expenses from "./pages/backoffice/Expenses";
 import Reports from "./pages/backoffice/Reports";
 import Settings from "./pages/backoffice/Settings";
@@ -38,7 +38,7 @@ const App = () => (
               <Route path="products" element={<Products />} />
               <Route path="purchases" element={<Purchases />} />
               <Route path="transactions" element={<Transactions />} />
-              <Route path="debts" element={<Debts />} />
+              
               <Route path="expenses" element={<Expenses />} />
               <Route path="shipping" element={<Shipping />} />
               <Route path="reports" element={<Reports />} />

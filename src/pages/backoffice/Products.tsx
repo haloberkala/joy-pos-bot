@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Search, Edit, Trash2, Barcode, Download, Upload, FileSpreadsheet, AlertCircle, CheckCircle, Package, ClipboardCheck, TrendingUp, TrendingDown, AlertTriangle, Eye } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Barcode, Download, Upload, FileSpreadsheet, AlertCircle, CheckCircle, Package, ClipboardCheck, TrendingUp, TrendingDown, AlertTriangle, Eye, QrCode } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
@@ -22,6 +22,7 @@ import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { StockOpnameDetail } from '@/components/backoffice/StockOpnameDetail';
+import { QRCodeSVG } from 'qrcode.react';
 
 export default function Products() {
   const { activeStoreId } = useAuth();
@@ -33,7 +34,74 @@ export default function Products() {
   const [importResults, setImportResults] = useState<{ success: number; errors: string[] } | null>(null);
   const [showOpnameDetail, setShowOpnameDetail] = useState(false);
   const [activeTab, setActiveTab] = useState('products');
+  const [qrProduct, setQrProduct] = useState<Product | null>(null);
+  const [showBulkQr, setShowBulkQr] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // QR download helpers
+  const downloadQr = (product: Product) => {
+    const svgEl = document.querySelector(`#qr-single-${product.id} svg`) as SVGElement;
+    if (!svgEl) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = 300; canvas.height = 400;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 300, 400);
+    const svgData = new XMLSerializer().serializeToString(svgEl);
+    const img = new Image();
+    img.onload = () => {
+      ctx.drawImage(img, 50, 20, 200, 200);
+      ctx.fillStyle = '#000'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(product.name.substring(0, 30), 150, 250);
+      ctx.font = '12px monospace';
+      ctx.fillText(product.code, 150, 275);
+      ctx.font = 'bold 14px sans-serif'; ctx.fillStyle = '#2563eb';
+      ctx.fillText(formatCurrency(product.selling_price_retail), 150, 300);
+      const link = document.createElement('a');
+      link.download = `qr-${product.code}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    };
+    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+  };
+
+  const downloadAllQr = () => {
+    const container = document.getElementById('bulk-qr-container');
+    if (!container) return;
+    // Use html2canvas-like approach: serialize each QR to a combined image
+    import('jspdf').then(({ jsPDF }) => {
+      const doc = new jsPDF('p', 'mm', 'a4');
+      const svgs = container.querySelectorAll('svg');
+      const products_list = filteredProducts;
+      let x = 10, y = 10;
+      const qrSize = 30;
+      const colWidth = 45;
+      const rowHeight = 50;
+
+      products_list.forEach((product, i) => {
+        if (y + rowHeight > 280) { doc.addPage(); y = 10; }
+        const svgEl = svgs[i];
+        if (svgEl) {
+          const svgData = new XMLSerializer().serializeToString(svgEl);
+          const canvas = document.createElement('canvas');
+          canvas.width = 200; canvas.height = 200;
+          const ctx = canvas.getContext('2d')!;
+          const imgEl = new Image();
+          imgEl.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+          // Sync approach using pre-rendered
+          doc.setFontSize(7);
+          doc.text(product.name.substring(0, 20), x + qrSize / 2, y + qrSize + 5, { align: 'center' });
+          doc.setFontSize(6);
+          doc.text(product.code, x + qrSize / 2, y + qrSize + 9, { align: 'center' });
+          doc.text(formatCurrency(product.selling_price_retail), x + qrSize / 2, y + qrSize + 13, { align: 'center' });
+        }
+        x += colWidth;
+        if (x + colWidth > 200) { x = 10; y += rowHeight; }
+      });
+
+      doc.save('qr-codes-produk.pdf');
+      toast.success('PDF QR Code berhasil di-download');
+    });
+  };
 
   const storeProducts = useMemo(() => getProductsForStore(activeStoreId), [activeStoreId]);
   const storeCategories = useMemo(() => getCategoriesForStore(activeStoreId), [activeStoreId]);
@@ -159,7 +227,9 @@ export default function Products() {
             selling_price: retailPrice,
             selling_price_retail: retailPrice,
             selling_price_wholesale: wholesalePrice,
+            selling_price_special: parseFloat(row['Harga Jual Spesial']) || Math.round(wholesalePrice * 0.9),
             wholesale_min_qty: wholesaleMinQty,
+            special_min_qty: parseInt(row['Min Qty Spesial']) || wholesaleMinQty * 2,
             is_active: true,
             created_at: new Date(),
             updated_at: new Date(),
@@ -200,6 +270,9 @@ export default function Products() {
           <p className="text-muted-foreground">Kelola produk, stok, harga, dan stock opname</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" className="gap-2" onClick={() => setShowBulkQr(true)}>
+            <QrCode className="w-4 h-4" /> QR Code
+          </Button>
           <Button variant="outline" className="gap-2" onClick={() => setShowImportDialog(true)}>
             <Upload className="w-4 h-4" /> Import Excel
           </Button>
@@ -226,6 +299,8 @@ export default function Products() {
                 <div className="space-y-2"><Label>Harga Jual Eceran</Label><Input type="number" placeholder="0" /></div>
                 <div className="space-y-2"><Label>Harga Jual Grosir</Label><Input type="number" placeholder="0" /></div>
                 <div className="space-y-2"><Label>Min Qty Grosir</Label><Input type="number" placeholder="10" /></div>
+                <div className="space-y-2"><Label>Harga Jual Spesial</Label><Input type="number" placeholder="0" /></div>
+                <div className="space-y-2"><Label>Min Qty Spesial</Label><Input type="number" placeholder="20" /></div>
                 <div className="space-y-2"><Label>Stok Minimum Alert</Label><Input type="number" placeholder="10" /></div>
                 <div className="col-span-2 flex justify-end gap-2 pt-4">
                   <Button variant="outline" onClick={() => setIsAddModalOpen(false)}>Batal</Button>
@@ -313,7 +388,7 @@ export default function Products() {
 
           {/* Products Table */}
           <div className="bg-card rounded-xl border border-border overflow-hidden">
-            <Table>
+             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Produk</TableHead>
@@ -322,9 +397,10 @@ export default function Products() {
                   <TableHead className="text-right">Modal</TableHead>
                   <TableHead className="text-right">Eceran</TableHead>
                   <TableHead className="text-right">Grosir</TableHead>
-                  <TableHead className="text-center">Min Grosir</TableHead>
+                  <TableHead className="text-right">Spesial</TableHead>
                   <TableHead className="text-right">Stok</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead className="text-center">QR</TableHead>
                   <TableHead className="text-right">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
@@ -349,9 +425,14 @@ export default function Products() {
                       <TableCell className="text-right text-muted-foreground">{formatCurrency(product.cost_price)}</TableCell>
                       <TableCell className="text-right font-medium">{formatCurrency(product.selling_price_retail)}</TableCell>
                       <TableCell className="text-right font-medium text-blue-600">{formatCurrency(product.selling_price_wholesale)}</TableCell>
-                      <TableCell className="text-center">≥{product.wholesale_min_qty}</TableCell>
+                      <TableCell className="text-right font-medium text-emerald-600">{formatCurrency(product.selling_price_special)}</TableCell>
                       <TableCell className="text-right font-medium">{product.quantity}</TableCell>
                       <TableCell><Badge variant={stockStatus.variant}>{stockStatus.label}</Badge></TableCell>
+                      <TableCell className="text-center">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setQrProduct(product)}>
+                          <QrCode className="w-4 h-4" />
+                        </Button>
+                      </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
                           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setEditingProduct(product)}><Edit className="w-4 h-4" /></Button>
@@ -502,6 +583,48 @@ export default function Products() {
                 )}
               </div>
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* QR Code Dialog */}
+      <Dialog open={!!qrProduct} onOpenChange={() => setQrProduct(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><QrCode className="w-5 h-5" /> QR Code Produk</DialogTitle></DialogHeader>
+          {qrProduct && (
+            <div className="flex flex-col items-center gap-4 py-4">
+              <div id={`qr-single-${qrProduct.id}`} className="bg-white p-4 rounded-xl border border-border">
+                <QRCodeSVG value={qrProduct.code} size={200} level="H" />
+                <p className="text-center text-sm font-bold mt-2">{qrProduct.name}</p>
+                <p className="text-center text-xs text-muted-foreground">{qrProduct.code}</p>
+                <p className="text-center text-sm font-semibold text-primary mt-1">{formatCurrency(qrProduct.selling_price_retail)}</p>
+              </div>
+              <Button className="gap-2 w-full" onClick={() => downloadQr(qrProduct)}>
+                <Download className="w-4 h-4" /> Download QR Code
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Download All QR Codes (hidden canvas) */}
+      <Dialog open={showBulkQr} onOpenChange={setShowBulkQr}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>QR Code Semua Produk ({filteredProducts.length})</DialogTitle></DialogHeader>
+          <div className="flex justify-end mb-4">
+            <Button className="gap-2" onClick={downloadAllQr}>
+              <Download className="w-4 h-4" /> Download Semua QR
+            </Button>
+          </div>
+          <div id="bulk-qr-container" className="grid grid-cols-3 sm:grid-cols-4 gap-4">
+            {filteredProducts.map(product => (
+              <div key={product.id} className="flex flex-col items-center bg-white p-3 rounded-lg border border-border">
+                <QRCodeSVG value={product.code} size={100} level="H" />
+                <p className="text-xs font-bold mt-2 text-center line-clamp-2">{product.name}</p>
+                <p className="text-[10px] text-muted-foreground">{product.code}</p>
+                <p className="text-xs font-semibold text-primary">{formatCurrency(product.selling_price_retail)}</p>
+              </div>
+            ))}
           </div>
         </DialogContent>
       </Dialog>
