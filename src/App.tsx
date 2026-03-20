@@ -12,7 +12,7 @@ import Dashboard from "./pages/backoffice/Dashboard";
 import Products from "./pages/backoffice/Products";
 import Purchases from "./pages/backoffice/Purchases";
 import Transactions from "./pages/backoffice/Transactions";
-import Debts from "./pages/backoffice/Debts";
+
 import Expenses from "./pages/backoffice/Expenses";
 import Reports from "./pages/backoffice/Reports";
 import Settings from "./pages/backoffice/Settings";
