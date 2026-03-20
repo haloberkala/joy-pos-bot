@@ -270,6 +270,9 @@ export default function Products() {
           <p className="text-muted-foreground">Kelola produk, stok, harga, dan stock opname</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" className="gap-2" onClick={() => setShowBulkQr(true)}>
+            <QrCode className="w-4 h-4" /> QR Code
+          </Button>
           <Button variant="outline" className="gap-2" onClick={() => setShowImportDialog(true)}>
             <Upload className="w-4 h-4" /> Import Excel
           </Button>
