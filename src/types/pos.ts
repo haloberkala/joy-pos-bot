@@ -74,7 +74,9 @@ export interface Product {
   selling_price: number; // backward compat alias for retail
   selling_price_retail: number;
   selling_price_wholesale: number;
+  selling_price_special: number;
   wholesale_min_qty: number; // qty threshold for wholesale price
+  special_min_qty: number; // qty threshold for special price
   is_active: boolean;
   created_at: Date;
   updated_at: Date;
