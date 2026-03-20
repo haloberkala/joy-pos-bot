@@ -35,7 +35,73 @@ export default function Products() {
   const [showOpnameDetail, setShowOpnameDetail] = useState(false);
   const [activeTab, setActiveTab] = useState('products');
   const [qrProduct, setQrProduct] = useState<Product | null>(null);
+  const [showBulkQr, setShowBulkQr] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // QR download helpers
+  const downloadQr = (product: Product) => {
+    const svgEl = document.querySelector(`#qr-single-${product.id} svg`) as SVGElement;
+    if (!svgEl) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = 300; canvas.height = 400;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 300, 400);
+    const svgData = new XMLSerializer().serializeToString(svgEl);
+    const img = new Image();
+    img.onload = () => {
+      ctx.drawImage(img, 50, 20, 200, 200);
+      ctx.fillStyle = '#000'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(product.name.substring(0, 30), 150, 250);
+      ctx.font = '12px monospace';
+      ctx.fillText(product.code, 150, 275);
+      ctx.font = 'bold 14px sans-serif'; ctx.fillStyle = '#2563eb';
+      ctx.fillText(formatCurrency(product.selling_price_retail), 150, 300);
+      const link = document.createElement('a');
+      link.download = `qr-${product.code}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    };
+    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+  };
+
+  const downloadAllQr = () => {
+    const container = document.getElementById('bulk-qr-container');
+    if (!container) return;
+    // Use html2canvas-like approach: serialize each QR to a combined image
+    import('jspdf').then(({ jsPDF }) => {
+      const doc = new jsPDF('p', 'mm', 'a4');
+      const svgs = container.querySelectorAll('svg');
+      const products_list = filteredProducts;
+      let x = 10, y = 10;
+      const qrSize = 30;
+      const colWidth = 45;
+      const rowHeight = 50;
+
+      products_list.forEach((product, i) => {
+        if (y + rowHeight > 280) { doc.addPage(); y = 10; }
+        const svgEl = svgs[i];
+        if (svgEl) {
+          const svgData = new XMLSerializer().serializeToString(svgEl);
+          const canvas = document.createElement('canvas');
+          canvas.width = 200; canvas.height = 200;
+          const ctx = canvas.getContext('2d')!;
+          const imgEl = new Image();
+          imgEl.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+          // Sync approach using pre-rendered
+          doc.setFontSize(7);
+          doc.text(product.name.substring(0, 20), x + qrSize / 2, y + qrSize + 5, { align: 'center' });
+          doc.setFontSize(6);
+          doc.text(product.code, x + qrSize / 2, y + qrSize + 9, { align: 'center' });
+          doc.text(formatCurrency(product.selling_price_retail), x + qrSize / 2, y + qrSize + 13, { align: 'center' });
+        }
+        x += colWidth;
+        if (x + colWidth > 200) { x = 10; y += rowHeight; }
+      });
+
+      doc.save('qr-codes-produk.pdf');
+      toast.success('PDF QR Code berhasil di-download');
+    });
+  };
 
   const storeProducts = useMemo(() => getProductsForStore(activeStoreId), [activeStoreId]);
   const storeCategories = useMemo(() => getCategoriesForStore(activeStoreId), [activeStoreId]);
