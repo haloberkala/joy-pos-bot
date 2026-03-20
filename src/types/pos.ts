@@ -139,7 +139,7 @@ export interface Customer {
 
 export type PaymentMethod = 'cash' | 'qris' | 'transfer' | 'debit';
 export type PaymentStatus = 'paid' | 'debt';
-export type PriceMode = 'retail' | 'wholesale';
+export type PriceMode = 'retail' | 'wholesale' | 'special';
 
 export interface Sale {
   id: number;
