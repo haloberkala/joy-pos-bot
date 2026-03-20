@@ -515,6 +515,48 @@ export default function Products() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* QR Code Dialog */}
+      <Dialog open={!!qrProduct} onOpenChange={() => setQrProduct(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><QrCode className="w-5 h-5" /> QR Code Produk</DialogTitle></DialogHeader>
+          {qrProduct && (
+            <div className="flex flex-col items-center gap-4 py-4">
+              <div id={`qr-single-${qrProduct.id}`} className="bg-white p-4 rounded-xl border border-border">
+                <QRCodeSVG value={qrProduct.code} size={200} level="H" />
+                <p className="text-center text-sm font-bold mt-2">{qrProduct.name}</p>
+                <p className="text-center text-xs text-muted-foreground">{qrProduct.code}</p>
+                <p className="text-center text-sm font-semibold text-primary mt-1">{formatCurrency(qrProduct.selling_price_retail)}</p>
+              </div>
+              <Button className="gap-2 w-full" onClick={() => downloadQr(qrProduct)}>
+                <Download className="w-4 h-4" /> Download QR Code
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Download All QR Codes (hidden canvas) */}
+      <Dialog open={showBulkQr} onOpenChange={setShowBulkQr}>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>QR Code Semua Produk ({filteredProducts.length})</DialogTitle></DialogHeader>
+          <div className="flex justify-end mb-4">
+            <Button className="gap-2" onClick={downloadAllQr}>
+              <Download className="w-4 h-4" /> Download Semua QR
+            </Button>
+          </div>
+          <div id="bulk-qr-container" className="grid grid-cols-3 sm:grid-cols-4 gap-4">
+            {filteredProducts.map(product => (
+              <div key={product.id} className="flex flex-col items-center bg-white p-3 rounded-lg border border-border">
+                <QRCodeSVG value={product.code} size={100} level="H" />
+                <p className="text-xs font-bold mt-2 text-center line-clamp-2">{product.name}</p>
+                <p className="text-[10px] text-muted-foreground">{product.code}</p>
+                <p className="text-xs font-semibold text-primary">{formatCurrency(product.selling_price_retail)}</p>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
