@@ -34,6 +34,7 @@ export default function Products() {
   const [importResults, setImportResults] = useState<{ success: number; errors: string[] } | null>(null);
   const [showOpnameDetail, setShowOpnameDetail] = useState(false);
   const [activeTab, setActiveTab] = useState('products');
+  const [qrProduct, setQrProduct] = useState<Product | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const storeProducts = useMemo(() => getProductsForStore(activeStoreId), [activeStoreId]);
