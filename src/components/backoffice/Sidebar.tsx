@@ -21,7 +21,7 @@ const navItems: NavItem[] = [
   { to: '/backoffice/products', icon: Package, label: 'Produk & Stok', menuKey: 'products' },
   { to: '/backoffice/purchases', icon: ShoppingCart, label: 'Pembelian', menuKey: 'purchases' },
   { to: '/backoffice/transactions', icon: Receipt, label: 'Transaksi', menuKey: 'transactions' },
-  { to: '/backoffice/debts', icon: AlertTriangle, label: 'Utang', menuKey: 'transactions' },
+  
   { to: '/backoffice/shipping', icon: Truck, label: 'Pengiriman', menuKey: 'transactions' },
   { to: '/backoffice/expenses', icon: Wallet, label: 'Pengeluaran', menuKey: 'expenses' },
   { to: '/backoffice/reports', icon: FileBarChart, label: 'Laporan', menuKey: 'reports' },
