@@ -1,6 +1,18 @@
 import { useState, useCallback, useMemo } from 'react';
 import { CartItem, Product, PriceMode } from '@/types/pos';
 
+function getPriceForMode(product: Product, mode: PriceMode): number {
+  if (mode === 'special') return product.selling_price_special;
+  if (mode === 'wholesale') return product.selling_price_wholesale;
+  return product.selling_price_retail;
+}
+
+function getAutoMode(product: Product, qty: number, currentMode: PriceMode): PriceMode {
+  if (qty >= product.special_min_qty) return 'special';
+  if (qty >= product.wholesale_min_qty) return 'wholesale';
+  return currentMode === 'special' || currentMode === 'wholesale' ? 'retail' : currentMode;
+}
+
 export function useCart() {
   const [items, setItems] = useState<CartItem[]>([]);
   const [globalPriceMode, setGlobalPriceMode] = useState<PriceMode>('retail');
