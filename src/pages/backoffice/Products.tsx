@@ -22,6 +22,7 @@ import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { StockOpnameDetail } from '@/components/backoffice/StockOpnameDetail';
+import { QRCodeSVG } from 'qrcode.react';
 
 export default function Products() {
   const { activeStoreId } = useAuth();
