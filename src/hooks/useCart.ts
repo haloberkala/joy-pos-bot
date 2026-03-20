@@ -53,7 +53,7 @@ export function useCart() {
     setItems((prev) =>
       prev.map((item) => {
         if (item.product.id !== productId) return item;
-        const price = mode === 'wholesale' ? item.product.selling_price_wholesale : item.product.selling_price_retail;
+        const price = getPriceForMode(item.product, mode);
         return { ...item, price_mode: mode, price_per_unit: price };
       })
     );
