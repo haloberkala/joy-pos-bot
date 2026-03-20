@@ -299,6 +299,8 @@ export default function Products() {
                 <div className="space-y-2"><Label>Harga Jual Eceran</Label><Input type="number" placeholder="0" /></div>
                 <div className="space-y-2"><Label>Harga Jual Grosir</Label><Input type="number" placeholder="0" /></div>
                 <div className="space-y-2"><Label>Min Qty Grosir</Label><Input type="number" placeholder="10" /></div>
+                <div className="space-y-2"><Label>Harga Jual Spesial</Label><Input type="number" placeholder="0" /></div>
+                <div className="space-y-2"><Label>Min Qty Spesial</Label><Input type="number" placeholder="20" /></div>
                 <div className="space-y-2"><Label>Stok Minimum Alert</Label><Input type="number" placeholder="10" /></div>
                 <div className="col-span-2 flex justify-end gap-2 pt-4">
                   <Button variant="outline" onClick={() => setIsAddModalOpen(false)}>Batal</Button>
