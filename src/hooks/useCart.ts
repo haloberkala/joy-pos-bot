@@ -41,9 +41,8 @@ export function useCart() {
       setItems((prev) =>
         prev.map((item) => {
           if (item.product.id !== productId) return item;
-          // Auto-switch pricing based on qty
-          const mode = quantity >= item.product.wholesale_min_qty ? 'wholesale' : 'retail';
-          const price = mode === 'wholesale' ? item.product.selling_price_wholesale : item.product.selling_price_retail;
+          const mode = getAutoMode(item.product, quantity, item.price_mode);
+          const price = getPriceForMode(item.product, mode);
           return { ...item, quantity, price_mode: mode, price_per_unit: price };
         })
       );
