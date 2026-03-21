@@ -577,41 +577,39 @@ export default function Products() {
         </DialogContent>
       </Dialog>
 
-      {/* QR Code Dialog */}
+      {/* Barcode Dialog */}
       <Dialog open={!!qrProduct} onOpenChange={() => setQrProduct(null)}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><QrCode className="w-5 h-5" /> QR Code Produk</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><Barcode className="w-5 h-5" /> Barcode Produk</DialogTitle></DialogHeader>
           {qrProduct && (
             <div className="flex flex-col items-center gap-4 py-4">
-              <div id={`qr-single-${qrProduct.id}`} className="bg-white p-4 rounded-xl border border-border">
-                <QRCodeSVG value={qrProduct.code} size={200} level="H" />
+              <div className="bg-white p-4 rounded-xl border border-border">
+                <BarcodeGenerator value={qrProduct.code} height={80} width={2} fontSize={14} />
                 <p className="text-center text-sm font-bold mt-2">{qrProduct.name}</p>
-                <p className="text-center text-xs text-muted-foreground">{qrProduct.code}</p>
                 <p className="text-center text-sm font-semibold text-primary mt-1">{formatCurrency(qrProduct.selling_price_retail)}</p>
               </div>
-              <Button className="gap-2 w-full" onClick={() => downloadQr(qrProduct)}>
-                <Download className="w-4 h-4" /> Download QR Code
+              <Button className="gap-2 w-full" onClick={() => downloadBarcode(qrProduct)}>
+                <Download className="w-4 h-4" /> Download Barcode
               </Button>
             </div>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Download All QR Codes (hidden canvas) */}
+      {/* Download All Barcodes */}
       <Dialog open={showBulkQr} onOpenChange={setShowBulkQr}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>QR Code Semua Produk ({filteredProducts.length})</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Barcode Semua Produk ({filteredProducts.length})</DialogTitle></DialogHeader>
           <div className="flex justify-end mb-4">
-            <Button className="gap-2" onClick={downloadAllQr}>
-              <Download className="w-4 h-4" /> Download Semua QR
+            <Button className="gap-2" onClick={downloadAllBarcodes}>
+              <Download className="w-4 h-4" /> Download Semua Barcode (PDF)
             </Button>
           </div>
-          <div id="bulk-qr-container" className="grid grid-cols-3 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
             {filteredProducts.map(product => (
               <div key={product.id} className="flex flex-col items-center bg-white p-3 rounded-lg border border-border">
-                <QRCodeSVG value={product.code} size={100} level="H" />
+                <BarcodeGenerator value={product.code} height={40} width={1} fontSize={8} />
                 <p className="text-xs font-bold mt-2 text-center line-clamp-2">{product.name}</p>
-                <p className="text-[10px] text-muted-foreground">{product.code}</p>
                 <p className="text-xs font-semibold text-primary">{formatCurrency(product.selling_price_retail)}</p>
               </div>
             ))}
