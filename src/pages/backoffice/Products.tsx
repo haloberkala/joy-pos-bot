@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Search, Edit, Trash2, Barcode, Download, Upload, FileSpreadsheet, AlertCircle, CheckCircle, Package, ClipboardCheck, TrendingUp, TrendingDown, AlertTriangle, Eye, QrCode } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Barcode, Download, Upload, FileSpreadsheet, AlertCircle, CheckCircle, Package, ClipboardCheck, TrendingUp, TrendingDown, AlertTriangle, Eye } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
@@ -22,7 +22,8 @@ import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
 import { useBarcodeScanner } from '@/hooks/useBarcodeScanner';
 import { StockOpnameDetail } from '@/components/backoffice/StockOpnameDetail';
-import { QRCodeSVG } from 'qrcode.react';
+import { BarcodeGenerator } from '@/components/backoffice/BarcodeGenerator';
+import JsBarcode from 'jsbarcode';
 
 export default function Products() {
   const { activeStoreId } = useAuth();
@@ -38,68 +39,57 @@ export default function Products() {
   const [showBulkQr, setShowBulkQr] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // QR download helpers
-  const downloadQr = (product: Product) => {
-    const svgEl = document.querySelector(`#qr-single-${product.id} svg`) as SVGElement;
-    if (!svgEl) return;
+  // Barcode download helper
+  const downloadBarcode = (product: Product) => {
     const canvas = document.createElement('canvas');
-    canvas.width = 300; canvas.height = 400;
-    const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 300, 400);
-    const svgData = new XMLSerializer().serializeToString(svgEl);
-    const img = new Image();
-    img.onload = () => {
-      ctx.drawImage(img, 50, 20, 200, 200);
-      ctx.fillStyle = '#000'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText(product.name.substring(0, 30), 150, 250);
-      ctx.font = '12px monospace';
-      ctx.fillText(product.code, 150, 275);
-      ctx.font = 'bold 14px sans-serif'; ctx.fillStyle = '#2563eb';
-      ctx.fillText(formatCurrency(product.selling_price_retail), 150, 300);
-      const link = document.createElement('a');
-      link.download = `qr-${product.code}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-    };
-    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+    try {
+      JsBarcode(canvas, product.code, { format: 'CODE128', width: 2, height: 80, displayValue: true, fontSize: 14, margin: 10 });
+    } catch { return; }
+    // Add product name & price
+    const finalCanvas = document.createElement('canvas');
+    finalCanvas.width = canvas.width;
+    finalCanvas.height = canvas.height + 50;
+    const ctx = finalCanvas.getContext('2d')!;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+    ctx.drawImage(canvas, 0, 0);
+    ctx.fillStyle = '#000';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(product.name.substring(0, 35), finalCanvas.width / 2, canvas.height + 20);
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillStyle = '#2563eb';
+    ctx.fillText(formatCurrency(product.selling_price_retail), finalCanvas.width / 2, canvas.height + 40);
+    const link = document.createElement('a');
+    link.download = `barcode-${product.code}.png`;
+    link.href = finalCanvas.toDataURL('image/png');
+    link.click();
   };
 
-  const downloadAllQr = () => {
-    const container = document.getElementById('bulk-qr-container');
-    if (!container) return;
-    // Use html2canvas-like approach: serialize each QR to a combined image
+  const downloadAllBarcodes = () => {
     import('jspdf').then(({ jsPDF }) => {
       const doc = new jsPDF('p', 'mm', 'a4');
-      const svgs = container.querySelectorAll('svg');
-      const products_list = filteredProducts;
       let x = 10, y = 10;
-      const qrSize = 30;
-      const colWidth = 45;
-      const rowHeight = 50;
+      const colWidth = 50;
+      const rowHeight = 35;
 
-      products_list.forEach((product, i) => {
+      filteredProducts.forEach((product, i) => {
         if (y + rowHeight > 280) { doc.addPage(); y = 10; }
-        const svgEl = svgs[i];
-        if (svgEl) {
-          const svgData = new XMLSerializer().serializeToString(svgEl);
-          const canvas = document.createElement('canvas');
-          canvas.width = 200; canvas.height = 200;
-          const ctx = canvas.getContext('2d')!;
-          const imgEl = new Image();
-          imgEl.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
-          // Sync approach using pre-rendered
-          doc.setFontSize(7);
-          doc.text(product.name.substring(0, 20), x + qrSize / 2, y + qrSize + 5, { align: 'center' });
-          doc.setFontSize(6);
-          doc.text(product.code, x + qrSize / 2, y + qrSize + 9, { align: 'center' });
-          doc.text(formatCurrency(product.selling_price_retail), x + qrSize / 2, y + qrSize + 13, { align: 'center' });
-        }
+        const canvas = document.createElement('canvas');
+        try {
+          JsBarcode(canvas, product.code, { format: 'CODE128', width: 1, height: 30, displayValue: true, fontSize: 8, margin: 2 });
+          const imgData = canvas.toDataURL('image/png');
+          doc.addImage(imgData, 'PNG', x, y, colWidth - 5, 18);
+        } catch { /* skip invalid */ }
+        doc.setFontSize(6);
+        doc.text(product.name.substring(0, 25), x + (colWidth - 5) / 2, y + 22, { align: 'center' });
+        doc.text(formatCurrency(product.selling_price_retail), x + (colWidth - 5) / 2, y + 26, { align: 'center' });
         x += colWidth;
         if (x + colWidth > 200) { x = 10; y += rowHeight; }
       });
 
-      doc.save('qr-codes-produk.pdf');
-      toast.success('PDF QR Code berhasil di-download');
+      doc.save('barcode-produk.pdf');
+      toast.success('PDF Barcode berhasil di-download');
     });
   };
 
@@ -271,7 +261,7 @@ export default function Products() {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" className="gap-2" onClick={() => setShowBulkQr(true)}>
-            <QrCode className="w-4 h-4" /> QR Code
+            <Barcode className="w-4 h-4" /> Barcode
           </Button>
           <Button variant="outline" className="gap-2" onClick={() => setShowImportDialog(true)}>
             <Upload className="w-4 h-4" /> Import Excel
@@ -400,7 +390,7 @@ export default function Products() {
                   <TableHead className="text-right">Spesial</TableHead>
                   <TableHead className="text-right">Stok</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-center">QR</TableHead>
+                  <TableHead className="text-center">Barcode</TableHead>
                   <TableHead className="text-right">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
@@ -430,7 +420,7 @@ export default function Products() {
                       <TableCell><Badge variant={stockStatus.variant}>{stockStatus.label}</Badge></TableCell>
                       <TableCell className="text-center">
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setQrProduct(product)}>
-                          <QrCode className="w-4 h-4" />
+                          <Barcode className="w-4 h-4" />
                         </Button>
                       </TableCell>
                       <TableCell className="text-right">
@@ -587,41 +577,39 @@ export default function Products() {
         </DialogContent>
       </Dialog>
 
-      {/* QR Code Dialog */}
+      {/* Barcode Dialog */}
       <Dialog open={!!qrProduct} onOpenChange={() => setQrProduct(null)}>
         <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle className="flex items-center gap-2"><QrCode className="w-5 h-5" /> QR Code Produk</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle className="flex items-center gap-2"><Barcode className="w-5 h-5" /> Barcode Produk</DialogTitle></DialogHeader>
           {qrProduct && (
             <div className="flex flex-col items-center gap-4 py-4">
-              <div id={`qr-single-${qrProduct.id}`} className="bg-white p-4 rounded-xl border border-border">
-                <QRCodeSVG value={qrProduct.code} size={200} level="H" />
+              <div className="bg-white p-4 rounded-xl border border-border">
+                <BarcodeGenerator value={qrProduct.code} height={80} width={2} fontSize={14} />
                 <p className="text-center text-sm font-bold mt-2">{qrProduct.name}</p>
-                <p className="text-center text-xs text-muted-foreground">{qrProduct.code}</p>
                 <p className="text-center text-sm font-semibold text-primary mt-1">{formatCurrency(qrProduct.selling_price_retail)}</p>
               </div>
-              <Button className="gap-2 w-full" onClick={() => downloadQr(qrProduct)}>
-                <Download className="w-4 h-4" /> Download QR Code
+              <Button className="gap-2 w-full" onClick={() => downloadBarcode(qrProduct)}>
+                <Download className="w-4 h-4" /> Download Barcode
               </Button>
             </div>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Download All QR Codes (hidden canvas) */}
+      {/* Download All Barcodes */}
       <Dialog open={showBulkQr} onOpenChange={setShowBulkQr}>
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>QR Code Semua Produk ({filteredProducts.length})</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Barcode Semua Produk ({filteredProducts.length})</DialogTitle></DialogHeader>
           <div className="flex justify-end mb-4">
-            <Button className="gap-2" onClick={downloadAllQr}>
-              <Download className="w-4 h-4" /> Download Semua QR
+            <Button className="gap-2" onClick={downloadAllBarcodes}>
+              <Download className="w-4 h-4" /> Download Semua Barcode (PDF)
             </Button>
           </div>
-          <div id="bulk-qr-container" className="grid grid-cols-3 sm:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
             {filteredProducts.map(product => (
               <div key={product.id} className="flex flex-col items-center bg-white p-3 rounded-lg border border-border">
-                <QRCodeSVG value={product.code} size={100} level="H" />
+                <BarcodeGenerator value={product.code} height={40} width={1} fontSize={8} />
                 <p className="text-xs font-bold mt-2 text-center line-clamp-2">{product.name}</p>
-                <p className="text-[10px] text-muted-foreground">{product.code}</p>
                 <p className="text-xs font-semibold text-primary">{formatCurrency(product.selling_price_retail)}</p>
               </div>
             ))}
