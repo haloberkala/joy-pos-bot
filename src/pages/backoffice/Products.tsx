@@ -261,7 +261,7 @@ export default function Products() {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" className="gap-2" onClick={() => setShowBulkQr(true)}>
-            <QrCode className="w-4 h-4" /> QR Code
+            <Barcode className="w-4 h-4" /> Barcode
           </Button>
           <Button variant="outline" className="gap-2" onClick={() => setShowImportDialog(true)}>
             <Upload className="w-4 h-4" /> Import Excel
