@@ -39,30 +39,31 @@ export default function Products() {
   const [showBulkQr, setShowBulkQr] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // QR download helpers
-  const downloadQr = (product: Product) => {
-    const svgEl = document.querySelector(`#qr-single-${product.id} svg`) as SVGElement;
-    if (!svgEl) return;
+  // Barcode download helper
+  const downloadBarcode = (product: Product) => {
     const canvas = document.createElement('canvas');
-    canvas.width = 300; canvas.height = 400;
-    const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 300, 400);
-    const svgData = new XMLSerializer().serializeToString(svgEl);
-    const img = new Image();
-    img.onload = () => {
-      ctx.drawImage(img, 50, 20, 200, 200);
-      ctx.fillStyle = '#000'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText(product.name.substring(0, 30), 150, 250);
-      ctx.font = '12px monospace';
-      ctx.fillText(product.code, 150, 275);
-      ctx.font = 'bold 14px sans-serif'; ctx.fillStyle = '#2563eb';
-      ctx.fillText(formatCurrency(product.selling_price_retail), 150, 300);
-      const link = document.createElement('a');
-      link.download = `qr-${product.code}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
-    };
-    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+    try {
+      JsBarcode(canvas, product.code, { format: 'CODE128', width: 2, height: 80, displayValue: true, fontSize: 14, margin: 10 });
+    } catch { return; }
+    // Add product name & price
+    const finalCanvas = document.createElement('canvas');
+    finalCanvas.width = canvas.width;
+    finalCanvas.height = canvas.height + 50;
+    const ctx = finalCanvas.getContext('2d')!;
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+    ctx.drawImage(canvas, 0, 0);
+    ctx.fillStyle = '#000';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(product.name.substring(0, 35), finalCanvas.width / 2, canvas.height + 20);
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillStyle = '#2563eb';
+    ctx.fillText(formatCurrency(product.selling_price_retail), finalCanvas.width / 2, canvas.height + 40);
+    const link = document.createElement('a');
+    link.download = `barcode-${product.code}.png`;
+    link.href = finalCanvas.toDataURL('image/png');
+    link.click();
   };
 
   const downloadAllQr = () => {
