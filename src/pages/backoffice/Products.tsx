@@ -390,7 +390,7 @@ export default function Products() {
                   <TableHead className="text-right">Spesial</TableHead>
                   <TableHead className="text-right">Stok</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-center">QR</TableHead>
+                  <TableHead className="text-center">Barcode</TableHead>
                   <TableHead className="text-right">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
