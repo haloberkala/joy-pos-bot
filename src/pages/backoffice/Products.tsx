@@ -420,7 +420,7 @@ export default function Products() {
                       <TableCell><Badge variant={stockStatus.variant}>{stockStatus.label}</Badge></TableCell>
                       <TableCell className="text-center">
                         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setQrProduct(product)}>
-                          <QrCode className="w-4 h-4" />
+                          <Barcode className="w-4 h-4" />
                         </Button>
                       </TableCell>
                       <TableCell className="text-right">
