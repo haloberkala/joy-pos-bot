@@ -66,42 +66,30 @@ export default function Products() {
     link.click();
   };
 
-  const downloadAllQr = () => {
-    const container = document.getElementById('bulk-qr-container');
-    if (!container) return;
-    // Use html2canvas-like approach: serialize each QR to a combined image
+  const downloadAllBarcodes = () => {
     import('jspdf').then(({ jsPDF }) => {
       const doc = new jsPDF('p', 'mm', 'a4');
-      const svgs = container.querySelectorAll('svg');
-      const products_list = filteredProducts;
       let x = 10, y = 10;
-      const qrSize = 30;
-      const colWidth = 45;
-      const rowHeight = 50;
+      const colWidth = 50;
+      const rowHeight = 35;
 
-      products_list.forEach((product, i) => {
+      filteredProducts.forEach((product, i) => {
         if (y + rowHeight > 280) { doc.addPage(); y = 10; }
-        const svgEl = svgs[i];
-        if (svgEl) {
-          const svgData = new XMLSerializer().serializeToString(svgEl);
-          const canvas = document.createElement('canvas');
-          canvas.width = 200; canvas.height = 200;
-          const ctx = canvas.getContext('2d')!;
-          const imgEl = new Image();
-          imgEl.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
-          // Sync approach using pre-rendered
-          doc.setFontSize(7);
-          doc.text(product.name.substring(0, 20), x + qrSize / 2, y + qrSize + 5, { align: 'center' });
-          doc.setFontSize(6);
-          doc.text(product.code, x + qrSize / 2, y + qrSize + 9, { align: 'center' });
-          doc.text(formatCurrency(product.selling_price_retail), x + qrSize / 2, y + qrSize + 13, { align: 'center' });
-        }
+        const canvas = document.createElement('canvas');
+        try {
+          JsBarcode(canvas, product.code, { format: 'CODE128', width: 1, height: 30, displayValue: true, fontSize: 8, margin: 2 });
+          const imgData = canvas.toDataURL('image/png');
+          doc.addImage(imgData, 'PNG', x, y, colWidth - 5, 18);
+        } catch { /* skip invalid */ }
+        doc.setFontSize(6);
+        doc.text(product.name.substring(0, 25), x + (colWidth - 5) / 2, y + 22, { align: 'center' });
+        doc.text(formatCurrency(product.selling_price_retail), x + (colWidth - 5) / 2, y + 26, { align: 'center' });
         x += colWidth;
         if (x + colWidth > 200) { x = 10; y += rowHeight; }
       });
 
-      doc.save('qr-codes-produk.pdf');
-      toast.success('PDF QR Code berhasil di-download');
+      doc.save('barcode-produk.pdf');
+      toast.success('PDF Barcode berhasil di-download');
     });
   };
 
