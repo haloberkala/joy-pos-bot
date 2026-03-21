@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Plus, Search, Edit, Trash2, Barcode, Download, Upload, FileSpreadsheet, AlertCircle, CheckCircle, Package, ClipboardCheck, TrendingUp, TrendingDown, AlertTriangle, Eye, QrCode } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Barcode, Download, Upload, FileSpreadsheet, AlertCircle, CheckCircle, Package, ClipboardCheck, TrendingUp, TrendingDown, AlertTriangle, Eye } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from '@/components/ui/label';
