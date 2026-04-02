@@ -243,7 +243,7 @@ export let sampleSales: Sale[] = [
   {
     id: 3, store_id: 2, user_id: 3, customer_id: 3, invoice_number: 'INV-20240115-003',
     date: new Date('2024-01-15T14:20:00'), sub_total: 26500, discount: 0, tax: 0, grand_total: 26500,
-    payment_method: 'debit', payment_status: 'paid', amount_received: 26500, change_amount: 0,
+    payment_method: 'transfer', payment_status: 'paid', amount_received: 26500, change_amount: 0,
     created_at: new Date('2024-01-15T14:20:00'), updated_at: new Date('2024-01-15T14:20:00'),
   },
   {

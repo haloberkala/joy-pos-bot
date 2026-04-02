@@ -311,9 +311,9 @@ export default function POS() {
                       className="px-5 py-2.5 rounded-xl bg-[hsl(var(--pos-accent))] hover:bg-[hsl(var(--pos-accent-hover))] text-[hsl(var(--pos-accent-foreground))] text-sm font-extrabold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                       💵 TUNAI
                     </button>
-                    <button onClick={() => handleCheckout('debit')} disabled={items.length === 0}
+                    <button onClick={() => handleCheckout('transfer')} disabled={items.length === 0}
                       className="px-5 py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-extrabold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                      💳 DEBIT
+                      💳 TRANSFER
                     </button>
                     <button onClick={() => handleCheckout('qris')} disabled={items.length === 0}
                       className="px-5 py-2.5 rounded-xl bg-violet-500 hover:bg-violet-600 text-white text-sm font-extrabold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
