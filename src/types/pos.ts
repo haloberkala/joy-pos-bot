@@ -137,9 +137,17 @@ export interface Customer {
   updated_at: Date;
 }
 
-export type PaymentMethod = 'cash' | 'qris' | 'transfer' | 'debit';
+export type PaymentMethod = 'cash' | 'qris' | 'transfer';
 export type PaymentStatus = 'paid' | 'debt';
 export type PriceMode = 'retail' | 'wholesale' | 'special';
+export type SaleType = 'sale' | 'owner_withdrawal';
+
+// Service item (mechanic fee, etc.) — UI-only, not a product
+export interface ServiceItem {
+  id: number;
+  description: string;
+  price: number;
+}
 
 export interface Sale {
   id: number;
