@@ -221,7 +221,8 @@ export default function Purchases() {
 
       <Tabs defaultValue="purchases" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="purchases" className="gap-2"><ShoppingCart className="w-4 h-4" />Riwayat Pembelian</TabsTrigger>
+          <TabsTrigger value="purchases" className="gap-2"><ShoppingCart className="w-4 h-4" />Riwayat Kulakan</TabsTrigger>
+          <TabsTrigger value="supplier-debt" className="gap-2"><Wallet className="w-4 h-4" />Utang Supplier</TabsTrigger>
           <TabsTrigger value="suppliers" className="gap-2"><Truck className="w-4 h-4" />Daftar Supplier</TabsTrigger>
         </TabsList>
 
