@@ -60,7 +60,7 @@ export default function Transactions() {
   const getPaymentIcon = (method: string) => {
     switch (method) {
       case 'cash': return <Wallet className="w-4 h-4" />;
-      case 'debit': return <CreditCard className="w-4 h-4" />;
+      case 'transfer': return <CreditCard className="w-4 h-4" />;
       case 'qris': return <QrCode className="w-4 h-4" />;
       default: return null;
     }
