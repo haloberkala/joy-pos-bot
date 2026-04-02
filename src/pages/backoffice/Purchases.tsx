@@ -399,6 +399,30 @@ export default function Purchases() {
           </div>
         </TabsContent>
 
+        {/* ========== SUPPLIER DEBT TAB ========== */}
+        <TabsContent value="supplier-debt" className="space-y-4">
+          <div className="bg-card rounded-xl border border-border p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 rounded-lg bg-orange-100 text-orange-600"><Wallet className="w-5 h-5" /></div>
+              <div>
+                <h3 className="font-bold text-foreground">Utang ke Supplier</h3>
+                <p className="text-sm text-muted-foreground">Kelola hutang toko kepada supplier dari pembelian kulakan</p>
+              </div>
+            </div>
+
+            <div className="bg-muted/50 rounded-xl p-6 text-center">
+              <AlertTriangle className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+              <p className="font-semibold text-foreground">Belum ada utang supplier</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Utang akan muncul otomatis saat mencatat pembelian dengan status "Belum Lunas"
+              </p>
+              <p className="text-xs text-muted-foreground mt-3">
+                Fitur: Saat menambah pembelian baru, pilih status pembayaran "Utang" untuk mencatat hutang ke supplier.
+              </p>
+            </div>
+          </div>
+        </TabsContent>
+
         {/* ========== SUPPLIERS TAB ========== */}
         <TabsContent value="suppliers" className="space-y-4">
           <div className="flex justify-between">
