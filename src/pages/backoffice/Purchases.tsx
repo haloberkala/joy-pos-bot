@@ -182,8 +182,8 @@ export default function Purchases() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Pembelian / Kulakan</h1>
-          <p className="text-muted-foreground">Catat pembelian stok dari supplier</p>
+          <h1 className="text-2xl font-bold text-foreground">Kulakan / Supply</h1>
+          <p className="text-muted-foreground">Catat pembelian stok dari supplier & kelola utang supplier</p>
         </div>
       </div>
 

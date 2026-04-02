@@ -15,9 +15,8 @@ interface TransactionsTableProps {
 const PaymentIcon = ({ method }: { method: string }) => {
   switch (method) {
     case 'cash': return <Banknote className="w-4 h-4 text-green-600" />;
-    case 'debit': return <CreditCard className="w-4 h-4 text-blue-600" />;
+    case 'transfer': return <CreditCard className="w-4 h-4 text-blue-600" />;
     case 'qris': return <Smartphone className="w-4 h-4 text-purple-600" />;
-    case 'transfer': return <CreditCard className="w-4 h-4 text-yellow-600" />;
     default: return null;
   }
 };

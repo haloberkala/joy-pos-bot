@@ -19,7 +19,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { to: '/backoffice', icon: LayoutDashboard, label: 'Dashboard', end: true, menuKey: 'dashboard' },
   { to: '/backoffice/products', icon: Package, label: 'Produk & Stok', menuKey: 'products' },
-  { to: '/backoffice/purchases', icon: ShoppingCart, label: 'Pembelian', menuKey: 'purchases' },
+  { to: '/backoffice/purchases', icon: ShoppingCart, label: 'Kulakan/Supply', menuKey: 'purchases' },
   { to: '/backoffice/transactions', icon: Receipt, label: 'Transaksi', menuKey: 'transactions' },
   
   { to: '/backoffice/shipping', icon: Truck, label: 'Pengiriman', menuKey: 'transactions' },

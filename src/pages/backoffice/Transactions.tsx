@@ -69,9 +69,8 @@ export default function Transactions() {
   const getPaymentLabel = (method: string) => {
     switch (method) {
       case 'cash': return 'Tunai';
-      case 'debit': return 'Debit';
-      case 'qris': return 'QRIS';
       case 'transfer': return 'Transfer';
+      case 'qris': return 'QRIS';
       default: return method;
     }
   };

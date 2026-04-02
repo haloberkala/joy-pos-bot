@@ -278,3 +278,32 @@ export interface CartItem {
   price_mode: PriceMode;
   discount?: number;
 }
+
+// ==========================================
+// 9. UTANG SUPPLIER (STORE -> SUPPLIER)
+// ==========================================
+
+export type SupplierDebtStatus = 'unpaid' | 'partial' | 'paid';
+
+export interface SupplierDebt {
+  id: number;
+  store_id: number;
+  purchase_id: number;
+  supplier_id: number;
+  total_amount: number;
+  paid_amount: number;
+  status: SupplierDebtStatus;
+  due_date?: Date | null;
+  note?: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface SupplierDebtPayment {
+  id: number;
+  supplier_debt_id: number;
+  amount: number;
+  date: Date;
+  note?: string;
+  created_at: Date;
+}
