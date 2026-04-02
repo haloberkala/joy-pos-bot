@@ -5,8 +5,8 @@ import { PaymentModal } from '@/components/pos/PaymentModal';
 import { ReceiptModal } from '@/components/pos/ReceiptModal';
 import { CustomerModal } from '@/components/pos/CustomerModal';
 import { getProductsForStore, stores, customers } from '@/data/sampleData';
-import { PaymentMethod, Sale, SaleDetail, Product, Customer, PriceMode } from '@/types/pos';
-import { Settings, LogOut, User, ShieldCheck, UserCog, ScanBarcode, Building2, Trash2, Search, ChevronDown, Truck } from 'lucide-react';
+import { PaymentMethod, Sale, SaleDetail, Product, Customer, PriceMode, ServiceItem } from '@/types/pos';
+import { Settings, LogOut, User, ShieldCheck, UserCog, ScanBarcode, Building2, Trash2, Search, ChevronDown, Truck, Wrench, Plus, Crown } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { canAccessMenu } from '@/contexts/AuthContext';
@@ -30,14 +30,26 @@ export default function POS() {
   const [dueDate, setDueDate] = useState('');
   const [showShipping, setShowShipping] = useState(false);
 
+  // Service items (biaya jasa mekanik)
+  const [serviceItems, setServiceItems] = useState<ServiceItem[]>([]);
+  const [serviceDesc, setServiceDesc] = useState('');
+  const [servicePrice, setServicePrice] = useState('');
+  const [showServiceInput, setShowServiceInput] = useState(false);
+
+  // Owner withdrawal mode
+  const [isOwnerWithdrawal, setIsOwnerWithdrawal] = useState(false);
+
   const searchRef = useRef<HTMLInputElement>(null);
   const { user, logout, activeStoreId, setActiveStoreId, canSwitchStore, accessibleStoreIds } = useAuth();
   const navigate = useNavigate();
 
-  const { items, addItem, removeItem, updateQuantity, clearCart, total, setPriceMode, setItems } = useCart();
+  const { items, addItem, removeItem, updateQuantity, clearCart, total, setPriceMode } = useCart();
 
   const storeProducts = useMemo(() => getProductsForStore(activeStoreId), [activeStoreId]);
   const activeStore = stores.find(s => s.id === activeStoreId);
+
+  const serviceTotal = useMemo(() => serviceItems.reduce((sum, s) => sum + s.price, 0), [serviceItems]);
+  const grandTotal = total + serviceTotal;
 
   useEffect(() => { searchRef.current?.focus(); }, []);
 
@@ -72,27 +84,54 @@ export default function POS() {
     if (!isNaN(qty)) updateQuantity(productId, qty);
   };
 
+  const handleAddService = () => {
+    if (!serviceDesc.trim() || !servicePrice.trim()) { toast.error('Isi deskripsi dan harga jasa'); return; }
+    const price = parseFloat(servicePrice);
+    if (isNaN(price) || price <= 0) { toast.error('Harga tidak valid'); return; }
+    setServiceItems(prev => [...prev, { id: Date.now(), description: serviceDesc.trim(), price }]);
+    setServiceDesc(''); setServicePrice('');
+    setShowServiceInput(false);
+    toast.success('Jasa ditambahkan');
+  };
+
+  const removeService = (id: number) => {
+    setServiceItems(prev => prev.filter(s => s.id !== id));
+  };
+
   const handleCheckout = (method: PaymentMethod) => {
     setPendingPaymentMethod(method);
+    setShowCustomerModal(true);
+  };
+
+  const handleOwnerWithdrawal = () => {
+    if (items.length === 0 && serviceItems.length === 0) { toast.error('Keranjang kosong'); return; }
+    setIsOwnerWithdrawal(true);
+    setPendingPaymentMethod('cash');
     setShowCustomerModal(true);
   };
 
   const handleCustomerSelected = (customer: Customer | null) => {
     setSelectedCustomer(customer);
     setShowCustomerModal(false);
-    if (pendingPaymentMethod) { setPaymentMethod(pendingPaymentMethod); setPendingPaymentMethod(null); }
+    if (isOwnerWithdrawal) {
+      // Process directly without payment
+      processOwnerWithdrawal();
+    } else if (pendingPaymentMethod) {
+      setPaymentMethod(pendingPaymentMethod);
+      setPendingPaymentMethod(null);
+    }
   };
 
-  const handleConfirmPayment = (amountPaid: number) => {
+  const processOwnerWithdrawal = () => {
     const now = new Date();
     const sale: Sale = {
       id: Date.now(), store_id: activeStoreId, user_id: 1,
       customer_id: selectedCustomer?.id || null,
-      invoice_number: `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(Date.now()).slice(-3)}`,
-      date: now, sub_total: total, discount: 0, tax: 0, grand_total: total,
-      payment_method: paymentMethod!, payment_status: isDebt ? 'debt' : 'paid',
-      amount_received: isDebt ? 0 : amountPaid, change_amount: isDebt ? 0 : Math.max(0, amountPaid - total),
-      due_date: isDebt && dueDate ? new Date(dueDate) : null,
+      invoice_number: `OWN-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(Date.now()).slice(-3)}`,
+      date: now, sub_total: grandTotal, discount: grandTotal, tax: 0, grand_total: 0,
+      payment_method: 'cash', payment_status: 'paid',
+      amount_received: 0, change_amount: 0,
+      note: 'Pengambilan Owner',
       created_at: now, updated_at: now,
     };
     const details: (SaleDetail & { product?: Product })[] = items.map((item, idx) => ({
@@ -101,8 +140,40 @@ export default function POS() {
       total_price: item.price_per_unit * item.quantity, price_mode: item.price_mode, product: item.product,
       created_at: now, updated_at: now,
     }));
+    setCurrentSale(sale); setCurrentSaleDetails(details); clearCart(); setServiceItems([]);
+    setShowReceipt(true); setSelectedCustomer(null); setIsOwnerWithdrawal(false); setPendingPaymentMethod(null);
+    toast.success('Pengambilan Owner berhasil dicatat!');
+  };
+
+  const handleConfirmPayment = (amountPaid: number) => {
+    const now = new Date();
+    const sale: Sale = {
+      id: Date.now(), store_id: activeStoreId, user_id: 1,
+      customer_id: selectedCustomer?.id || null,
+      invoice_number: `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(Date.now()).slice(-3)}`,
+      date: now, sub_total: grandTotal, discount: 0, tax: 0, grand_total: grandTotal,
+      payment_method: paymentMethod!, payment_status: isDebt ? 'debt' : 'paid',
+      amount_received: isDebt ? 0 : amountPaid, change_amount: isDebt ? 0 : Math.max(0, amountPaid - grandTotal),
+      due_date: isDebt && dueDate ? new Date(dueDate) : null,
+      created_at: now, updated_at: now,
+    };
+    const details: (SaleDetail & { product?: Product })[] = [
+      ...items.map((item, idx) => ({
+        id: Date.now() + idx, sale_id: sale.id, product_id: item.product.id,
+        quantity: item.quantity, price_at_sale: item.price_per_unit, cost_at_sale: item.product.cost_price,
+        total_price: item.price_per_unit * item.quantity, price_mode: item.price_mode, product: item.product,
+        created_at: now, updated_at: now,
+      })),
+      ...serviceItems.map((svc, idx) => ({
+        id: Date.now() + items.length + idx, sale_id: sale.id, product_id: 0,
+        quantity: 1, price_at_sale: svc.price, cost_at_sale: 0,
+        total_price: svc.price, price_mode: 'retail' as const,
+        product: { name: `🔧 ${svc.description}`, id: 0, store_id: activeStoreId, code: '', quantity: 999, min_stock_alert: 0, cost_price: 0, selling_price: svc.price, selling_price_retail: svc.price, selling_price_wholesale: svc.price, selling_price_special: svc.price, wholesale_min_qty: 1, special_min_qty: 1, is_active: true, created_at: now, updated_at: now, created_by: null, updated_by: null, category_id: null, brand_id: null, unit_id: null } as Product,
+        created_at: now, updated_at: now,
+      })),
+    ];
     setCurrentSale(sale); setCurrentSaleDetails(details); setPaymentMethod(null);
-    setShowReceipt(true); clearCart(); setSelectedCustomer(null); setIsDebt(false); setDueDate('');
+    setShowReceipt(true); clearCart(); setServiceItems([]); setSelectedCustomer(null); setIsDebt(false); setDueDate('');
     toast.success(isDebt ? 'Penjualan (Utang) berhasil dicatat!' : 'Pembayaran berhasil!');
   };
 
@@ -116,7 +187,7 @@ export default function POS() {
             <div className="relative">
               <select
                 value={activeStoreId}
-                onChange={(e) => { setActiveStoreId(Number(e.target.value)); clearCart(); }}
+                onChange={(e) => { setActiveStoreId(Number(e.target.value)); clearCart(); setServiceItems([]); }}
                 className="appearance-none pl-7 pr-6 py-1.5 rounded-lg text-sm font-semibold border border-[hsl(var(--pos-border))] bg-[hsl(var(--pos-card))] text-[hsl(var(--pos-foreground))] cursor-pointer focus:outline-none focus:border-[hsl(var(--pos-accent))]"
               >
                 {stores.filter(s => accessibleStoreIds.includes(s.id) || user?.role === 'owner').map(s => (
@@ -199,7 +270,7 @@ export default function POS() {
                 </tr>
               </thead>
               <tbody>
-                {items.length === 0 ? (
+                {items.length === 0 && serviceItems.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="text-center py-20 text-[hsl(var(--pos-muted-foreground))]">
                       <div className="text-5xl mb-3">📦</div>
@@ -208,64 +279,128 @@ export default function POS() {
                     </td>
                   </tr>
                 ) : (
-                  items.map((item, index) => (
-                    <tr
-                      key={item.product.id}
-                      className={cn(
-                        'border-b border-[hsl(var(--pos-border))] transition-colors',
-                        index % 2 === 0 ? 'bg-[hsl(var(--pos-card))]' : 'bg-[hsl(var(--pos-background))]',
-                        'hover:bg-[hsl(var(--pos-accent))]/5'
-                      )}
-                    >
-                      <td className="px-3 py-2 text-sm font-bold text-[hsl(var(--pos-muted-foreground))] border-r border-[hsl(var(--pos-border))]">{index + 1}</td>
-                      <td className="px-3 py-2 border-r border-[hsl(var(--pos-border))]">
-                        <p className="text-sm font-bold text-[hsl(var(--pos-foreground))]">{item.product.name}</p>
-                        <p className="text-[10px] text-[hsl(var(--pos-muted-foreground))] mt-0.5">
-                          E:{formatCurrency(item.product.selling_price_retail)} · G:{formatCurrency(item.product.selling_price_wholesale)} · S:{formatCurrency(item.product.selling_price_special)}
-                        </p>
-                      </td>
-                      <td className="px-1 py-2 text-center border-r border-[hsl(var(--pos-border))]">
-                        <button
-                          onClick={() => {
-                            const modes: PriceMode[] = ['retail', 'wholesale', 'special'];
-                            const idx = modes.indexOf(item.price_mode);
-                            setPriceMode(item.product.id, modes[(idx + 1) % modes.length]);
-                          }}
-                          className={cn(
-                            'px-1.5 py-1 rounded text-[11px] font-bold transition-colors w-full',
-                            item.price_mode === 'special' ? 'bg-emerald-100 text-emerald-800'
-                              : item.price_mode === 'wholesale' ? 'bg-blue-100 text-blue-800'
-                              : 'bg-orange-100 text-orange-800'
-                          )}
-                        >
-                          {item.price_mode === 'special' ? 'SPL' : item.price_mode === 'wholesale' ? 'GRS' : 'ECR'}
-                        </button>
-                      </td>
-                      <td className="px-3 py-2 text-right text-sm font-bold text-[hsl(var(--pos-foreground))] border-r border-[hsl(var(--pos-border))] tabular-nums">
-                        {formatCurrency(item.price_per_unit)}
-                      </td>
-                      <td className="px-1 py-2 text-center border-r border-[hsl(var(--pos-border))]">
-                        <input
-                          type="number" min="1" value={item.quantity}
-                          onChange={(e) => handleQtyChange(item.product.id, e.target.value)}
-                          className="w-16 text-center text-sm font-bold rounded border-2 border-[hsl(var(--pos-border))] bg-[hsl(var(--pos-card))] text-[hsl(var(--pos-foreground))] py-1.5 focus:border-[hsl(var(--pos-accent))] focus:outline-none mx-auto block"
-                          onKeyDown={(e) => { if (e.key === 'Enter') searchRef.current?.focus(); }}
-                        />
-                      </td>
-                      <td className="px-3 py-2 text-right text-sm font-extrabold text-[hsl(var(--pos-accent))] border-r border-[hsl(var(--pos-border))] tabular-nums">
-                        {formatCurrency(item.price_per_unit * item.quantity)}
-                      </td>
-                      <td className="px-1 py-2 text-center">
-                        <button onClick={() => removeItem(item.product.id)} className="p-1.5 rounded bg-red-100 text-red-600 hover:bg-red-200 transition-colors">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                  <>
+                    {items.map((item, index) => (
+                      <tr
+                        key={item.product.id}
+                        className={cn(
+                          'border-b border-[hsl(var(--pos-border))] transition-colors',
+                          index % 2 === 0 ? 'bg-[hsl(var(--pos-card))]' : 'bg-[hsl(var(--pos-background))]',
+                          'hover:bg-[hsl(var(--pos-accent))]/5'
+                        )}
+                      >
+                        <td className="px-3 py-2 text-sm font-bold text-[hsl(var(--pos-muted-foreground))] border-r border-[hsl(var(--pos-border))]">{index + 1}</td>
+                        <td className="px-3 py-2 border-r border-[hsl(var(--pos-border))]">
+                          <p className="text-sm font-bold text-[hsl(var(--pos-foreground))]">{item.product.name}</p>
+                          <p className="text-[10px] text-[hsl(var(--pos-muted-foreground))] mt-0.5">
+                            E:{formatCurrency(item.product.selling_price_retail)} · G:{formatCurrency(item.product.selling_price_wholesale)} · S:{formatCurrency(item.product.selling_price_special)}
+                          </p>
+                        </td>
+                        <td className="px-1 py-2 text-center border-r border-[hsl(var(--pos-border))]">
+                          <button
+                            onClick={() => {
+                              const modes: PriceMode[] = ['retail', 'wholesale', 'special'];
+                              const idx = modes.indexOf(item.price_mode);
+                              setPriceMode(item.product.id, modes[(idx + 1) % modes.length]);
+                            }}
+                            className={cn(
+                              'px-1.5 py-1 rounded text-[11px] font-bold transition-colors w-full',
+                              item.price_mode === 'special' ? 'bg-emerald-100 text-emerald-800'
+                                : item.price_mode === 'wholesale' ? 'bg-blue-100 text-blue-800'
+                                : 'bg-orange-100 text-orange-800'
+                            )}
+                          >
+                            {item.price_mode === 'special' ? 'SPL' : item.price_mode === 'wholesale' ? 'GRS' : 'ECR'}
+                          </button>
+                        </td>
+                        <td className="px-3 py-2 text-right text-sm font-bold text-[hsl(var(--pos-foreground))] border-r border-[hsl(var(--pos-border))] tabular-nums">
+                          {formatCurrency(item.price_per_unit)}
+                        </td>
+                        <td className="px-1 py-2 text-center border-r border-[hsl(var(--pos-border))]">
+                          <input
+                            type="number" min="1" value={item.quantity}
+                            onChange={(e) => handleQtyChange(item.product.id, e.target.value)}
+                            className="w-16 text-center text-sm font-bold rounded border-2 border-[hsl(var(--pos-border))] bg-[hsl(var(--pos-card))] text-[hsl(var(--pos-foreground))] py-1.5 focus:border-[hsl(var(--pos-accent))] focus:outline-none mx-auto block"
+                            onKeyDown={(e) => { if (e.key === 'Enter') searchRef.current?.focus(); }}
+                          />
+                        </td>
+                        <td className="px-3 py-2 text-right text-sm font-extrabold text-[hsl(var(--pos-accent))] border-r border-[hsl(var(--pos-border))] tabular-nums">
+                          {formatCurrency(item.price_per_unit * item.quantity)}
+                        </td>
+                        <td className="px-1 py-2 text-center">
+                          <button onClick={() => removeItem(item.product.id)} className="p-1.5 rounded bg-red-100 text-red-600 hover:bg-red-200 transition-colors">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+
+                    {/* Service Items */}
+                    {serviceItems.map((svc, index) => (
+                      <tr
+                        key={`svc-${svc.id}`}
+                        className={cn(
+                          'border-b border-[hsl(var(--pos-border))] transition-colors bg-amber-50/50',
+                          'hover:bg-amber-50'
+                        )}
+                      >
+                        <td className="px-3 py-2 text-sm font-bold text-[hsl(var(--pos-muted-foreground))] border-r border-[hsl(var(--pos-border))]">{items.length + index + 1}</td>
+                        <td className="px-3 py-2 border-r border-[hsl(var(--pos-border))]" colSpan={1}>
+                          <div className="flex items-center gap-1.5">
+                            <Wrench className="w-3.5 h-3.5 text-amber-600" />
+                            <p className="text-sm font-bold text-amber-800">{svc.description}</p>
+                          </div>
+                          <p className="text-[10px] text-amber-600 mt-0.5">Biaya Jasa</p>
+                        </td>
+                        <td className="px-1 py-2 text-center border-r border-[hsl(var(--pos-border))]">
+                          <span className="px-1.5 py-1 rounded text-[11px] font-bold bg-amber-100 text-amber-800">JASA</span>
+                        </td>
+                        <td className="px-3 py-2 text-right text-sm font-bold text-[hsl(var(--pos-foreground))] border-r border-[hsl(var(--pos-border))] tabular-nums">
+                          {formatCurrency(svc.price)}
+                        </td>
+                        <td className="px-1 py-2 text-center border-r border-[hsl(var(--pos-border))]">
+                          <span className="text-sm font-bold text-[hsl(var(--pos-muted-foreground))]">1</span>
+                        </td>
+                        <td className="px-3 py-2 text-right text-sm font-extrabold text-[hsl(var(--pos-accent))] border-r border-[hsl(var(--pos-border))] tabular-nums">
+                          {formatCurrency(svc.price)}
+                        </td>
+                        <td className="px-1 py-2 text-center">
+                          <button onClick={() => removeService(svc.id)} className="p-1.5 rounded bg-red-100 text-red-600 hover:bg-red-200 transition-colors">
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </>
                 )}
               </tbody>
             </table>
           </div>
+
+          {/* Service Input Row */}
+          {showServiceInput && (
+            <div className="px-4 py-2 border-t border-[hsl(var(--pos-border))] bg-amber-50/30 flex items-center gap-2">
+              <Wrench className="w-4 h-4 text-amber-600 shrink-0" />
+              <input
+                type="text" placeholder="Deskripsi jasa (mis: Pasang AC)"
+                value={serviceDesc} onChange={(e) => setServiceDesc(e.target.value)}
+                className="flex-1 px-3 py-2 text-sm rounded-lg border border-[hsl(var(--pos-border))] bg-[hsl(var(--pos-card))] focus:border-[hsl(var(--pos-accent))] focus:outline-none"
+                onKeyDown={(e) => { if (e.key === 'Enter') handleAddService(); }}
+              />
+              <input
+                type="number" placeholder="Harga"
+                value={servicePrice} onChange={(e) => setServicePrice(e.target.value)}
+                className="w-32 px-3 py-2 text-sm rounded-lg border border-[hsl(var(--pos-border))] bg-[hsl(var(--pos-card))] text-right focus:border-[hsl(var(--pos-accent))] focus:outline-none"
+                onKeyDown={(e) => { if (e.key === 'Enter') handleAddService(); }}
+              />
+              <button onClick={handleAddService} className="px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold">
+                <Plus className="w-4 h-4" />
+              </button>
+              <button onClick={() => { setShowServiceInput(false); setServiceDesc(''); setServicePrice(''); }} className="px-2 py-2 text-[hsl(var(--pos-muted-foreground))] hover:text-[hsl(var(--pos-foreground))]">
+                ✕
+              </button>
+            </div>
+          )}
 
           {/* Footer */}
           <div className="border-t-2 border-[hsl(var(--pos-accent))] bg-[hsl(var(--pos-card))] px-4 py-2.5">
@@ -280,8 +415,10 @@ export default function POS() {
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-4">
                 <div>
-                  <span className="text-xs text-[hsl(var(--pos-muted-foreground))] font-medium">TOTAL ({items.length} item)</span>
-                  <div className="text-2xl font-black text-[hsl(var(--pos-foreground))] tabular-nums">{formatCurrency(total)}</div>
+                  <span className="text-xs text-[hsl(var(--pos-muted-foreground))] font-medium">
+                    TOTAL ({items.length} item{serviceItems.length > 0 ? ` + ${serviceItems.length} jasa` : ''})
+                  </span>
+                  <div className="text-2xl font-black text-[hsl(var(--pos-foreground))] tabular-nums">{formatCurrency(grandTotal)}</div>
                 </div>
                 <label className="flex items-center gap-2 cursor-pointer select-none">
                   <input type="checkbox" checked={isDebt} onChange={(e) => setIsDebt(e.target.checked)} className="w-4 h-4 rounded border-2 accent-[hsl(var(--pos-accent))]" />
@@ -294,28 +431,47 @@ export default function POS() {
               </div>
 
               <div className="flex items-center gap-2">
-                <button onClick={() => { if (items.length === 0) { toast.error('Keranjang kosong'); return; } setShowShipping(true); }}
-                  disabled={items.length === 0}
+                {/* Add Service Button */}
+                <button onClick={() => setShowServiceInput(!showServiceInput)}
+                  className={cn(
+                    "px-3 py-2.5 rounded-xl text-sm font-extrabold transition-colors flex items-center gap-1.5",
+                    showServiceInput ? "bg-amber-500 text-white" : "bg-amber-100 text-amber-800 hover:bg-amber-200"
+                  )}>
+                  <Wrench className="w-4 h-4" /> JASA
+                </button>
+
+                <button onClick={() => { if (items.length === 0 && serviceItems.length === 0) { toast.error('Keranjang kosong'); return; } setShowShipping(true); }}
+                  disabled={items.length === 0 && serviceItems.length === 0}
                   className="px-3 py-2.5 rounded-xl bg-[hsl(var(--pos-muted))] hover:bg-[hsl(var(--pos-border))] text-[hsl(var(--pos-foreground))] text-sm font-extrabold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5">
                   <Truck className="w-4 h-4" /> KIRIM
                 </button>
+
+                {/* Owner withdrawal button */}
+                {user?.role === 'owner' && (
+                  <button onClick={handleOwnerWithdrawal}
+                    disabled={items.length === 0 && serviceItems.length === 0}
+                    className="px-4 py-2.5 rounded-xl bg-yellow-500 hover:bg-yellow-600 text-white text-sm font-extrabold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5">
+                    <Crown className="w-4 h-4" /> AMBIL
+                  </button>
+                )}
+
                 {isDebt ? (
-                  <button onClick={() => { if (items.length === 0) { toast.error('Keranjang kosong'); return; } setPendingPaymentMethod('cash'); setShowCustomerModal(true); }}
-                    disabled={items.length === 0}
+                  <button onClick={() => { if (items.length === 0 && serviceItems.length === 0) { toast.error('Keranjang kosong'); return; } setPendingPaymentMethod('cash'); setShowCustomerModal(true); }}
+                    disabled={items.length === 0 && serviceItems.length === 0}
                     className="px-6 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-extrabold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                     💳 SIMPAN UTANG
                   </button>
                 ) : (
                   <>
-                    <button onClick={() => handleCheckout('cash')} disabled={items.length === 0}
+                    <button onClick={() => handleCheckout('cash')} disabled={items.length === 0 && serviceItems.length === 0}
                       className="px-5 py-2.5 rounded-xl bg-[hsl(var(--pos-accent))] hover:bg-[hsl(var(--pos-accent-hover))] text-[hsl(var(--pos-accent-foreground))] text-sm font-extrabold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                       💵 TUNAI
                     </button>
-                    <button onClick={() => handleCheckout('debit')} disabled={items.length === 0}
+                    <button onClick={() => handleCheckout('transfer')} disabled={items.length === 0 && serviceItems.length === 0}
                       className="px-5 py-2.5 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-extrabold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                      💳 DEBIT
+                      💳 TRANSFER
                     </button>
-                    <button onClick={() => handleCheckout('qris')} disabled={items.length === 0}
+                    <button onClick={() => handleCheckout('qris')} disabled={items.length === 0 && serviceItems.length === 0}
                       className="px-5 py-2.5 rounded-xl bg-violet-500 hover:bg-violet-600 text-white text-sm font-extrabold transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                       📱 QRIS
                     </button>
@@ -328,13 +484,13 @@ export default function POS() {
       </div>
 
       {/* Modals */}
-      <CustomerModal isOpen={showCustomerModal} onClose={() => { setShowCustomerModal(false); setPendingPaymentMethod(null); }}
+      <CustomerModal isOpen={showCustomerModal} onClose={() => { setShowCustomerModal(false); setPendingPaymentMethod(null); setIsOwnerWithdrawal(false); }}
         storeId={activeStoreId} onSelectCustomer={handleCustomerSelected} selectedCustomer={selectedCustomer} requireCustomer={isDebt} />
       {paymentMethod && !isDebt && (
-        <PaymentModal isOpen={!!paymentMethod} onClose={() => setPaymentMethod(null)} items={items} total={total}
+        <PaymentModal isOpen={!!paymentMethod} onClose={() => setPaymentMethod(null)} items={items} total={grandTotal}
           paymentMethod={paymentMethod} onConfirm={handleConfirmPayment} customer={selectedCustomer} />
       )}
-      <ShippingModal isOpen={showShipping} onClose={() => setShowShipping(false)} items={items} total={total} customer={selectedCustomer} />
+      <ShippingModal isOpen={showShipping} onClose={() => setShowShipping(false)} items={items} total={grandTotal} customer={selectedCustomer} />
       <ReceiptModal isOpen={showReceipt} onClose={() => setShowReceipt(false)} sale={currentSale} saleDetails={currentSaleDetails}
         cashierName={user?.name || 'Kasir'} customerName={currentSale?.customer_id ? customers.find(c => c.id === currentSale.customer_id)?.name : undefined} />
     </div>

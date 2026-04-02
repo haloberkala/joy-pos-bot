@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Plus, Search, Eye, Truck, Package, ShoppingCart, ImagePlus, Trash2, Upload,
-  Phone, MapPin, Edit2,
+  Phone, Edit2, Wallet, DollarSign, AlertTriangle, Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Purchase, PurchaseDetail, Supplier } from '@/types/pos';
@@ -182,8 +182,8 @@ export default function Purchases() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Pembelian / Kulakan</h1>
-          <p className="text-muted-foreground">Catat pembelian stok dari supplier</p>
+          <h1 className="text-2xl font-bold text-foreground">Kulakan / Supply</h1>
+          <p className="text-muted-foreground">Catat pembelian stok dari supplier & kelola utang supplier</p>
         </div>
       </div>
 
@@ -221,7 +221,8 @@ export default function Purchases() {
 
       <Tabs defaultValue="purchases" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="purchases" className="gap-2"><ShoppingCart className="w-4 h-4" />Riwayat Pembelian</TabsTrigger>
+          <TabsTrigger value="purchases" className="gap-2"><ShoppingCart className="w-4 h-4" />Riwayat Kulakan</TabsTrigger>
+          <TabsTrigger value="supplier-debt" className="gap-2"><Wallet className="w-4 h-4" />Utang Supplier</TabsTrigger>
           <TabsTrigger value="suppliers" className="gap-2"><Truck className="w-4 h-4" />Daftar Supplier</TabsTrigger>
         </TabsList>
 
@@ -395,6 +396,30 @@ export default function Purchases() {
             {filteredPurchases.length === 0 && (
               <div className="text-center py-12 text-muted-foreground"><p>Belum ada pembelian tercatat</p></div>
             )}
+          </div>
+        </TabsContent>
+
+        {/* ========== SUPPLIER DEBT TAB ========== */}
+        <TabsContent value="supplier-debt" className="space-y-4">
+          <div className="bg-card rounded-xl border border-border p-5">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 rounded-lg bg-orange-100 text-orange-600"><Wallet className="w-5 h-5" /></div>
+              <div>
+                <h3 className="font-bold text-foreground">Utang ke Supplier</h3>
+                <p className="text-sm text-muted-foreground">Kelola hutang toko kepada supplier dari pembelian kulakan</p>
+              </div>
+            </div>
+
+            <div className="bg-muted/50 rounded-xl p-6 text-center">
+              <AlertTriangle className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+              <p className="font-semibold text-foreground">Belum ada utang supplier</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                Utang akan muncul otomatis saat mencatat pembelian dengan status "Belum Lunas"
+              </p>
+              <p className="text-xs text-muted-foreground mt-3">
+                Fitur: Saat menambah pembelian baru, pilih status pembayaran "Utang" untuk mencatat hutang ke supplier.
+              </p>
+            </div>
           </div>
         </TabsContent>
 

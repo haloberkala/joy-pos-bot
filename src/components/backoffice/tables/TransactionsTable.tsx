@@ -15,9 +15,8 @@ interface TransactionsTableProps {
 const PaymentIcon = ({ method }: { method: string }) => {
   switch (method) {
     case 'cash': return <Banknote className="w-4 h-4 text-green-600" />;
-    case 'debit': return <CreditCard className="w-4 h-4 text-blue-600" />;
+    case 'transfer': return <CreditCard className="w-4 h-4 text-blue-600" />;
     case 'qris': return <Smartphone className="w-4 h-4 text-purple-600" />;
-    case 'transfer': return <CreditCard className="w-4 h-4 text-yellow-600" />;
     default: return null;
   }
 };
@@ -25,9 +24,8 @@ const PaymentIcon = ({ method }: { method: string }) => {
 const PaymentBadge = ({ method }: { method: string }) => {
   const variants: Record<string, { label: string; className: string }> = {
     cash: { label: 'Tunai', className: 'bg-green-100 text-green-700 hover:bg-green-100' },
-    debit: { label: 'Debit', className: 'bg-blue-100 text-blue-700 hover:bg-blue-100' },
+    transfer: { label: 'Transfer', className: 'bg-blue-100 text-blue-700 hover:bg-blue-100' },
     qris: { label: 'QRIS', className: 'bg-purple-100 text-purple-700 hover:bg-purple-100' },
-    transfer: { label: 'Transfer', className: 'bg-yellow-100 text-yellow-700 hover:bg-yellow-100' },
   };
   const v = variants[method] || { label: method, className: '' };
   return (

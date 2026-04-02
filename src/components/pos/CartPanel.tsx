@@ -127,7 +127,7 @@ export function CartPanel({
             <span className="text-xs">Tunai</span>
           </Button>
           <Button
-            onClick={() => onCheckout('debit')}
+            onClick={() => onCheckout('transfer')}
             disabled={items.length === 0}
             className={cn(
               'flex flex-col items-center gap-1 h-auto py-3 rounded-xl',
@@ -136,7 +136,7 @@ export function CartPanel({
             )}
           >
             <CreditCard className="w-5 h-5" />
-            <span className="text-xs">Debit</span>
+            <span className="text-xs">Transfer</span>
           </Button>
           <Button
             onClick={() => onCheckout('qris')}

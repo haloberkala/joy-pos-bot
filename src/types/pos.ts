@@ -137,9 +137,17 @@ export interface Customer {
   updated_at: Date;
 }
 
-export type PaymentMethod = 'cash' | 'qris' | 'transfer' | 'debit';
+export type PaymentMethod = 'cash' | 'qris' | 'transfer';
 export type PaymentStatus = 'paid' | 'debt';
 export type PriceMode = 'retail' | 'wholesale' | 'special';
+export type SaleType = 'sale' | 'owner_withdrawal';
+
+// Service item (mechanic fee, etc.) — UI-only, not a product
+export interface ServiceItem {
+  id: number;
+  description: string;
+  price: number;
+}
 
 export interface Sale {
   id: number;
@@ -269,4 +277,33 @@ export interface CartItem {
   price_per_unit: number;
   price_mode: PriceMode;
   discount?: number;
+}
+
+// ==========================================
+// 9. UTANG SUPPLIER (STORE -> SUPPLIER)
+// ==========================================
+
+export type SupplierDebtStatus = 'unpaid' | 'partial' | 'paid';
+
+export interface SupplierDebt {
+  id: number;
+  store_id: number;
+  purchase_id: number;
+  supplier_id: number;
+  total_amount: number;
+  paid_amount: number;
+  status: SupplierDebtStatus;
+  due_date?: Date | null;
+  note?: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface SupplierDebtPayment {
+  id: number;
+  supplier_debt_id: number;
+  amount: number;
+  date: Date;
+  note?: string;
+  created_at: Date;
 }
