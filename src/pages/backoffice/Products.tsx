@@ -145,6 +145,7 @@ export default function Products() {
         'Nama Produk*': '', 'Kode/Barcode*': '', 'Kategori': '', 'Brand': '',
         'Satuan': '', 'Singkatan Satuan': '',
         'Harga Modal*': '', 'Harga Jual Eceran*': '', 'Harga Jual Grosir': '', 'Min Qty Grosir': '',
+        'Harga Jual Spesial': '', 'Min Qty Spesial': '',
         'Stok Awal': '', 'Min Stok Alert': '', 'Tanggal Kadaluarsa': '',
       },
     ];
@@ -153,6 +154,7 @@ export default function Products() {
       { wch: 30 }, { wch: 18 }, { wch: 18 }, { wch: 15 },
       { wch: 12 }, { wch: 12 },
       { wch: 15 }, { wch: 18 }, { wch: 18 }, { wch: 15 },
+      { wch: 18 }, { wch: 15 },
       { wch: 12 }, { wch: 14 }, { wch: 18 },
     ];
     const wb = XLSX.utils.book_new();
