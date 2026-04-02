@@ -146,7 +146,7 @@ export function PaymentModal({
               <p className="text-sm">
                 {paymentMethod === 'qris'
                   ? 'Scan QRIS atau proses pembayaran'
-                  : 'Proses pembayaran debit'
+                  : 'Proses pembayaran transfer'
                 }
               </p>
             </div>

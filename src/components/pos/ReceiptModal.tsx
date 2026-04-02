@@ -16,7 +16,7 @@ interface ReceiptModalProps {
 export function ReceiptModal({ isOpen, onClose, sale, saleDetails, cashierName, customerName }: ReceiptModalProps) {
   if (!sale) return null;
 
-  const paymentLabel = { cash: 'Tunai', debit: 'Debit', qris: 'QRIS', transfer: 'Transfer' };
+  const paymentLabel = { cash: 'Tunai', transfer: 'Transfer', qris: 'QRIS' } as Record<string, string>;
   const isDebt = sale.payment_status === 'debt';
 
   return (

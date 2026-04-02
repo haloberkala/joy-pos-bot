@@ -136,7 +136,7 @@ export function CartPanel({
             )}
           >
             <CreditCard className="w-5 h-5" />
-            <span className="text-xs">Debit</span>
+            <span className="text-xs">Transfer</span>
           </Button>
           <Button
             onClick={() => onCheckout('qris')}
