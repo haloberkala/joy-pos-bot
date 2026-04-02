@@ -41,16 +41,14 @@ export function PaymentModal({
 
   const paymentIcon = {
     cash: <Wallet className="w-5 h-5" />,
-    debit: <CreditCard className="w-5 h-5" />,
-    qris: <QrCode className="w-5 h-5" />,
     transfer: <CreditCard className="w-5 h-5" />,
+    qris: <QrCode className="w-5 h-5" />,
   };
 
   const paymentLabel = {
     cash: 'Tunai',
-    debit: 'Debit',
-    qris: 'QRIS',
     transfer: 'Transfer',
+    qris: 'QRIS',
   };
 
   return (
