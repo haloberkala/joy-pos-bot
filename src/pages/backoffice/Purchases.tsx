@@ -16,7 +16,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Plus, Search, Eye, Truck, Package, ShoppingCart, ImagePlus, Trash2, Upload,
-  Phone, MapPin, Edit2,
+  Phone, Edit2, Wallet, DollarSign, AlertTriangle, Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Purchase, PurchaseDetail, Supplier } from '@/types/pos';
