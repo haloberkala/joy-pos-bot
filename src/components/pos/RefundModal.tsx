@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Search, RotateCcw, AlertTriangle } from 'lucide-react';
-import { Sale, SaleDetail, Product } from '@/types/pos';
+import { Sale } from '@/types/pos';
 import { sampleSales, sampleSaleDetails, getProduct, customers } from '@/data/sampleData';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { toast } from 'sonner';

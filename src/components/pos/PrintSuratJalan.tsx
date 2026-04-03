@@ -1,5 +1,5 @@
 import { Store } from '@/types/pos';
-import { formatCurrency } from '@/lib/format';
+
 import { Shipment } from '@/data/shippingStore';
 
 interface PrintSuratJalanProps {
