@@ -301,7 +301,7 @@ export default function Transactions() {
                 <div><p className="text-muted-foreground">Invoice</p><p className="font-medium">{selectedSale.invoice_number}</p></div>
                 <div><p className="text-muted-foreground">Tanggal</p><p className="font-medium">{formatDate(selectedSale.date)}</p></div>
                 <div><p className="text-muted-foreground">Pembayaran</p><p className="font-medium">{getPaymentLabel(selectedSale.payment_method)}</p></div>
-                <div><p className="text-muted-foreground">Status</p><p className="font-medium">{selectedSale.payment_status === 'paid' ? 'Lunas' : 'Utang'}</p></div>
+                <div><p className="text-muted-foreground">Status</p><p className="font-medium">{selectedSale.payment_status === 'paid' ? 'Lunas' : selectedSale.payment_status === 'refunded' ? 'Direfund' : 'Utang'}</p></div>
               </div>
               <div className="border-t pt-4">
                 <p className="font-medium mb-2">Item</p>
@@ -326,6 +326,14 @@ export default function Transactions() {
                 {selectedSale.change_amount > 0 && (
                   <div className="flex justify-between text-sm text-muted-foreground"><span>Kembalian</span><span>{formatCurrency(selectedSale.change_amount)}</span></div>
                 )}
+              </div>
+              <div className="border-t pt-4">
+                <Button variant="outline" className="w-full gap-2" onClick={() => {
+                  const store = stores.find(s => s.id === activeStoreId);
+                  if (store) printInvoice({ sale: selectedSale, saleDetails: selectedSaleDetails, store });
+                }}>
+                  <Printer className="w-4 h-4" /> Cetak Faktur
+                </Button>
               </div>
             </div>
           )}
