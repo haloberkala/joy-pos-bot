@@ -377,6 +377,46 @@ export default function Reports() {
             </Table>
           </div>
         </TabsContent>
+
+        <TabsContent value="refunds" className="space-y-4">
+          <p className="text-muted-foreground">Riwayat refund transaksi</p>
+          <div className="bg-card rounded-xl border border-border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Invoice</TableHead>
+                  <TableHead>Pelanggan</TableHead>
+                  <TableHead>Alasan</TableHead>
+                  <TableHead className="text-right">Jumlah Refund</TableHead>
+                  <TableHead>Diproses Oleh</TableHead>
+                  <TableHead>Tanggal</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(() => {
+                  const storeRefunds = getRefundsForStore(activeStoreId);
+                  if (storeRefunds.length === 0) return (
+                    <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Belum ada riwayat refund</TableCell></TableRow>
+                  );
+                  return storeRefunds.map(r => {
+                    const sale = sampleSales.find(s => s.id === r.sale_id);
+                    const customerName = sale?.customer_id ? customers.find(c => c.id === sale.customer_id)?.name || '-' : 'Umum';
+                    return (
+                      <TableRow key={r.id}>
+                        <TableCell className="font-mono font-medium text-xs">{sale?.invoice_number || '-'}</TableCell>
+                        <TableCell>{customerName}</TableCell>
+                        <TableCell className="max-w-[200px] truncate">{r.reason}</TableCell>
+                        <TableCell className="text-right font-semibold text-destructive">{formatCurrency(r.refund_amount)}</TableCell>
+                        <TableCell>{r.processed_by}</TableCell>
+                        <TableCell className="text-muted-foreground">{formatDate(r.date)}</TableCell>
+                      </TableRow>
+                    );
+                  });
+                })()}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
       </Tabs>
     </div>
   );
