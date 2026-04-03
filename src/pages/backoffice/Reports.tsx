@@ -270,6 +270,7 @@ export default function Reports() {
           <TabsTrigger value="sales" className="gap-2"><ShoppingCart className="w-4 h-4" />Penjualan</TabsTrigger>
           <TabsTrigger value="stock" className="gap-2"><Package className="w-4 h-4" />Stok</TabsTrigger>
           <TabsTrigger value="profitloss" className="gap-2"><Receipt className="w-4 h-4" />Laba Rugi</TabsTrigger>
+          <TabsTrigger value="refunds" className="gap-2"><RotateCcw className="w-4 h-4" />Refund</TabsTrigger>
         </TabsList>
 
         <TabsContent value="sales" className="space-y-4">
