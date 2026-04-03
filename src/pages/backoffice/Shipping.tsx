@@ -350,7 +350,14 @@ export default function Shipping() {
                 )}
 
                 {/* Status actions */}
-                <div className="border-t pt-4">
+                <div className="border-t pt-4 space-y-3">
+                  <Button variant="outline" className="w-full gap-2" onClick={() => {
+                    const store = stores.find(s => s.id === activeStoreId);
+                    if (store) printSuratJalan({ shipment: viewShipment, store });
+                  }}>
+                    <Printer className="w-4 h-4" /> Cetak Surat Jalan
+                  </Button>
+
                   <Label className="mb-2 block">Ubah Status</Label>
                   <div className="flex gap-2 flex-wrap">
                     {viewShipment.status === 'pending' && (
