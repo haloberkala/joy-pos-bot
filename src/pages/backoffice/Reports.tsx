@@ -2,9 +2,9 @@ import { useState, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   sampleSales, sampleSaleDetails, sampleExpenses, expenseCategories,
-  products, categories, getProduct,
+  products, categories, getProduct, getRefundsForStore, customers,
 } from '@/data/sampleData';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatDate } from '@/lib/format';
 import { exportToPDF, exportToExcel } from '@/lib/exportUtils';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { DateFilter, DateFilterType, DateRange, getDateRangeFromFilter } from '@/components/backoffice/DateFilter';
 import {
   FileDown, FileSpreadsheet, TrendingUp, TrendingDown,
-  DollarSign, Package, ShoppingCart, Receipt,
+  DollarSign, Package, ShoppingCart, Receipt, RotateCcw,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
