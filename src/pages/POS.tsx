@@ -48,7 +48,7 @@ export default function POS() {
   const [bills, setBills] = useState<Bill[]>(() => [createBill()]);
   const [activeBillId, setActiveBillId] = useState<number>(() => bills[0]?.id ?? 1);
 
-  const activeBill = bills.find(b => b.id === activeBillId) || bills[0];
+  const _activeBill = bills.find(b => b.id === activeBillId) || bills[0];
 
   // Sync cart hook with active bill
   const { items, addItem, removeItem, updateQuantity, clearCart, total, setPriceMode, setItems } = useCart();

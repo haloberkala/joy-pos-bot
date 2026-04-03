@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
-  sampleSales, sampleSaleDetails, getProduct, customers,
+  sampleSales, sampleSaleDetails, getProduct, customers, stores,
   getDebtPaymentsForSale, getTotalPaidForSale, getRemainingDebt, addDebtPayment,
 } from '@/data/sampleData';
 import { formatCurrency, formatDate } from '@/lib/format';
@@ -10,12 +10,13 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Search, Download, Eye, Wallet, CreditCard, QrCode, AlertTriangle, Check, Clock, DollarSign, User } from 'lucide-react';
+import { Search, Download, Eye, Wallet, CreditCard, QrCode, AlertTriangle, Check, Clock, DollarSign, User, Printer } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Sale, DebtPayment } from '@/types/pos';
 import { DateFilter, DateFilterType, DateRange, getDateRangeFromFilter } from '@/components/backoffice/DateFilter';
 import { toast } from 'sonner';
+import { printInvoice } from '@/components/pos/PrintInvoice';
 
 export default function Transactions() {
   const { activeStoreId } = useAuth();
