@@ -4,9 +4,10 @@ import { useAuth } from '@/contexts/AuthContext';
 import { PaymentModal } from '@/components/pos/PaymentModal';
 import { ReceiptModal } from '@/components/pos/ReceiptModal';
 import { CustomerModal } from '@/components/pos/CustomerModal';
-import { getProductsForStore, stores, customers } from '@/data/sampleData';
-import { PaymentMethod, Sale, SaleDetail, Product, Customer, PriceMode, ServiceItem } from '@/types/pos';
-import { Settings, LogOut, User, ShieldCheck, UserCog, ScanBarcode, Building2, Trash2, Search, ChevronDown, Truck, Wrench, Plus, Crown } from 'lucide-react';
+import { RefundModal } from '@/components/pos/RefundModal';
+import { getProductsForStore, stores, customers, processRefund } from '@/data/sampleData';
+import { PaymentMethod, Sale, SaleDetail, Product, Customer, PriceMode, ServiceItem, CartItem } from '@/types/pos';
+import { Settings, LogOut, User, ShieldCheck, UserCog, ScanBarcode, Building2, Trash2, Search, ChevronDown, Truck, Wrench, Plus, Crown, X, RotateCcw, FileText } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { canAccessMenu } from '@/contexts/AuthContext';
@@ -16,7 +17,108 @@ import { cn } from '@/lib/utils';
 import { ProductListPanel } from '@/components/pos/ProductListPanel';
 import { ShippingModal } from '@/components/pos/ShippingModal';
 
+// ========== OPEN BILL TYPES ==========
+interface Bill {
+  id: number;
+  label: string;
+  customerName: string;
+  items: CartItem[];
+  serviceItems: ServiceItem[];
+  selectedCustomer: Customer | null;
+}
+
+let billCounter = 1;
+
+function createBill(): Bill {
+  const id = billCounter++;
+  return {
+    id,
+    label: `Bill ${id}`,
+    customerName: '',
+    items: [],
+    serviceItems: [],
+    selectedCustomer: null,
+  };
+}
+
+const MAX_BILLS = 10;
+
 export default function POS() {
+  // ========== OPEN BILL STATE ==========
+  const [bills, setBills] = useState<Bill[]>(() => [createBill()]);
+  const [activeBillId, setActiveBillId] = useState<number>(() => bills[0]?.id ?? 1);
+
+  const activeBill = bills.find(b => b.id === activeBillId) || bills[0];
+
+  // Sync cart hook with active bill
+  const { items, addItem, removeItem, updateQuantity, clearCart, total, setPriceMode, setItems } = useCart();
+
+  // Service items for active bill
+  const [serviceItems, setServiceItems] = useState<ServiceItem[]>([]);
+
+  // Save current cart state back to bills when switching
+  const saveBillState = useCallback(() => {
+    setBills(prev => prev.map(b =>
+      b.id === activeBillId
+        ? { ...b, items: [...items], serviceItems: [...serviceItems], selectedCustomer: selectedCustomerRef.current }
+        : b
+    ));
+  }, [activeBillId, items, serviceItems]);
+
+  // Ref to track selected customer for saving
+  const selectedCustomerRef = useRef<Customer | null>(null);
+
+  const switchToBill = useCallback((billId: number) => {
+    if (billId === activeBillId) return;
+    // Save current bill
+    saveBillState();
+    // Load target bill
+    const target = bills.find(b => b.id === billId);
+    if (target) {
+      setActiveBillId(billId);
+      setItems(target.items);
+      setServiceItems(target.serviceItems);
+      setSelectedCustomer(target.selectedCustomer);
+    }
+  }, [activeBillId, bills, saveBillState, setItems]);
+
+  const addNewBill = useCallback(() => {
+    if (bills.length >= MAX_BILLS) {
+      toast.error(`Maksimal ${MAX_BILLS} bill terbuka`);
+      return;
+    }
+    saveBillState();
+    const newBill = createBill();
+    setBills(prev => [...prev, newBill]);
+    setActiveBillId(newBill.id);
+    clearCart();
+    setServiceItems([]);
+    setSelectedCustomer(null);
+  }, [bills.length, saveBillState, clearCart]);
+
+  const closeBill = useCallback((billId: number) => {
+    if (bills.length <= 1) {
+      // Reset the only bill
+      clearCart();
+      setServiceItems([]);
+      setSelectedCustomer(null);
+      const fresh = createBill();
+      setBills([fresh]);
+      setActiveBillId(fresh.id);
+      return;
+    }
+    const remaining = bills.filter(b => b.id !== billId);
+    setBills(remaining);
+    if (activeBillId === billId) {
+      const next = remaining[0];
+      setActiveBillId(next.id);
+      setItems(next.items);
+      setServiceItems(next.serviceItems);
+      setSelectedCustomer(next.selectedCustomer);
+    }
+  }, [bills, activeBillId, clearCart, setItems]);
+
+  // ========== EXISTING STATE ==========
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
   const [currentSale, setCurrentSale] = useState<Sale | null>(null);
   const [currentSaleDetails, setCurrentSaleDetails] = useState<(SaleDetail & { product?: Product })[]>([]);
@@ -29,9 +131,9 @@ export default function POS() {
   const [isDebt, setIsDebt] = useState(false);
   const [dueDate, setDueDate] = useState('');
   const [showShipping, setShowShipping] = useState(false);
+  const [showRefund, setShowRefund] = useState(false);
 
-  // Service items (biaya jasa mekanik)
-  const [serviceItems, setServiceItems] = useState<ServiceItem[]>([]);
+  // Service input
   const [serviceDesc, setServiceDesc] = useState('');
   const [servicePrice, setServicePrice] = useState('');
   const [showServiceInput, setShowServiceInput] = useState(false);
@@ -43,7 +145,8 @@ export default function POS() {
   const { user, logout, activeStoreId, setActiveStoreId, canSwitchStore, accessibleStoreIds } = useAuth();
   const navigate = useNavigate();
 
-  const { items, addItem, removeItem, updateQuantity, clearCart, total, setPriceMode } = useCart();
+  // Keep ref in sync
+  useEffect(() => { selectedCustomerRef.current = selectedCustomer; }, [selectedCustomer]);
 
   const storeProducts = useMemo(() => getProductsForStore(activeStoreId), [activeStoreId]);
   const activeStore = stores.find(s => s.id === activeStoreId);
@@ -114,7 +217,6 @@ export default function POS() {
     setSelectedCustomer(customer);
     setShowCustomerModal(false);
     if (isOwnerWithdrawal) {
-      // Process directly without payment
       processOwnerWithdrawal();
     } else if (pendingPaymentMethod) {
       setPaymentMethod(pendingPaymentMethod);
@@ -142,6 +244,8 @@ export default function POS() {
     }));
     setCurrentSale(sale); setCurrentSaleDetails(details); clearCart(); setServiceItems([]);
     setShowReceipt(true); setSelectedCustomer(null); setIsOwnerWithdrawal(false); setPendingPaymentMethod(null);
+    // Close the bill after payment
+    closeBill(activeBillId);
     toast.success('Pengambilan Owner berhasil dicatat!');
   };
 
@@ -174,8 +278,18 @@ export default function POS() {
     ];
     setCurrentSale(sale); setCurrentSaleDetails(details); setPaymentMethod(null);
     setShowReceipt(true); clearCart(); setServiceItems([]); setSelectedCustomer(null); setIsDebt(false); setDueDate('');
+    // Close the bill after successful payment
+    closeBill(activeBillId);
     toast.success(isDebt ? 'Penjualan (Utang) berhasil dicatat!' : 'Pembayaran berhasil!');
   };
+
+  const handleRefund = (sale: Sale, reason: string) => {
+    processRefund(sale, reason, user?.name || 'Kasir');
+    toast.success(`Refund ${sale.invoice_number} berhasil! Stok dikembalikan.`);
+  };
+
+  // Active bill count for badge
+  const activeBillCount = bills.filter(b => b.items.length > 0 || b.serviceItems.length > 0 || (b.id === activeBillId && (items.length > 0 || serviceItems.length > 0))).length;
 
   return (
     <div className="h-screen flex flex-col bg-[hsl(var(--pos-background))]">
@@ -183,11 +297,16 @@ export default function POS() {
       <header className="flex items-center justify-between px-4 py-2 border-b border-[hsl(var(--pos-border))] bg-[hsl(var(--pos-card))]">
         <div className="flex items-center gap-3">
           <h1 className="text-xl font-extrabold text-[hsl(var(--pos-foreground))]">KASIR</h1>
+          {activeBillCount > 0 && (
+            <span className="px-2 py-0.5 rounded-full bg-[hsl(var(--pos-accent))] text-[hsl(var(--pos-accent-foreground))] text-xs font-bold">
+              {activeBillCount} bill
+            </span>
+          )}
           {canSwitchStore ? (
             <div className="relative">
               <select
                 value={activeStoreId}
-                onChange={(e) => { setActiveStoreId(Number(e.target.value)); clearCart(); setServiceItems([]); }}
+                onChange={(e) => { setActiveStoreId(Number(e.target.value)); clearCart(); setServiceItems([]); setBills([createBill()]); }}
                 className="appearance-none pl-7 pr-6 py-1.5 rounded-lg text-sm font-semibold border border-[hsl(var(--pos-border))] bg-[hsl(var(--pos-card))] text-[hsl(var(--pos-foreground))] cursor-pointer focus:outline-none focus:border-[hsl(var(--pos-accent))]"
               >
                 {stores.filter(s => accessibleStoreIds.includes(s.id) || user?.role === 'owner').map(s => (
@@ -205,6 +324,13 @@ export default function POS() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          {/* Refund button - owner/admin only */}
+          {canAccessMenu(user?.role, 'reports') && (
+            <button onClick={() => setShowRefund(true)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-orange-100 text-orange-700 hover:bg-orange-200 text-sm font-medium transition-colors">
+              <RotateCcw className="w-4 h-4" />
+              <span className="hidden sm:inline">Refund</span>
+            </button>
+          )}
           <button onClick={() => setScannerActive(!scannerActive)} className={cn(
             'flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-sm font-medium transition-colors',
             scannerActive ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-[hsl(var(--pos-muted))] text-[hsl(var(--pos-muted-foreground))]'
@@ -225,6 +351,53 @@ export default function POS() {
           </button>
         </div>
       </header>
+
+      {/* Bill Tabs */}
+      <div className="flex items-center gap-1 px-3 py-1.5 border-b border-[hsl(var(--pos-border))] bg-[hsl(var(--pos-muted))] overflow-x-auto">
+        {bills.map(bill => {
+          const isActive = bill.id === activeBillId;
+          const billItems = isActive ? items : bill.items;
+          const billSvc = isActive ? serviceItems : bill.serviceItems;
+          const hasItems = billItems.length > 0 || billSvc.length > 0;
+          return (
+            <div
+              key={bill.id}
+              className={cn(
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-t-lg text-sm font-semibold cursor-pointer transition-colors shrink-0 group',
+                isActive
+                  ? 'bg-[hsl(var(--pos-card))] text-[hsl(var(--pos-foreground))] shadow-sm border border-b-0 border-[hsl(var(--pos-border))]'
+                  : 'text-[hsl(var(--pos-muted-foreground))] hover:bg-[hsl(var(--pos-card))]/50'
+              )}
+            >
+              <span onClick={() => switchToBill(bill.id)} className="flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5" />
+                {bill.label}
+                {hasItems && (
+                  <span className={cn(
+                    'px-1.5 py-0.5 rounded-full text-[10px] font-bold',
+                    isActive ? 'bg-[hsl(var(--pos-accent))] text-[hsl(var(--pos-accent-foreground))]' : 'bg-[hsl(var(--pos-border))] text-[hsl(var(--pos-muted-foreground))]'
+                  )}>
+                    {billItems.length + billSvc.length}
+                  </span>
+                )}
+              </span>
+              <button
+                onClick={(e) => { e.stopPropagation(); closeBill(bill.id); }}
+                className="p-0.5 rounded hover:bg-[hsl(var(--pos-border))] text-[hsl(var(--pos-muted-foreground))] hover:text-[hsl(var(--pos-foreground))] opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
+          );
+        })}
+        <button
+          onClick={addNewBill}
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-sm font-bold text-[hsl(var(--pos-muted-foreground))] hover:text-[hsl(var(--pos-foreground))] hover:bg-[hsl(var(--pos-card))]/50 transition-colors shrink-0"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Baru
+        </button>
+      </div>
 
       {/* Main: 2-column layout — Left: product list, Right: cart */}
       <div className="flex-1 flex overflow-hidden">
@@ -493,6 +666,7 @@ export default function POS() {
       <ShippingModal isOpen={showShipping} onClose={() => setShowShipping(false)} items={items} total={grandTotal} customer={selectedCustomer} />
       <ReceiptModal isOpen={showReceipt} onClose={() => setShowReceipt(false)} sale={currentSale} saleDetails={currentSaleDetails}
         cashierName={user?.name || 'Kasir'} customerName={currentSale?.customer_id ? customers.find(c => c.id === currentSale.customer_id)?.name : undefined} />
+      <RefundModal isOpen={showRefund} onClose={() => setShowRefund(false)} storeId={activeStoreId} onRefund={handleRefund} />
     </div>
   );
 }
