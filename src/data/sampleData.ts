@@ -16,6 +16,7 @@ import {
   StockLog,
   StockOpnameDetail,
   DebtPayment,
+  Refund,
 } from '@/types/pos';
 
 // ================ STORES ================
