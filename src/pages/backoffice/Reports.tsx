@@ -2,9 +2,9 @@ import { useState, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   sampleSales, sampleSaleDetails, sampleExpenses, expenseCategories,
-  products, categories, getProduct,
+  products, categories, getProduct, getRefundsForStore, customers,
 } from '@/data/sampleData';
-import { formatCurrency } from '@/lib/format';
+import { formatCurrency, formatDate } from '@/lib/format';
 import { exportToPDF, exportToExcel } from '@/lib/exportUtils';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -12,7 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { DateFilter, DateFilterType, DateRange, getDateRangeFromFilter } from '@/components/backoffice/DateFilter';
 import {
   FileDown, FileSpreadsheet, TrendingUp, TrendingDown,
-  DollarSign, Package, ShoppingCart, Receipt,
+  DollarSign, Package, ShoppingCart, Receipt, RotateCcw,
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
@@ -270,6 +270,7 @@ export default function Reports() {
           <TabsTrigger value="sales" className="gap-2"><ShoppingCart className="w-4 h-4" />Penjualan</TabsTrigger>
           <TabsTrigger value="stock" className="gap-2"><Package className="w-4 h-4" />Stok</TabsTrigger>
           <TabsTrigger value="profitloss" className="gap-2"><Receipt className="w-4 h-4" />Laba Rugi</TabsTrigger>
+          <TabsTrigger value="refunds" className="gap-2"><RotateCcw className="w-4 h-4" />Refund</TabsTrigger>
         </TabsList>
 
         <TabsContent value="sales" className="space-y-4">
@@ -372,6 +373,46 @@ export default function Reports() {
                   <TableCell className="font-bold text-lg">LABA BERSIH</TableCell>
                   <TableCell className={`text-right font-bold text-lg ${netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatCurrency(netProfit)}</TableCell>
                 </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="refunds" className="space-y-4">
+          <p className="text-muted-foreground">Riwayat refund transaksi</p>
+          <div className="bg-card rounded-xl border border-border overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Invoice</TableHead>
+                  <TableHead>Pelanggan</TableHead>
+                  <TableHead>Alasan</TableHead>
+                  <TableHead className="text-right">Jumlah Refund</TableHead>
+                  <TableHead>Diproses Oleh</TableHead>
+                  <TableHead>Tanggal</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(() => {
+                  const storeRefunds = getRefundsForStore(activeStoreId);
+                  if (storeRefunds.length === 0) return (
+                    <TableRow><TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Belum ada riwayat refund</TableCell></TableRow>
+                  );
+                  return storeRefunds.map(r => {
+                    const sale = sampleSales.find(s => s.id === r.sale_id);
+                    const customerName = sale?.customer_id ? customers.find(c => c.id === sale.customer_id)?.name || '-' : 'Umum';
+                    return (
+                      <TableRow key={r.id}>
+                        <TableCell className="font-mono font-medium text-xs">{sale?.invoice_number || '-'}</TableCell>
+                        <TableCell>{customerName}</TableCell>
+                        <TableCell className="max-w-[200px] truncate">{r.reason}</TableCell>
+                        <TableCell className="text-right font-semibold text-destructive">{formatCurrency(r.refund_amount)}</TableCell>
+                        <TableCell>{r.processed_by}</TableCell>
+                        <TableCell className="text-muted-foreground">{formatDate(r.date)}</TableCell>
+                      </TableRow>
+                    );
+                  });
+                })()}
               </TableBody>
             </Table>
           </div>

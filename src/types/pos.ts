@@ -138,7 +138,18 @@ export interface Customer {
 }
 
 export type PaymentMethod = 'cash' | 'qris' | 'transfer';
-export type PaymentStatus = 'paid' | 'debt';
+export type PaymentStatus = 'paid' | 'debt' | 'refunded';
+
+export interface Refund {
+  id: number;
+  sale_id: number;
+  store_id: number;
+  reason: string;
+  refund_amount: number;
+  date: Date;
+  processed_by: string;
+  created_at: Date;
+}
 export type PriceMode = 'retail' | 'wholesale' | 'special';
 export type SaleType = 'sale' | 'owner_withdrawal';
 

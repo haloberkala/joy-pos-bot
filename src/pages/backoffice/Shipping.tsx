@@ -1,6 +1,6 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getCustomersForStore } from '@/data/sampleData';
+import { getCustomersForStore, stores } from '@/data/sampleData';
 import {
   getShipmentsForStore, addShipment, updateShipmentStatus, handleCustomerSelectForShipping,
   statusConfig, subscribeShipments,
@@ -16,9 +16,10 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  Plus, Search, Eye, Truck, MapPin, Phone, User, Package, Clock, CheckCircle, XCircle,
+  Plus, Search, Eye, Truck, MapPin, Phone, User, Package, Clock, CheckCircle, XCircle, Printer,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { printSuratJalan } from '@/components/pos/PrintSuratJalan';
 
 const statusIcons: Record<ShippingStatus, React.ElementType> = {
   pending: Clock, shipped: Truck, delivered: CheckCircle, cancelled: XCircle,
@@ -349,7 +350,14 @@ export default function Shipping() {
                 )}
 
                 {/* Status actions */}
-                <div className="border-t pt-4">
+                <div className="border-t pt-4 space-y-3">
+                  <Button variant="outline" className="w-full gap-2" onClick={() => {
+                    const store = stores.find(s => s.id === activeStoreId);
+                    if (store) printSuratJalan({ shipment: viewShipment, store });
+                  }}>
+                    <Printer className="w-4 h-4" /> Cetak Surat Jalan
+                  </Button>
+
                   <Label className="mb-2 block">Ubah Status</Label>
                   <div className="flex gap-2 flex-wrap">
                     {viewShipment.status === 'pending' && (

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
-  sampleSales, sampleSaleDetails, getProduct, customers,
+  sampleSales, sampleSaleDetails, getProduct, customers, stores,
   getDebtPaymentsForSale, getTotalPaidForSale, getRemainingDebt, addDebtPayment,
 } from '@/data/sampleData';
 import { formatCurrency, formatDate } from '@/lib/format';
@@ -10,12 +10,13 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Search, Download, Eye, Wallet, CreditCard, QrCode, AlertTriangle, Check, Clock, DollarSign, User } from 'lucide-react';
+import { Search, Download, Eye, Wallet, CreditCard, QrCode, AlertTriangle, Check, Clock, DollarSign, User, Printer } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Sale, DebtPayment } from '@/types/pos';
 import { DateFilter, DateFilterType, DateRange, getDateRangeFromFilter } from '@/components/backoffice/DateFilter';
 import { toast } from 'sonner';
+import { printInvoice } from '@/components/pos/PrintInvoice';
 
 export default function Transactions() {
   const { activeStoreId } = useAuth();
@@ -300,7 +301,7 @@ export default function Transactions() {
                 <div><p className="text-muted-foreground">Invoice</p><p className="font-medium">{selectedSale.invoice_number}</p></div>
                 <div><p className="text-muted-foreground">Tanggal</p><p className="font-medium">{formatDate(selectedSale.date)}</p></div>
                 <div><p className="text-muted-foreground">Pembayaran</p><p className="font-medium">{getPaymentLabel(selectedSale.payment_method)}</p></div>
-                <div><p className="text-muted-foreground">Status</p><p className="font-medium">{selectedSale.payment_status === 'paid' ? 'Lunas' : 'Utang'}</p></div>
+                <div><p className="text-muted-foreground">Status</p><p className="font-medium">{selectedSale.payment_status === 'paid' ? 'Lunas' : selectedSale.payment_status === 'refunded' ? 'Direfund' : 'Utang'}</p></div>
               </div>
               <div className="border-t pt-4">
                 <p className="font-medium mb-2">Item</p>
@@ -325,6 +326,14 @@ export default function Transactions() {
                 {selectedSale.change_amount > 0 && (
                   <div className="flex justify-between text-sm text-muted-foreground"><span>Kembalian</span><span>{formatCurrency(selectedSale.change_amount)}</span></div>
                 )}
+              </div>
+              <div className="border-t pt-4">
+                <Button variant="outline" className="w-full gap-2" onClick={() => {
+                  const store = stores.find(s => s.id === activeStoreId);
+                  if (store) printInvoice({ sale: selectedSale, saleDetails: selectedSaleDetails, store });
+                }}>
+                  <Printer className="w-4 h-4" /> Cetak Faktur
+                </Button>
               </div>
             </div>
           )}
