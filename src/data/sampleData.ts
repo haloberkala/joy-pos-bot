@@ -387,3 +387,43 @@ export function getOrCreateUnit(name: string, shortName: string, storeId: number
   units = [...units, newUnit];
   return newId;
 }
+
+// ================ REFUNDS ================
+export let refunds: Refund[] = [];
+
+export function addRefund(refund: Refund) {
+  refunds = [...refunds, refund];
+}
+
+export function getRefundsForStore(storeId: number): Refund[] {
+  return refunds.filter(r => r.store_id === storeId);
+}
+
+export function processRefund(sale: Sale, reason: string, processedBy: string): Refund {
+  const refund: Refund = {
+    id: Date.now(),
+    sale_id: sale.id,
+    store_id: sale.store_id,
+    reason,
+    refund_amount: sale.grand_total,
+    date: new Date(),
+    processed_by: processedBy,
+    created_at: new Date(),
+  };
+
+  // Mark sale as refunded
+  sampleSales = sampleSales.map(s =>
+    s.id === sale.id ? { ...s, payment_status: 'refunded' as const, updated_at: new Date() } : s
+  );
+
+  // Restore stock for all items in this sale
+  const details = sampleSaleDetails.filter(d => d.sale_id === sale.id);
+  details.forEach(d => {
+    products = products.map(p =>
+      p.id === d.product_id ? { ...p, quantity: p.quantity + d.quantity, updated_at: new Date() } : p
+    );
+  });
+
+  refunds = [...refunds, refund];
+  return refund;
+}
