@@ -19,6 +19,10 @@ import Settings from "./pages/backoffice/Settings";
 import Shipping from "./pages/backoffice/Shipping";
 import OwnerPortal from "./pages/OwnerPortal";
 import NotFound from "./pages/NotFound";
+import Attendance from "./pages/backoffice/Attendance";
+import PayrollPage from "./pages/backoffice/Payroll";
+import Evaluation from "./pages/backoffice/Evaluation";
+import EmployeesPage from "./pages/backoffice/Employees";
 
 const queryClient = new QueryClient();
 
