@@ -7,6 +7,8 @@ export function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
+export const formatRupiah = formatCurrency;
+
 export function formatDate(date: Date): string {
   return new Intl.DateTimeFormat('id-ID', {
     day: '2-digit',

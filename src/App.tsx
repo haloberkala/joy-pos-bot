@@ -19,6 +19,10 @@ import Settings from "./pages/backoffice/Settings";
 import Shipping from "./pages/backoffice/Shipping";
 import OwnerPortal from "./pages/OwnerPortal";
 import NotFound from "./pages/NotFound";
+import Attendance from "./pages/backoffice/Attendance";
+import PayrollPage from "./pages/backoffice/Payroll";
+import Evaluation from "./pages/backoffice/Evaluation";
+import EmployeesPage from "./pages/backoffice/Employees";
 
 const queryClient = new QueryClient();
 
@@ -41,6 +45,10 @@ const App = () => (
               
               <Route path="expenses" element={<Expenses />} />
               <Route path="shipping" element={<Shipping />} />
+              <Route path="sdm/attendance" element={<Attendance />} />
+              <Route path="sdm/payroll" element={<PayrollPage />} />
+              <Route path="sdm/evaluation" element={<Evaluation />} />
+              <Route path="sdm/employees" element={<EmployeesPage />} />
               <Route path="reports" element={<Reports />} />
               <Route path="settings" element={<ProtectedRoute allowedRoles={['owner']}><Settings /></ProtectedRoute>} />
             </Route>

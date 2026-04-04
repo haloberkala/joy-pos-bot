@@ -318,3 +318,57 @@ export interface SupplierDebtPayment {
   note?: string;
   created_at: Date;
 }
+
+// ==========================================
+// 10. SDM (HUMAN RESOURCES)
+// ==========================================
+
+export type EmployeeRole = 'owner' | 'admin' | 'cashier' | 'employee';
+export type EmployeeStatus = 'active' | 'inactive';
+export type AttendanceStatus = 'hadir' | 'sakit' | 'izin' | 'cuti' | 'alpha';
+export type PayrollStatus = 'pending' | 'transferred';
+
+export interface Employee {
+  id: number;
+  store_id: number;
+  name: string;
+  position: string;
+  phone: string;
+  daily_salary: number;
+  role: EmployeeRole;
+  start_date: Date;
+  status: EmployeeStatus;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface Attendance {
+  id: number;
+  store_id: number;
+  employee_id: number;
+  date: string; // YYYY-MM-DD
+  clock_in: string | null; // HH:mm
+  clock_out: string | null; // HH:mm
+  duration_minutes: number | null;
+  status: AttendanceStatus;
+  note: string;
+  is_manual_edit: boolean;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface Payroll {
+  id: number;
+  store_id: number;
+  employee_id: number;
+  month: number; // 1-12
+  year: number;
+  days_present: number;
+  daily_salary: number;
+  total_salary: number;
+  status: PayrollStatus;
+  transferred_at: Date | null;
+  note: string;
+  created_at: Date;
+  updated_at: Date;
+}
