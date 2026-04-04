@@ -3,45 +3,18 @@ import { useAuth, canAccessMenu } from '@/contexts/AuthContext';
 import { stores } from '@/data/sampleData';
 import {
   LayoutDashboard, Package, Receipt, Settings, Store, ChevronLeft, LogOut,
-  ShieldCheck, UserCog, User, Wallet, FileBarChart, ShoppingCart, Building2, AlertTriangle, Truck,
-  Users, ChevronDown, ClipboardList, Banknote, Star, UserPlus,
+  ShieldCheck, UserCog, User, Wallet, FileBarChart, ShoppingCart, Building2, Truck,
+  ChevronDown, ClipboardList, Banknote, Star, UserPlus, Users,
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useState } from 'react';
 
-interface NavItem {
-  to: string;
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  end?: boolean;
-  menuKey: string;
-}
-
-const navItems: NavItem[] = [
-  { to: '/backoffice', icon: LayoutDashboard, label: 'Dashboard', end: true, menuKey: 'dashboard' },
-  { to: '/backoffice/products', icon: Package, label: 'Produk & Stok', menuKey: 'products' },
-  { to: '/backoffice/purchases', icon: ShoppingCart, label: 'Kulakan/Supply', menuKey: 'purchases' },
-  { to: '/backoffice/transactions', icon: Receipt, label: 'Transaksi', menuKey: 'transactions' },
-  { to: '/backoffice/shipping', icon: Truck, label: 'Pengiriman', menuKey: 'transactions' },
-  { to: '/backoffice/expenses', icon: Wallet, label: 'Pengeluaran', menuKey: 'expenses' },
-];
-
-const sdmSubItems = [
-  { to: '/backoffice/sdm/attendance', icon: ClipboardList, label: 'Rekap Absensi' },
-  { to: '/backoffice/sdm/payroll', icon: Banknote, label: 'Penggajian' },
-  { to: '/backoffice/sdm/evaluation', icon: Star, label: 'Evaluasi' },
-  { to: '/backoffice/sdm/employees', icon: UserPlus, label: 'Manajemen Karyawan' },
-];
-
-const navItemsAfterSdm: NavItem[] = [
-  { to: '/backoffice/reports', icon: FileBarChart, label: 'Laporan', menuKey: 'reports' },
-  { to: '/backoffice/settings', icon: Settings, label: 'Pengaturan', menuKey: 'settings' },
-];
-
 export function Sidebar() {
   const { user, logout, activeStoreId } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const [sdmOpen, setSdmOpen] = useState(() => location.pathname.startsWith('/backoffice/sdm'));
 
   const handleLogout = () => { logout(); navigate('/login'); toast.success('Logout berhasil'); };
 
@@ -52,6 +25,33 @@ export function Sidebar() {
   const RoleIcon = user?.role === 'owner' ? ShieldCheck : user?.role === 'admin' ? UserCog : User;
   const activeStore = stores.find(s => s.id === activeStoreId);
 
+  const linkCls = "flex items-center gap-3 px-3 py-2.5 rounded-lg text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors";
+  const activeCls = "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground";
+
+  const topItems = [
+    { to: '/backoffice', icon: LayoutDashboard, label: 'Dashboard', end: true, menuKey: 'dashboard' },
+    { to: '/backoffice/products', icon: Package, label: 'Produk & Stok', menuKey: 'products' },
+    { to: '/backoffice/purchases', icon: ShoppingCart, label: 'Kulakan/Supply', menuKey: 'purchases' },
+    { to: '/backoffice/transactions', icon: Receipt, label: 'Transaksi', menuKey: 'transactions' },
+    { to: '/backoffice/shipping', icon: Truck, label: 'Pengiriman', menuKey: 'transactions' },
+    { to: '/backoffice/expenses', icon: Wallet, label: 'Pengeluaran', menuKey: 'expenses' },
+  ];
+
+  const sdmSubItems = [
+    { to: '/backoffice/sdm/attendance', icon: ClipboardList, label: 'Rekap Absensi' },
+    { to: '/backoffice/sdm/payroll', icon: Banknote, label: 'Penggajian' },
+    { to: '/backoffice/sdm/evaluation', icon: Star, label: 'Evaluasi' },
+    { to: '/backoffice/sdm/employees', icon: UserPlus, label: 'Manajemen Karyawan' },
+  ];
+
+  const bottomItems = [
+    { to: '/backoffice/reports', icon: FileBarChart, label: 'Laporan', menuKey: 'reports' },
+    { to: '/backoffice/settings', icon: Settings, label: 'Pengaturan', menuKey: 'settings' },
+  ];
+
+  const isSdmActive = location.pathname.startsWith('/backoffice/sdm');
+  const showSdm = canAccessMenu(user?.role, 'sdm');
+
   return (
     <aside className="w-64 bg-card border-r border-border flex flex-col">
       <div className="p-4 border-b border-border">
@@ -61,7 +61,6 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Active Store Display */}
       <div className="p-4 border-b border-border">
         <div className="flex items-center gap-2 px-3 py-2 bg-muted rounded-lg">
           <Building2 className="w-4 h-4 text-muted-foreground" />
@@ -76,7 +75,42 @@ export function Sidebar() {
         </div>
       </div>
 
-      <SidebarNav />
+      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+        {topItems.filter(item => canAccessMenu(user?.role, item.menuKey)).map(item => (
+          <NavLink key={item.to} to={item.to} end={item.end} className={linkCls} activeClassName={activeCls}>
+            <item.icon className="w-5 h-5" /><span className="font-medium">{item.label}</span>
+          </NavLink>
+        ))}
+
+        {/* SDM collapsible */}
+        {showSdm && (
+          <div>
+            <button
+              onClick={() => setSdmOpen(!sdmOpen)}
+              className={`w-full ${linkCls} ${isSdmActive ? 'text-primary font-semibold' : ''}`}
+            >
+              <Users className="w-5 h-5" />
+              <span className="font-medium flex-1 text-left">SDM</span>
+              <ChevronDown className={`w-4 h-4 transition-transform ${sdmOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {sdmOpen && (
+              <div className="ml-4 mt-1 space-y-1 border-l-2 border-border pl-3">
+                {sdmSubItems.map(item => (
+                  <NavLink key={item.to} to={item.to} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors" activeClassName={activeCls}>
+                    <item.icon className="w-4 h-4" /><span>{item.label}</span>
+                  </NavLink>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {bottomItems.filter(item => canAccessMenu(user?.role, item.menuKey)).map(item => (
+          <NavLink key={item.to} to={item.to} end={item.end} className={linkCls} activeClassName={activeCls}>
+            <item.icon className="w-5 h-5" /><span className="font-medium">{item.label}</span>
+          </NavLink>
+        ))}
+      </nav>
 
       <div className="p-4 border-t border-border space-y-2">
         {user?.role === 'owner' && (
