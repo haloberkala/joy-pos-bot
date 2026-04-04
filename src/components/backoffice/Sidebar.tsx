@@ -4,9 +4,11 @@ import { stores } from '@/data/sampleData';
 import {
   LayoutDashboard, Package, Receipt, Settings, Store, ChevronLeft, LogOut,
   ShieldCheck, UserCog, User, Wallet, FileBarChart, ShoppingCart, Building2, AlertTriangle, Truck,
+  Users, ChevronDown, ClipboardList, Banknote, Star, UserPlus,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
+import { useState } from 'react';
 
 interface NavItem {
   to: string;
@@ -21,9 +23,18 @@ const navItems: NavItem[] = [
   { to: '/backoffice/products', icon: Package, label: 'Produk & Stok', menuKey: 'products' },
   { to: '/backoffice/purchases', icon: ShoppingCart, label: 'Kulakan/Supply', menuKey: 'purchases' },
   { to: '/backoffice/transactions', icon: Receipt, label: 'Transaksi', menuKey: 'transactions' },
-  
   { to: '/backoffice/shipping', icon: Truck, label: 'Pengiriman', menuKey: 'transactions' },
   { to: '/backoffice/expenses', icon: Wallet, label: 'Pengeluaran', menuKey: 'expenses' },
+];
+
+const sdmSubItems = [
+  { to: '/backoffice/sdm/attendance', icon: ClipboardList, label: 'Rekap Absensi' },
+  { to: '/backoffice/sdm/payroll', icon: Banknote, label: 'Penggajian' },
+  { to: '/backoffice/sdm/evaluation', icon: Star, label: 'Evaluasi' },
+  { to: '/backoffice/sdm/employees', icon: UserPlus, label: 'Manajemen Karyawan' },
+];
+
+const navItemsAfterSdm: NavItem[] = [
   { to: '/backoffice/reports', icon: FileBarChart, label: 'Laporan', menuKey: 'reports' },
   { to: '/backoffice/settings', icon: Settings, label: 'Pengaturan', menuKey: 'settings' },
 ];
