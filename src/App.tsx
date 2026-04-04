@@ -45,6 +45,10 @@ const App = () => (
               
               <Route path="expenses" element={<Expenses />} />
               <Route path="shipping" element={<Shipping />} />
+              <Route path="sdm/attendance" element={<Attendance />} />
+              <Route path="sdm/payroll" element={<PayrollPage />} />
+              <Route path="sdm/evaluation" element={<Evaluation />} />
+              <Route path="sdm/employees" element={<EmployeesPage />} />
               <Route path="reports" element={<Reports />} />
               <Route path="settings" element={<ProtectedRoute allowedRoles={['owner']}><Settings /></ProtectedRoute>} />
             </Route>

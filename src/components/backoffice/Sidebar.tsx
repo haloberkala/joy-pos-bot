@@ -106,7 +106,7 @@ export function Sidebar() {
         )}
 
         {bottomItems.filter(item => canAccessMenu(user?.role, item.menuKey)).map(item => (
-          <NavLink key={item.to} to={item.to} end={item.end} className={linkCls} activeClassName={activeCls}>
+          <NavLink key={item.to} to={item.to} className={linkCls} activeClassName={activeCls}>
             <item.icon className="w-5 h-5" /><span className="font-medium">{item.label}</span>
           </NavLink>
         ))}
