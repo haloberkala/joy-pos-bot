@@ -17,8 +17,8 @@ import { toast } from 'sonner';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 const COLORS = [
-  'hsl(173, 58%, 39%)', 'hsl(38, 92%, 50%)', 'hsl(0, 84%, 60%)', 'hsl(220, 70%, 55%)',
-  'hsl(280, 60%, 55%)', 'hsl(142, 71%, 45%)', 'hsl(30, 80%, 55%)', 'hsl(200, 70%, 50%)',
+  'hsl(245, 100%, 67%)', 'hsl(40, 72%, 42%)', 'hsl(4, 68%, 46%)', 'hsl(220, 70%, 55%)',
+  'hsl(280, 60%, 55%)', 'hsl(160, 72%, 27%)', 'hsl(30, 80%, 55%)', 'hsl(200, 70%, 50%)',
 ];
 
 export default function Expenses() {
