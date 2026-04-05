@@ -25,8 +25,8 @@ export function Sidebar() {
   const RoleIcon = user?.role === 'owner' ? ShieldCheck : user?.role === 'admin' ? UserCog : User;
   const activeStore = stores.find(s => s.id === activeStoreId);
 
-  const linkCls = "flex items-center gap-3 px-3 py-2.5 rounded-lg text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors";
-  const activeCls = "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground";
+  const linkCls = "flex items-center gap-3 px-3 py-2 rounded-lg text-[13px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors";
+  const activeCls = "bg-primary-light text-primary hover:bg-primary-light hover:text-primary";
 
   const topItems = [
     { to: '/backoffice', icon: LayoutDashboard, label: 'Dashboard', end: true, menuKey: 'dashboard' },
@@ -53,32 +53,42 @@ export function Sidebar() {
   const showSdm = canAccessMenu(user?.role, 'sdm');
 
   return (
-    <aside className="w-64 bg-card border-r border-border flex flex-col">
+    <aside className="w-60 bg-white border-r border-border flex flex-col">
       <div className="p-4 border-b border-border">
-        <div className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-lg bg-primary flex items-center justify-center"><Store className="w-6 h-6 text-primary-foreground" /></div>
-          <div><h1 className="font-bold text-foreground">POS Admin</h1><p className="text-xs text-muted-foreground">Back Office</p></div>
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
+            <Store className="w-4 h-4 text-primary-foreground" />
+          </div>
+          <div>
+            <h1 className="text-[15px] font-medium text-foreground">MiniPOS</h1>
+            <p className="text-[11px] text-muted-foreground">Back Office</p>
+          </div>
         </div>
       </div>
 
-      <div className="p-4 border-b border-border">
-        <div className="flex items-center gap-2 px-3 py-2 bg-muted rounded-lg">
-          <Building2 className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm font-medium truncate">{activeStore?.name}</span>
+      <div className="px-4 py-3 border-b border-border">
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-surface rounded-lg">
+          <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="text-[12px] font-medium truncate text-foreground">{activeStore?.name}</span>
         </div>
       </div>
 
-      <div className="p-4 border-b border-border">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center"><RoleIcon className="w-5 h-5 text-primary" /></div>
-          <div className="flex-1 min-w-0"><p className="font-medium text-foreground truncate">{user?.name}</p><p className="text-xs text-muted-foreground">{getRoleLabel(user?.role || '')}</p></div>
+      <div className="px-4 py-3 border-b border-border">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-full bg-surface flex items-center justify-center">
+            <RoleIcon className="w-4 h-4 text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] font-medium text-foreground truncate">{user?.name}</p>
+            <p className="text-[11px] text-muted-foreground">{getRoleLabel(user?.role || '')}</p>
+          </div>
         </div>
       </div>
 
-      <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+      <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
         {topItems.filter(item => canAccessMenu(user?.role, item.menuKey)).map(item => (
           <NavLink key={item.to} to={item.to} end={item.end} className={linkCls} activeClassName={activeCls}>
-            <item.icon className="w-5 h-5" /><span className="font-medium">{item.label}</span>
+            <item.icon className="w-[14px] h-[14px]" /><span>{item.label}</span>
           </NavLink>
         ))}
 
@@ -87,17 +97,20 @@ export function Sidebar() {
           <div>
             <button
               onClick={() => setSdmOpen(!sdmOpen)}
-              className={`w-full ${linkCls} ${isSdmActive ? 'text-primary font-semibold' : ''}`}
+              className={`w-full ${linkCls} ${isSdmActive ? 'text-primary font-medium' : ''}`}
             >
-              <Users className="w-5 h-5" />
-              <span className="font-medium flex-1 text-left">SDM</span>
-              <ChevronDown className={`w-4 h-4 transition-transform ${sdmOpen ? 'rotate-180' : ''}`} />
+              <Users className="w-[14px] h-[14px]" />
+              <span className="flex-1 text-left flex items-center gap-2">
+                SDM
+                <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground">Baru</span>
+              </span>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${sdmOpen ? 'rotate-180' : ''}`} />
             </button>
             {sdmOpen && (
-              <div className="ml-4 mt-1 space-y-1 border-l-2 border-border pl-3">
+              <div className="ml-4 mt-0.5 space-y-0.5 border-l border-border pl-3">
                 {sdmSubItems.map(item => (
-                  <NavLink key={item.to} to={item.to} className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors" activeClassName={activeCls}>
-                    <item.icon className="w-4 h-4" /><span>{item.label}</span>
+                  <NavLink key={item.to} to={item.to} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" activeClassName={activeCls}>
+                    <item.icon className="w-3.5 h-3.5" /><span>{item.label}</span>
                   </NavLink>
                 ))}
               </div>
@@ -107,22 +120,22 @@ export function Sidebar() {
 
         {bottomItems.filter(item => canAccessMenu(user?.role, item.menuKey)).map(item => (
           <NavLink key={item.to} to={item.to} className={linkCls} activeClassName={activeCls}>
-            <item.icon className="w-5 h-5" /><span className="font-medium">{item.label}</span>
+            <item.icon className="w-[14px] h-[14px]" /><span>{item.label}</span>
           </NavLink>
         ))}
       </nav>
 
-      <div className="p-4 border-t border-border space-y-2">
+      <div className="p-3 border-t border-border space-y-1">
         {user?.role === 'owner' && (
-          <NavLink to="/owner" className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
-            <Building2 className="w-5 h-5" /><span className="font-medium">Portal Owner</span>
+          <NavLink to="/owner" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary-light text-primary hover:bg-primary-light/80 transition-colors text-[13px]">
+            <Building2 className="w-[14px] h-[14px]" /><span className="font-medium">Portal Owner</span>
           </NavLink>
         )}
-        <NavLink to="/" className="flex items-center gap-2 px-3 py-2.5 rounded-lg bg-accent text-accent-foreground hover:bg-accent/80 transition-colors">
-          <ChevronLeft className="w-5 h-5" /><span className="font-medium">Kembali ke POS</span>
+        <NavLink to="/" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface text-foreground hover:bg-accent transition-colors text-[13px]">
+          <ChevronLeft className="w-[14px] h-[14px]" /><span className="font-medium">Kembali ke POS</span>
         </NavLink>
-        <button onClick={handleLogout} className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-destructive hover:bg-destructive/10 transition-colors">
-          <LogOut className="w-5 h-5" /><span className="font-medium">Logout</span>
+        <button onClick={handleLogout} className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-destructive hover:bg-destructive/5 transition-colors text-[13px]">
+          <LogOut className="w-[14px] h-[14px]" /><span className="font-medium">Logout</span>
         </button>
       </div>
     </aside>

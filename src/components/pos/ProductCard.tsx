@@ -15,29 +15,23 @@ export function ProductCard({ product, onAdd }: ProductCardProps) {
       onClick={() => !isOutOfStock && onAdd(product)}
       disabled={isOutOfStock}
       className={cn(
-        'group relative flex flex-col rounded-2xl p-4 text-left transition-all duration-200',
-        'bg-[hsl(var(--pos-card))] border border-[hsl(var(--pos-border))]',
-        'hover:border-[hsl(var(--pos-accent))] hover:shadow-md',
-        'active:scale-[0.98] touch-target',
+        'group relative flex flex-col rounded-xl p-4 text-left transition-all duration-150',
+        'bg-white border border-border',
+        'hover:border-primary hover:shadow-sm',
+        'active:scale-[0.99] touch-target',
         isOutOfStock && 'opacity-50 cursor-not-allowed'
       )}
     >
       <div className="flex-1">
-        <h3 className="font-semibold text-[hsl(var(--pos-foreground))] text-sm leading-tight mb-1">
-          {product.name}
-        </h3>
-        <p className="text-xs text-[hsl(var(--pos-muted-foreground))]">
-          Stok: {product.quantity}
-        </p>
+        <h3 className="font-medium text-foreground text-[13px] leading-tight mb-1">{product.name}</h3>
+        <p className="text-[11px] text-muted-foreground">Stok: {product.quantity}</p>
       </div>
       <div className="mt-3">
-        <span className="price-text text-lg text-[hsl(var(--pos-accent))]">
-          {formatCurrency(product.selling_price)}
-        </span>
+        <span className="text-[15px] font-medium text-primary tabular-nums">{formatCurrency(product.selling_price)}</span>
       </div>
       {isOutOfStock && (
-        <div className="absolute inset-0 flex items-center justify-center bg-white/70 rounded-2xl backdrop-blur-sm">
-          <span className="text-sm font-semibold text-red-500">Habis</span>
+        <div className="absolute inset-0 flex items-center justify-center bg-white/80 rounded-xl">
+          <span className="text-[12px] font-medium text-destructive">Habis</span>
         </div>
       )}
     </button>

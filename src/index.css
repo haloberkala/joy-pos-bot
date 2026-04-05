@@ -2,109 +2,79 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap');
 
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
+    --foreground: 210 50% 14%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 210 50% 14%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: 210 50% 14%;
 
-    --primary: 173 58% 39%;
+    --primary: 245 100% 67%;
     --primary-foreground: 0 0% 100%;
+    --primary-light: 244 100% 97%;
 
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 222 47% 11%;
+    --secondary: 216 20% 97%;
+    --secondary-foreground: 210 50% 14%;
 
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
+    --muted: 216 20% 97%;
+    --muted-foreground: 213 14% 53%;
 
-    --accent: 220 14% 96%;
-    --accent-foreground: 222 47% 11%;
+    --accent: 216 20% 97%;
+    --accent-foreground: 210 50% 14%;
 
-    --destructive: 0 84% 60%;
+    --destructive: 4 68% 46%;
     --destructive-foreground: 0 0% 100%;
 
-    --success: 142 71% 45%;
+    --success: 160 72% 27%;
     --success-foreground: 0 0% 100%;
 
-    --warning: 38 92% 50%;
+    --warning: 40 72% 42%;
     --warning-foreground: 0 0% 100%;
 
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 173 58% 39%;
+    --border: 220 20% 92%;
+    --input: 220 20% 92%;
+    --ring: 245 100% 67%;
 
-    --radius: 0.75rem;
+    --radius: 0.5rem;
 
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 240 5.3% 26.1%;
-    --sidebar-primary: 240 5.9% 10%;
-    --sidebar-primary-foreground: 0 0% 98%;
-    --sidebar-accent: 240 4.8% 95.9%;
-    --sidebar-accent-foreground: 240 5.9% 10%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 173 58% 39%;
-
-    /* POS specific tokens - Light Mint Fresh */
-    --pos-background: 150 20% 97%;
-    --pos-foreground: 220 25% 18%;
-    --pos-card: 0 0% 100%;
-    --pos-card-foreground: 220 25% 18%;
-    --pos-muted: 150 15% 93%;
-    --pos-muted-foreground: 220 10% 50%;
-    --pos-border: 150 12% 88%;
-    --pos-accent: 158 64% 42%;
-    --pos-accent-foreground: 0 0% 100%;
-    --pos-success: 158 64% 42%;
-    --pos-destructive: 0 72% 55%;
-    --pos-accent-hover: 158 64% 36%;
-    --pos-gradient-start: 158 64% 42%;
-    --pos-gradient-end: 168 55% 36%;
-  }
-
-  .dark {
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
-
-    --card: 223 47% 14%;
-    --card-foreground: 210 40% 98%;
-
-    --popover: 223 47% 14%;
-    --popover-foreground: 210 40% 98%;
-
-    --primary: 173 58% 45%;
-    --primary-foreground: 0 0% 100%;
-
-    --secondary: 223 47% 18%;
-    --secondary-foreground: 210 40% 98%;
-
-    --muted: 223 47% 18%;
-    --muted-foreground: 215 20% 65%;
-
-    --accent: 223 47% 18%;
-    --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 62% 50%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 223 47% 22%;
-    --input: 223 47% 22%;
-    --ring: 173 58% 45%;
-
-    --sidebar-background: 223 47% 10%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 173 58% 45%;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 213 14% 53%;
+    --sidebar-primary: 245 100% 67%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 223 47% 18%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 223 47% 22%;
-    --sidebar-ring: 173 58% 45%;
+    --sidebar-accent: 244 100% 97%;
+    --sidebar-accent-foreground: 245 100% 67%;
+    --sidebar-border: 220 20% 92%;
+    --sidebar-ring: 245 100% 67%;
+
+    /* Ink colors as CSS vars for direct usage */
+    --ink: 210 50% 14%;
+    --body: 212 20% 33%;
+    --muted-color: 213 14% 53%;
+
+    /* POS specific tokens — Stripe style */
+    --pos-background: 216 20% 97%;
+    --pos-foreground: 210 50% 14%;
+    --pos-card: 0 0% 100%;
+    --pos-card-foreground: 210 50% 14%;
+    --pos-muted: 216 20% 97%;
+    --pos-muted-foreground: 213 14% 53%;
+    --pos-border: 220 20% 92%;
+    --pos-accent: 245 100% 67%;
+    --pos-accent-foreground: 0 0% 100%;
+    --pos-success: 160 72% 27%;
+    --pos-destructive: 4 68% 46%;
+    --pos-accent-hover: 245 100% 60%;
+    --pos-gradient-start: 245 100% 67%;
+    --pos-gradient-end: 245 100% 60%;
+
+    /* Surface */
+    --surface: 216 33% 97%;
   }
 }
 
@@ -114,22 +84,33 @@
   }
 
   body {
-    @apply bg-background text-foreground font-sans antialiased;
-    font-family: 'Plus Jakarta Sans', 'DM Sans', sans-serif;
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    color: hsl(212, 20%, 33%);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    color: hsl(210, 50%, 14%);
+    font-weight: 500;
+    letter-spacing: -0.02em;
   }
 }
 
 @layer utilities {
   .pos-gradient {
-    background: linear-gradient(135deg, hsl(var(--pos-card)) 0%, hsl(var(--pos-background)) 100%);
+    background: hsl(var(--pos-card));
   }
 
   .success-gradient {
-    background: linear-gradient(135deg, hsl(142 71% 45%) 0%, hsl(142 71% 35%) 100%);
+    background: hsl(160, 72%, 27%);
   }
 
   .price-text {
-    @apply font-bold tabular-nums tracking-tight;
+    @apply font-medium tabular-nums;
+    letter-spacing: -0.02em;
   }
 
   .touch-target {
@@ -137,10 +118,45 @@
   }
 
   .card-hover {
-    @apply transition-all duration-200 hover:scale-[1.02] hover:shadow-lg;
+    @apply transition-all duration-150 hover:shadow-sm;
   }
 
   .glass-effect {
-    @apply backdrop-blur-md bg-white/10;
+    @apply bg-white/95;
+  }
+
+  /* Stripe-style typography helpers */
+  .text-page-title {
+    font-size: 20px;
+    font-weight: 500;
+    letter-spacing: -0.4px;
+    color: hsl(210, 50%, 14%);
+  }
+
+  .text-section-title {
+    font-size: 15px;
+    font-weight: 500;
+    color: hsl(210, 50%, 14%);
+  }
+
+  .text-body {
+    font-size: 13px;
+    font-weight: 400;
+    color: hsl(212, 20%, 33%);
+  }
+
+  .text-caption {
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: hsl(213, 14%, 53%);
+  }
+}
+
+/* Print styles */
+@media print {
+  .no-print {
+    display: none !important;
   }
 }
