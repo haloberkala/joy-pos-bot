@@ -47,7 +47,6 @@ export default function Shipping() {
 
   const storeShipments = useMemo(() => {
     let filtered = getShipmentsForStore(activeStoreId);
-    if (filterStatus !== 'all') filtered = filtered.filter(s => s.status === filterStatus);
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(s =>
@@ -58,7 +57,7 @@ export default function Shipping() {
     }
     return filtered.sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeStoreId, filterStatus, searchQuery, setTick]);
+  }, [activeStoreId, searchQuery, setTick]);
 
   const stats = useMemo(() => {
     const all = getShipmentsForStore(activeStoreId);
