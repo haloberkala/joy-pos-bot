@@ -2,9 +2,9 @@ import { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { getCustomersForStore, stores } from '@/data/sampleData';
 import {
-  getShipmentsForStore, addShipment, updateShipmentStatus, handleCustomerSelectForShipping,
-  statusConfig, subscribeShipments,
-  type Shipment, type ShippingStatus,
+  getShipmentsForStore, addShipment, handleCustomerSelectForShipping,
+  subscribeShipments,
+  type Shipment,
 } from '@/data/shippingStore';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  Plus, Search, Eye, Truck, MapPin, Phone, User, Package, Clock, CheckCircle, XCircle, Printer,
+  Plus, Search, Eye, Truck, MapPin, Phone, User, Package, Clock, CheckCircle, Printer,
+} from 'lucide-react';
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { printSuratJalan } from '@/components/pos/PrintSuratJalan';
@@ -29,7 +30,7 @@ export default function Shipping() {
   const { activeStoreId } = useAuth();
   const [, setTick] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
+  
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [viewShipment, setViewShipment] = useState<Shipment | null>(null);
 
