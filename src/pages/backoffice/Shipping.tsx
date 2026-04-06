@@ -247,7 +247,6 @@ export default function Shipping() {
               <TableHead>Alamat</TableHead>
               <TableHead>Barang</TableHead>
               <TableHead className="text-right">Ongkir</TableHead>
-              <TableHead>Status</TableHead>
               <TableHead>Tanggal</TableHead>
               <TableHead className="text-right">Aksi</TableHead>
             </TableRow>

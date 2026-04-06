@@ -3,11 +3,10 @@ import { useCart } from '@/hooks/useCart';
 import { useAuth } from '@/contexts/AuthContext';
 import { PaymentModal } from '@/components/pos/PaymentModal';
 import { ReceiptModal } from '@/components/pos/ReceiptModal';
-import { CustomerModal } from '@/components/pos/CustomerModal';
 import { RefundModal } from '@/components/pos/RefundModal';
 import { getProductsForStore, stores, customers, processRefund } from '@/data/sampleData';
 import { PaymentMethod, Sale, SaleDetail, Product, Customer, PriceMode, ServiceItem, CartItem } from '@/types/pos';
-import { Settings, LogOut, User, ShieldCheck, UserCog, ScanBarcode, Building2, Trash2, Search, ChevronDown, Truck, Wrench, Plus, Crown, X, RotateCcw, FileText } from 'lucide-react';
+import { Settings, LogOut, User, ShieldCheck, UserCog, ScanBarcode, Building2, Trash2, Search, ChevronDown, Truck, Wrench, Plus, Crown, X, RotateCcw, FileText, Info } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { canAccessMenu } from '@/contexts/AuthContext';
@@ -27,19 +26,24 @@ interface Bill {
   selectedCustomer: Customer | null;
 }
 
-let billCounter = 1;
+// Find the smallest available bill number starting from 1
+function findNextBillNumber(bills: Bill[]): number {
+  const usedNumbers = new Set(bills.map(b => b.id));
+  let num = 1;
+  while (usedNumbers.has(num)) num++;
+  return num;
+}
 
-function createBill(): Bill {
-  const id = billCounter++;
-  return { id, label: `Bill ${id}`, customerName: '', items: [], serviceItems: [], selectedCustomer: null };
+function createBillWithNumber(num: number): Bill {
+  return { id: num, label: `Bill ${num}`, customerName: '', items: [], serviceItems: [], selectedCustomer: null };
 }
 
 const MAX_BILLS = 10;
 
 export default function POS() {
   // ========== OPEN BILL STATE ==========
-  const [bills, setBills] = useState<Bill[]>(() => [createBill()]);
-  const [activeBillId, setActiveBillId] = useState<number>(() => bills[0]?.id ?? 1);
+  const [bills, setBills] = useState<Bill[]>(() => [createBillWithNumber(1)]);
+  const [activeBillId, setActiveBillId] = useState<number>(() => 1);
   const _activeBill = bills.find(b => b.id === activeBillId) || bills[0];
   const { items, addItem, removeItem, updateQuantity, clearCart, total, setPriceMode, setItems } = useCart();
   const [serviceItems, setServiceItems] = useState<ServiceItem[]>([]);
@@ -62,16 +66,25 @@ export default function POS() {
   const addNewBill = useCallback(() => {
     if (bills.length >= MAX_BILLS) { toast.error(`Maksimal ${MAX_BILLS} bill terbuka`); return; }
     saveBillState();
-    const newBill = createBill();
+    const num = findNextBillNumber(bills);
+    const newBill = createBillWithNumber(num);
     setBills(prev => [...prev, newBill]);
     setActiveBillId(newBill.id); clearCart(); setServiceItems([]); setSelectedCustomer(null);
-  }, [bills.length, saveBillState, clearCart]);
+  }, [bills, saveBillState, clearCart]);
 
   const closeBill = useCallback((billId: number) => {
-    if (bills.length <= 1) { clearCart(); setServiceItems([]); setSelectedCustomer(null); const fresh = createBill(); setBills([fresh]); setActiveBillId(fresh.id); return; }
+    if (bills.length <= 1) {
+      clearCart(); setServiceItems([]); setSelectedCustomer(null);
+      const fresh = createBillWithNumber(1);
+      setBills([fresh]); setActiveBillId(fresh.id);
+      return;
+    }
     const remaining = bills.filter(b => b.id !== billId);
     setBills(remaining);
-    if (activeBillId === billId) { const next = remaining[0]; setActiveBillId(next.id); setItems(next.items); setServiceItems(next.serviceItems); setSelectedCustomer(next.selectedCustomer); }
+    if (activeBillId === billId) {
+      const next = remaining[0];
+      setActiveBillId(next.id); setItems(next.items); setServiceItems(next.serviceItems); setSelectedCustomer(next.selectedCustomer);
+    }
   }, [bills, activeBillId, clearCart, setItems]);
 
   // ========== EXISTING STATE ==========
@@ -80,9 +93,7 @@ export default function POS() {
   const [currentSaleDetails, setCurrentSaleDetails] = useState<(SaleDetail & { product?: Product })[]>([]);
   const [showReceipt, setShowReceipt] = useState(false);
   const [scannerActive, setScannerActive] = useState(true);
-  const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
-  const [pendingPaymentMethod, setPendingPaymentMethod] = useState<PaymentMethod | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isDebt, setIsDebt] = useState(false);
   const [dueDate, setDueDate] = useState('');
@@ -113,7 +124,7 @@ export default function POS() {
       if (product) { if (product.quantity > 0) { addItem(product); toast.success(`${product.name} ditambahkan`, { duration: 1500 }); } else toast.error(`${product.name} stok habis`); }
       else toast.error(`Produk tidak ditemukan: ${barcode}`);
     },
-    enabled: scannerActive && !paymentMethod && !showReceipt && !showCustomerModal,
+    enabled: scannerActive && !paymentMethod && !showReceipt,
   });
 
   const handleSearchKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -138,17 +149,16 @@ export default function POS() {
 
   const removeService = (id: number) => { setServiceItems(prev => prev.filter(s => s.id !== id)); };
 
-  const handleCheckout = (method: PaymentMethod) => { setPendingPaymentMethod(method); setShowCustomerModal(true); };
+  // Direct checkout — open combined payment modal
+  const handleCheckout = (method: PaymentMethod) => {
+    if (items.length === 0 && serviceItems.length === 0) { toast.error('Keranjang kosong'); return; }
+    setPaymentMethod(method);
+  };
 
   const handleOwnerWithdrawal = () => {
     if (items.length === 0 && serviceItems.length === 0) { toast.error('Keranjang kosong'); return; }
-    setIsOwnerWithdrawal(true); setPendingPaymentMethod('cash'); setShowCustomerModal(true);
-  };
-
-  const handleCustomerSelected = (customer: Customer | null) => {
-    setSelectedCustomer(customer); setShowCustomerModal(false);
-    if (isOwnerWithdrawal) { processOwnerWithdrawal(); }
-    else if (pendingPaymentMethod) { setPaymentMethod(pendingPaymentMethod); setPendingPaymentMethod(null); }
+    setIsOwnerWithdrawal(true);
+    processOwnerWithdrawal();
   };
 
   const processOwnerWithdrawal = () => {
@@ -164,8 +174,12 @@ export default function POS() {
       total_price: item.price_per_unit * item.quantity, price_mode: item.price_mode, product: item.product, created_at: now, updated_at: now,
     }));
     setCurrentSale(sale); setCurrentSaleDetails(details); clearCart(); setServiceItems([]);
-    setShowReceipt(true); setSelectedCustomer(null); setIsOwnerWithdrawal(false); setPendingPaymentMethod(null);
+    setShowReceipt(true); setSelectedCustomer(null); setIsOwnerWithdrawal(false);
     closeBill(activeBillId); toast.success('Pengambilan Owner berhasil dicatat!');
+  };
+
+  const handleCustomerChangeInPayment = (customer: Customer | null) => {
+    setSelectedCustomer(customer);
   };
 
   const handleConfirmPayment = (amountPaid: number) => {
@@ -201,7 +215,7 @@ export default function POS() {
 
   return (
     <div className="h-screen flex flex-col bg-surface">
-      {/* Header — white, border bottom */}
+      {/* Header */}
       <header className="flex items-center justify-between px-4 py-2 border-b border-border bg-white">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
@@ -218,7 +232,7 @@ export default function POS() {
           {canSwitchStore ? (
             <div className="relative">
               <select value={activeStoreId}
-                onChange={(e) => { setActiveStoreId(Number(e.target.value)); clearCart(); setServiceItems([]); setBills([createBill()]); }}
+                onChange={(e) => { setActiveStoreId(Number(e.target.value)); clearCart(); setServiceItems([]); setBills([createBillWithNumber(1)]); setActiveBillId(1); }}
                 className="appearance-none pl-7 pr-6 py-1.5 rounded-lg text-[12px] font-medium border border-border bg-white text-foreground cursor-pointer focus:outline-none focus:border-primary">
                 {stores.filter(s => accessibleStoreIds.includes(s.id) || user?.role === 'owner').map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
               </select>
@@ -258,7 +272,7 @@ export default function POS() {
         </div>
       </header>
 
-      {/* Bill Tabs — underline style */}
+      {/* Bill Tabs */}
       <div className="flex items-center gap-0 px-4 bg-white border-b border-border overflow-x-auto">
         {bills.map(bill => {
           const isActive = bill.id === activeBillId;
@@ -460,14 +474,21 @@ export default function POS() {
                 </button>
 
                 {user?.role === 'owner' && (
-                  <button onClick={handleOwnerWithdrawal} disabled={items.length === 0 && serviceItems.length === 0}
-                    className="px-3 py-2 rounded-lg bg-[hsl(40,72%,42%)] hover:bg-[hsl(40,72%,36%)] text-white text-[12px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5">
-                    <Crown className="w-3.5 h-3.5" /> AMBIL
-                  </button>
+                  <div className="relative group">
+                    <button onClick={handleOwnerWithdrawal} disabled={items.length === 0 && serviceItems.length === 0}
+                      className="px-3 py-2 rounded-lg bg-[hsl(40,72%,42%)] hover:bg-[hsl(40,72%,36%)] text-white text-[12px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                      title="Ambil produk tanpa pembayaran — tercatat sebagai pengambilan internal">
+                      <Crown className="w-3.5 h-3.5" /> AMBIL (OWNER)
+                    </button>
+                    <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-foreground text-white text-[11px] rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-20">
+                      <Info className="w-3 h-3 inline mr-1" />
+                      Ambil produk tanpa bayar — terdata sebagai pengambilan internal
+                    </div>
+                  </div>
                 )}
 
                 {isDebt ? (
-                  <button onClick={() => { if (items.length === 0 && serviceItems.length === 0) { toast.error('Keranjang kosong'); return; } setPendingPaymentMethod('cash'); setShowCustomerModal(true); }}
+                  <button onClick={() => handleCheckout('cash')}
                     disabled={items.length === 0 && serviceItems.length === 0}
                     className="px-4 py-2 rounded-lg bg-[hsl(40,72%,42%)] hover:bg-[hsl(40,72%,36%)] text-white text-[12px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                     SIMPAN UTANG
@@ -494,12 +515,12 @@ export default function POS() {
         </div>
       </div>
 
-      {/* Modals */}
-      <CustomerModal isOpen={showCustomerModal} onClose={() => { setShowCustomerModal(false); setPendingPaymentMethod(null); setIsOwnerWithdrawal(false); }}
-        storeId={activeStoreId} onSelectCustomer={handleCustomerSelected} selectedCustomer={selectedCustomer} requireCustomer={isDebt} />
+      {/* Modals — combined payment modal with customer selection */}
       {paymentMethod && !isDebt && (
         <PaymentModal isOpen={!!paymentMethod} onClose={() => setPaymentMethod(null)} items={items} total={grandTotal}
-          paymentMethod={paymentMethod} onConfirm={handleConfirmPayment} customer={selectedCustomer} />
+          paymentMethod={paymentMethod} onConfirm={handleConfirmPayment}
+          storeId={activeStoreId} selectedCustomer={selectedCustomer} onCustomerChange={handleCustomerChangeInPayment}
+          requireCustomer={false} />
       )}
       <ShippingModal isOpen={showShipping} onClose={() => setShowShipping(false)} items={items} total={grandTotal} customer={selectedCustomer} />
       <ReceiptModal isOpen={showReceipt} onClose={() => setShowReceipt(false)} sale={currentSale} saleDetails={currentSaleDetails}

@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { attendances, employees, updateAttendance } from '@/data/sdmData';
-import { Attendance as AttendanceType, AttendanceStatus } from '@/types/pos';
+import { Attendance as AttendanceType } from '@/types/pos';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -11,14 +11,20 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { toast } from 'sonner';
 import { Pencil } from 'lucide-react';
 
-const STATUS_LABELS: Record<AttendanceStatus, string> = {
-  hadir: 'Hadir', sakit: 'Sakit', izin: 'Izin', cuti: 'Cuti', alpha: 'Alpha',
+type SimpleStatus = 'hadir' | 'tidak_hadir';
+
+const STATUS_LABELS: Record<SimpleStatus, string> = {
+  hadir: 'Hadir',
+  tidak_hadir: 'Tidak Hadir',
 };
-const STATUS_COLORS: Record<AttendanceStatus, string> = {
-  hadir: 'bg-green-100 text-green-800', sakit: 'bg-yellow-100 text-yellow-800',
-  izin: 'bg-blue-100 text-blue-800', cuti: 'bg-purple-100 text-purple-800',
-  alpha: 'bg-red-100 text-red-800',
+const STATUS_COLORS: Record<SimpleStatus, string> = {
+  hadir: 'bg-green-100 text-green-800',
+  tidak_hadir: 'bg-red-100 text-red-800',
 };
+
+function toSimpleStatus(s: string): SimpleStatus {
+  return s === 'hadir' ? 'hadir' : 'tidak_hadir';
+}
 
 export default function Attendance() {
   const { activeStoreId } = useAuth();
@@ -27,7 +33,7 @@ export default function Attendance() {
   const [filterMonth, setFilterMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [editRow, setEditRow] = useState<AttendanceType | null>(null);
-  const [editStatus, setEditStatus] = useState<AttendanceStatus>('hadir');
+  const [editStatus, setEditStatus] = useState<SimpleStatus>('hadir');
   const [editNote, setEditNote] = useState('');
   const [, setTick] = useState(0);
 
@@ -39,34 +45,36 @@ export default function Attendance() {
       if (!emp || emp.store_id !== activeStoreId) return false;
       if (filterEmployee !== 'all' && a.employee_id !== Number(filterEmployee)) return false;
       if (filterMonth && !a.date.startsWith(filterMonth)) return false;
-      if (filterStatus !== 'all' && a.status !== filterStatus) return false;
+      if (filterStatus !== 'all') {
+        const simple = toSimpleStatus(a.status);
+        if (simple !== filterStatus) return false;
+      }
       return true;
     }).sort((a, b) => b.date.localeCompare(a.date));
   }, [activeStoreId, filterEmployee, filterMonth, filterStatus, editRow]);
 
   // Monthly summary
   const summary = useMemo(() => {
-    const map: Record<number, Record<AttendanceStatus, number>> = {};
+    const map: Record<number, { hadir: number; tidak_hadir: number }> = {};
     for (const a of filtered) {
-      if (!map[a.employee_id]) map[a.employee_id] = { hadir: 0, sakit: 0, izin: 0, cuti: 0, alpha: 0 };
-      map[a.employee_id][a.status]++;
+      if (!map[a.employee_id]) map[a.employee_id] = { hadir: 0, tidak_hadir: 0 };
+      const simple = toSimpleStatus(a.status);
+      map[a.employee_id][simple]++;
     }
     return map;
   }, [filtered]);
 
   const openEdit = (row: AttendanceType) => {
     setEditRow(row);
-    setEditStatus(row.status);
+    setEditStatus(toSimpleStatus(row.status));
     setEditNote(row.note);
   };
 
   const saveEdit = () => {
     if (!editRow) return;
-    if (['sakit', 'izin', 'cuti'].includes(editStatus) && !editNote.trim()) {
-      toast.error('Keterangan wajib diisi untuk status Sakit/Izin/Cuti');
-      return;
-    }
-    updateAttendance(editRow.id, { status: editStatus, note: editNote.trim() });
+    // Map simple status back to the original type format
+    const mappedStatus = editStatus === 'hadir' ? 'hadir' : 'alpha';
+    updateAttendance(editRow.id, { status: mappedStatus as any, note: editNote.trim() });
     toast.success('Absensi berhasil diperbarui');
     setEditRow(null);
     setTick(t => t + 1);
@@ -92,7 +100,8 @@ export default function Attendance() {
           <SelectTrigger className="w-36"><SelectValue placeholder="Semua Status" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua Status</SelectItem>
-            {Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+            <SelectItem value="hadir">Hadir</SelectItem>
+            <SelectItem value="tidak_hadir">Tidak Hadir</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -101,16 +110,13 @@ export default function Attendance() {
       {filterEmployee === 'all' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
           {storeEmployees.filter(e => e.status === 'active').map(emp => {
-            const s = summary[emp.id] || { hadir: 0, sakit: 0, izin: 0, cuti: 0, alpha: 0 };
+            const s = summary[emp.id] || { hadir: 0, tidak_hadir: 0 };
             return (
               <div key={emp.id} className="bg-card border border-border rounded-lg p-3">
                 <p className="font-medium text-sm">{emp.name}</p>
                 <div className="flex gap-2 mt-2 flex-wrap">
-                  <Badge variant="outline" className="bg-green-50 text-green-700">H:{s.hadir}</Badge>
-                  <Badge variant="outline" className="bg-yellow-50 text-yellow-700">S:{s.sakit}</Badge>
-                  <Badge variant="outline" className="bg-blue-50 text-blue-700">I:{s.izin}</Badge>
-                  <Badge variant="outline" className="bg-purple-50 text-purple-700">C:{s.cuti}</Badge>
-                  <Badge variant="outline" className="bg-red-50 text-red-700">A:{s.alpha}</Badge>
+                  <Badge variant="outline" className="bg-green-50 text-green-700">Hadir: {s.hadir}</Badge>
+                  <Badge variant="outline" className="bg-red-50 text-red-700">Tidak Hadir: {s.tidak_hadir}</Badge>
                 </div>
               </div>
             );
@@ -141,6 +147,7 @@ export default function Attendance() {
               const emp = employees.find(e => e.id === row.employee_id);
               const durH = row.duration_minutes ? Math.floor(row.duration_minutes / 60) : null;
               const durM = row.duration_minutes ? row.duration_minutes % 60 : null;
+              const simple = toSimpleStatus(row.status);
               return (
                 <TableRow key={row.id}>
                   <TableCell className="font-medium">{emp?.name}</TableCell>
@@ -149,7 +156,7 @@ export default function Attendance() {
                   <TableCell>{row.clock_out || '-'}</TableCell>
                   <TableCell>{durH !== null ? `${durH}j ${durM}m` : '-'}</TableCell>
                   <TableCell>
-                    <Badge className={STATUS_COLORS[row.status]}>{STATUS_LABELS[row.status]}</Badge>
+                    <Badge className={STATUS_COLORS[simple]}>{STATUS_LABELS[simple]}</Badge>
                     {row.is_manual_edit && <span className="ml-1 text-xs text-muted-foreground">(edit)</span>}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{row.note}</TableCell>
@@ -173,17 +180,16 @@ export default function Attendance() {
             </p>
             <div>
               <label className="text-sm font-medium">Status</label>
-              <Select value={editStatus} onValueChange={v => setEditStatus(v as AttendanceStatus)}>
+              <Select value={editStatus} onValueChange={v => setEditStatus(v as SimpleStatus)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
+                  <SelectItem value="hadir">Hadir</SelectItem>
+                  <SelectItem value="tidak_hadir">Tidak Hadir</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <label className="text-sm font-medium">
-                Keterangan {['sakit', 'izin', 'cuti'].includes(editStatus) && <span className="text-destructive">*</span>}
-              </label>
+              <label className="text-sm font-medium">Keterangan</label>
               <Input value={editNote} onChange={e => setEditNote(e.target.value)} placeholder="Isi keterangan..." />
             </div>
           </div>
