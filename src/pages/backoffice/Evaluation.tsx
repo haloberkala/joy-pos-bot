@@ -17,9 +17,9 @@ export default function Evaluation() {
       const empAtt = attendances.filter(a => a.employee_id === emp.id && a.date.startsWith(monthStr));
       const total = empAtt.length;
       const hadir = empAtt.filter(a => a.status === 'hadir').length;
-      const alpha = empAtt.filter(a => a.status === 'alpha').length;
+      const tidakHadir = total - hadir;
       const rate = total > 0 ? Math.round((hadir / total) * 100) : 0;
-      return { emp, total, hadir, alpha, rate };
+      return { emp, total, hadir, tidakHadir, rate };
     }).sort((a, b) => b.rate - a.rate);
   }, [storeEmployees, monthStr]);
 
@@ -42,19 +42,19 @@ export default function Evaluation() {
               <TableHead>Jabatan</TableHead>
               <TableHead className="text-right">Total Hari</TableHead>
               <TableHead className="text-right">Hadir</TableHead>
-              <TableHead className="text-right">Alpha</TableHead>
+              <TableHead className="text-right">Tidak Hadir</TableHead>
               <TableHead>Tingkat Kehadiran</TableHead>
               <TableHead>Penilaian</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {evalData.map(({ emp, total, hadir, alpha, rate }) => (
+            {evalData.map(({ emp, total, hadir, tidakHadir, rate }) => (
               <TableRow key={emp.id}>
                 <TableCell className="font-medium">{emp.name}</TableCell>
                 <TableCell>{emp.position}</TableCell>
                 <TableCell className="text-right">{total}</TableCell>
                 <TableCell className="text-right">{hadir}</TableCell>
-                <TableCell className="text-right">{alpha}</TableCell>
+                <TableCell className="text-right">{tidakHadir}</TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <Progress value={rate} className="w-20 h-2" />
