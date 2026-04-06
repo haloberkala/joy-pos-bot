@@ -100,10 +100,7 @@ export function Sidebar() {
               className={`w-full ${linkCls} ${isSdmActive ? 'text-primary font-medium' : ''}`}
             >
               <Users className="w-[14px] h-[14px]" />
-              <span className="flex-1 text-left flex items-center gap-2">
-                SDM
-                <span className="text-[9px] font-medium px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground">Baru</span>
-              </span>
+              <span className="flex-1 text-left">SDM</span>
               <ChevronDown className={`w-3.5 h-3.5 transition-transform ${sdmOpen ? 'rotate-180' : ''}`} />
             </button>
             {sdmOpen && (

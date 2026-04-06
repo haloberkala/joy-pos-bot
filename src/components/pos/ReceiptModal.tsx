@@ -18,11 +18,84 @@ export function ReceiptModal({ isOpen, onClose, sale, saleDetails, cashierName, 
   const paymentLabel = { cash: 'Tunai', transfer: 'Transfer', qris: 'QRIS' } as Record<string, string>;
   const isDebt = sale.payment_status === 'debt';
 
+  const handlePrint = () => {
+    const receiptContent = document.getElementById('receipt-print-area');
+    if (!receiptContent) return;
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Struk ${sale.invoice_number}</title>
+        <style>
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body { font-family: 'Courier New', monospace; width: 80mm; padding: 4mm; font-size: 12px; color: #000; }
+          .text-center { text-align: center; }
+          .text-right { text-align: right; }
+          .font-bold { font-weight: bold; }
+          .border-dashed { border-top: 1px dashed #000; padding-top: 4px; margin-top: 4px; }
+          .flex-between { display: flex; justify-content: space-between; }
+          .mb-1 { margin-bottom: 2px; }
+          .mb-2 { margin-bottom: 6px; }
+          .store-name { font-size: 16px; font-weight: bold; }
+          .item-name { font-weight: bold; }
+          .total-row { font-size: 14px; font-weight: bold; }
+          .debt-box { border: 1px solid #000; padding: 4px; margin-top: 4px; text-align: center; font-weight: bold; }
+          @media print {
+            body { width: 80mm; }
+            @page { size: 80mm auto; margin: 0; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="text-center mb-2">
+          <div class="store-name">TOKO BERKAH</div>
+          <div>Banjarmasin</div>
+        </div>
+        <div class="border-dashed mb-2">
+          <div class="flex-between mb-1"><span>No. Invoice</span><span>${sale.invoice_number}</span></div>
+          <div class="flex-between mb-1"><span>Tanggal</span><span>${formatDate(sale.date)}</span></div>
+          <div class="flex-between mb-1"><span>Kasir</span><span>${cashierName}</span></div>
+          ${customerName ? `<div class="flex-between mb-1"><span>Pelanggan</span><span>${customerName}</span></div>` : ''}
+        </div>
+        <div class="border-dashed mb-2">
+          ${saleDetails.map(item => `
+            <div class="mb-1">
+              <div class="item-name">${item.product?.name || 'Produk #' + item.product_id}</div>
+              <div class="flex-between">
+                <span>${item.quantity} x ${formatCurrency(item.price_at_sale)}${item.price_mode === 'wholesale' ? ' (Grosir)' : ''}</span>
+                <span>${formatCurrency(item.total_price)}</span>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+        <div class="border-dashed">
+          <div class="flex-between total-row mb-1"><span>TOTAL</span><span>${formatCurrency(sale.grand_total)}</span></div>
+          ${!isDebt ? `
+            <div class="flex-between mb-1"><span>Bayar (${paymentLabel[sale.payment_method]})</span><span>${formatCurrency(sale.amount_received)}</span></div>
+            ${sale.change_amount > 0 ? `<div class="flex-between mb-1"><span>Kembalian</span><span>${formatCurrency(sale.change_amount)}</span></div>` : ''}
+          ` : `
+            <div class="debt-box">STATUS: UTANG${sale.due_date ? '<br/>Jatuh tempo: ' + formatDate(sale.due_date) : ''}</div>
+          `}
+        </div>
+        <div class="border-dashed text-center" style="margin-top:8px;padding-top:8px;">
+          <div>Terima kasih atas kunjungan Anda!</div>
+        </div>
+      </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.onload = () => { printWindow.print(); };
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader><DialogTitle className="text-center">Struk Pembayaran</DialogTitle></DialogHeader>
-        <div className="space-y-4 font-mono text-[12px]">
+        <div id="receipt-print-area" className="space-y-4 font-mono text-[12px]">
           <div className="text-center border-b border-dashed border-border pb-3">
             <h3 className="font-medium text-[15px] text-foreground">TOKO BERKAH</h3>
             <p className="text-muted-foreground">Banjarmasin</p>
@@ -62,7 +135,7 @@ export function ReceiptModal({ isOpen, onClose, sale, saleDetails, cashierName, 
           <div className="text-center text-muted-foreground pt-3 border-t border-dashed border-border"><p>Terima kasih atas kunjungan Anda!</p></div>
           <div className="flex gap-2 pt-2">
             <Button variant="ghost" onClick={onClose} className="flex-1"><X className="w-4 h-4 mr-1" />Tutup</Button>
-            <Button onClick={() => window.print()} className="flex-1"><Printer className="w-4 h-4 mr-1" />Cetak</Button>
+            <Button onClick={handlePrint} className="flex-1"><Printer className="w-4 h-4 mr-1" />Cetak</Button>
           </div>
         </div>
       </DialogContent>

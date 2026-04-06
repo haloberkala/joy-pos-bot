@@ -2,9 +2,9 @@ import { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { getCustomersForStore, stores } from '@/data/sampleData';
 import {
-  getShipmentsForStore, addShipment, updateShipmentStatus, handleCustomerSelectForShipping,
-  statusConfig, subscribeShipments,
-  type Shipment, type ShippingStatus,
+  getShipmentsForStore, addShipment, handleCustomerSelectForShipping,
+  subscribeShipments,
+  type Shipment,
 } from '@/data/shippingStore';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -12,24 +12,20 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
+
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  Plus, Search, Eye, Truck, MapPin, Phone, User, Package, Clock, CheckCircle, XCircle, Printer,
+  Plus, Search, Eye, MapPin, Phone, User, Package, Printer,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { printSuratJalan } from '@/components/pos/PrintSuratJalan';
-
-const statusIcons: Record<ShippingStatus, React.ElementType> = {
-  pending: Clock, shipped: Truck, delivered: CheckCircle, cancelled: XCircle,
-};
 
 export default function Shipping() {
   const { activeStoreId } = useAuth();
   const [, setTick] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
+  
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [viewShipment, setViewShipment] = useState<Shipment | null>(null);
 
@@ -51,7 +47,6 @@ export default function Shipping() {
 
   const storeShipments = useMemo(() => {
     let filtered = getShipmentsForStore(activeStoreId);
-    if (filterStatus !== 'all') filtered = filtered.filter(s => s.status === filterStatus);
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       filtered = filtered.filter(s =>
@@ -62,16 +57,10 @@ export default function Shipping() {
     }
     return filtered.sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeStoreId, filterStatus, searchQuery, setTick]);
+  }, [activeStoreId, searchQuery, setTick]);
 
-  const stats = useMemo(() => {
-    const all = getShipmentsForStore(activeStoreId);
-    return {
-      total: all.length,
-      pending: all.filter(s => s.status === 'pending').length,
-      shipped: all.filter(s => s.status === 'shipped').length,
-      delivered: all.filter(s => s.status === 'delivered').length,
-    };
+  const totalShipments = useMemo(() => {
+    return getShipmentsForStore(activeStoreId).length;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeStoreId, setTick]);
 
@@ -120,11 +109,6 @@ export default function Shipping() {
     setFormInvoice('');
   };
 
-  const handleUpdateStatus = (id: number, status: ShippingStatus) => {
-    updateShipmentStatus(id, status);
-    toast.success(`Status diperbarui ke "${statusConfig[status].label}"`);
-    setViewShipment(null);
-  };
 
   return (
     <div className="space-y-6">
@@ -195,30 +179,10 @@ export default function Shipping() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-card rounded-xl border border-border p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center"><Package className="w-5 h-5 text-blue-600" /></div>
-            <div><p className="text-sm text-muted-foreground">Total</p><p className="text-xl font-bold">{stats.total}</p></div>
-          </div>
-        </div>
-        <div className="bg-card rounded-xl border border-border p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-yellow-100 flex items-center justify-center"><Clock className="w-5 h-5 text-yellow-600" /></div>
-            <div><p className="text-sm text-muted-foreground">Menunggu</p><p className="text-xl font-bold">{stats.pending}</p></div>
-          </div>
-        </div>
-        <div className="bg-card rounded-xl border border-border p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center"><Truck className="w-5 h-5 text-blue-600" /></div>
-            <div><p className="text-sm text-muted-foreground">Dikirim</p><p className="text-xl font-bold">{stats.shipped}</p></div>
-          </div>
-        </div>
-        <div className="bg-card rounded-xl border border-border p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center"><CheckCircle className="w-5 h-5 text-green-600" /></div>
-            <div><p className="text-sm text-muted-foreground">Sampai</p><p className="text-xl font-bold">{stats.delivered}</p></div>
-          </div>
+      <div className="bg-card rounded-xl border border-border p-4 w-fit">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center"><Package className="w-5 h-5 text-blue-600" /></div>
+          <div><p className="text-sm text-muted-foreground">Total Pengiriman</p><p className="text-xl font-bold">{totalShipments}</p></div>
         </div>
       </div>
 
@@ -227,13 +191,6 @@ export default function Shipping() {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input placeholder="Cari invoice atau penerima..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-10" />
-        </div>
-        <div className="flex gap-2">
-          {['all', 'pending', 'shipped', 'delivered', 'cancelled'].map(s => (
-            <Button key={s} variant={filterStatus === s ? 'default' : 'outline'} size="sm" onClick={() => setFilterStatus(s)}>
-              {s === 'all' ? 'Semua' : statusConfig[s as ShippingStatus].label}
-            </Button>
-          ))}
         </div>
       </div>
 
@@ -247,15 +204,12 @@ export default function Shipping() {
               <TableHead>Alamat</TableHead>
               <TableHead>Barang</TableHead>
               <TableHead className="text-right">Ongkir</TableHead>
-              <TableHead>Status</TableHead>
               <TableHead>Tanggal</TableHead>
               <TableHead className="text-right">Aksi</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {storeShipments.map(shipment => {
-              const config = statusConfig[shipment.status];
-              const StatusIcon = statusIcons[shipment.status];
               return (
                 <TableRow key={shipment.id}>
                   <TableCell className="font-mono font-medium">{shipment.invoice_number}</TableCell>
@@ -268,12 +222,6 @@ export default function Shipping() {
                   <TableCell className="max-w-[200px] truncate text-muted-foreground">{shipment.recipient_address}</TableCell>
                   <TableCell className="max-w-[180px] truncate text-xs text-muted-foreground">{shipment.items_description || '-'}</TableCell>
                   <TableCell className="text-right font-medium">{formatCurrency(shipment.shipping_cost)}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className={config.className}>
-                      <StatusIcon className="w-3.5 h-3.5 mr-1" />
-                      {config.label}
-                    </Badge>
-                  </TableCell>
                   <TableCell className="text-muted-foreground">{formatDate(shipment.created_at)}</TableCell>
                   <TableCell className="text-right">
                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setViewShipment(shipment)}>
@@ -285,7 +233,7 @@ export default function Shipping() {
             })}
             {storeShipments.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">Tidak ada data pengiriman</TableCell>
+                <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">Tidak ada data pengiriman</TableCell>
               </TableRow>
             )}
           </TableBody>
@@ -297,17 +245,9 @@ export default function Shipping() {
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>Detail Pengiriman</DialogTitle></DialogHeader>
           {viewShipment && (() => {
-            const config = statusConfig[viewShipment.status];
-            const StatusIcon = statusIcons[viewShipment.status];
             return (
               <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className={`${config.className} text-base px-3 py-1`}>
-                    <StatusIcon className="w-4 h-4 mr-1.5" />
-                    {config.label}
-                  </Badge>
-                  <span className="font-mono text-muted-foreground">{viewShipment.invoice_number}</span>
-                </div>
+                <span className="font-mono text-muted-foreground">{viewShipment.invoice_number}</span>
 
                 <div className="bg-muted/50 rounded-xl p-4 space-y-3">
                   <div className="flex items-center gap-2">
@@ -349,36 +289,14 @@ export default function Shipping() {
                   </div>
                 )}
 
-                {/* Status actions */}
-                <div className="border-t pt-4 space-y-3">
+                {/* Actions */}
+                <div className="border-t pt-4">
                   <Button variant="outline" className="w-full gap-2" onClick={() => {
                     const store = stores.find(s => s.id === activeStoreId);
                     if (store) printSuratJalan({ shipment: viewShipment, store });
                   }}>
                     <Printer className="w-4 h-4" /> Cetak Surat Jalan
                   </Button>
-
-                  <Label className="mb-2 block">Ubah Status</Label>
-                  <div className="flex gap-2 flex-wrap">
-                    {viewShipment.status === 'pending' && (
-                      <>
-                        <Button size="sm" onClick={() => handleUpdateStatus(viewShipment.id, 'shipped')} className="gap-1">
-                          <Truck className="w-3.5 h-3.5" /> Kirim
-                        </Button>
-                        <Button size="sm" variant="destructive" onClick={() => handleUpdateStatus(viewShipment.id, 'cancelled')} className="gap-1">
-                          <XCircle className="w-3.5 h-3.5" /> Batalkan
-                        </Button>
-                      </>
-                    )}
-                    {viewShipment.status === 'shipped' && (
-                      <Button size="sm" onClick={() => handleUpdateStatus(viewShipment.id, 'delivered')} className="gap-1 bg-green-600 hover:bg-green-700">
-                        <CheckCircle className="w-3.5 h-3.5" /> Sampai
-                      </Button>
-                    )}
-                    {(viewShipment.status === 'delivered' || viewShipment.status === 'cancelled') && (
-                      <p className="text-sm text-muted-foreground italic">Pengiriman sudah selesai</p>
-                    )}
-                  </div>
                 </div>
               </div>
             );
