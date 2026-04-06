@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PaymentMethod, CartItem, Customer } from '@/types/pos';
 import { formatCurrency } from '@/lib/format';
-import { Check, Wallet, CreditCard, QrCode, User, Search, UserPlus, Edit2, Phone, MapPin, X, RotateCcw } from 'lucide-react';
+import { Check, Wallet, CreditCard, QrCode, User, Search, UserPlus, Edit2, X, RotateCcw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { getCustomersForStore, addCustomer, updateCustomer, findCustomerByPhone } from '@/data/sampleData';
 import { Label } from '@/components/ui/label';

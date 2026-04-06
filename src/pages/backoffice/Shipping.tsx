@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
+
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
@@ -120,11 +120,6 @@ export default function Shipping() {
     setFormInvoice('');
   };
 
-  const handleUpdateStatus = (id: number, status: ShippingStatus) => {
-    updateShipmentStatus(id, status);
-    toast.success(`Status diperbarui ke "${statusConfig[status].label}"`);
-    setViewShipment(null);
-  };
 
   return (
     <div className="space-y-6">
@@ -228,13 +223,6 @@ export default function Shipping() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input placeholder="Cari invoice atau penerima..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} className="pl-10" />
         </div>
-        <div className="flex gap-2">
-          {['all', 'pending', 'shipped', 'delivered', 'cancelled'].map(s => (
-            <Button key={s} variant={filterStatus === s ? 'default' : 'outline'} size="sm" onClick={() => setFilterStatus(s)}>
-              {s === 'all' ? 'Semua' : statusConfig[s as ShippingStatus].label}
-            </Button>
-          ))}
-        </div>
       </div>
 
       {/* Table */}
@@ -253,8 +241,6 @@ export default function Shipping() {
           </TableHeader>
           <TableBody>
             {storeShipments.map(shipment => {
-              const config = statusConfig[shipment.status];
-              const StatusIcon = statusIcons[shipment.status];
               return (
                 <TableRow key={shipment.id}>
                   <TableCell className="font-mono font-medium">{shipment.invoice_number}</TableCell>
@@ -290,8 +276,6 @@ export default function Shipping() {
         <DialogContent className="max-w-lg">
           <DialogHeader><DialogTitle>Detail Pengiriman</DialogTitle></DialogHeader>
           {viewShipment && (() => {
-            const config = statusConfig[viewShipment.status];
-            const StatusIcon = statusIcons[viewShipment.status];
             return (
               <div className="space-y-4">
                 <span className="font-mono text-muted-foreground">{viewShipment.invoice_number}</span>
