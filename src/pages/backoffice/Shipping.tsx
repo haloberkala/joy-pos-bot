@@ -16,8 +16,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  Plus, Search, Eye, MapPin, Phone, User, Package, Clock, CheckCircle, Printer,
+  Plus, Search, Eye, Truck, MapPin, Phone, User, Package, Clock, CheckCircle, Printer,
 } from 'lucide-react';
+import { toast } from 'sonner';
+import { printSuratJalan } from '@/components/pos/PrintSuratJalan';
 
 export default function Shipping() {
   const { activeStoreId } = useAuth();
