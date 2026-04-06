@@ -267,12 +267,6 @@ export default function Shipping() {
                   <TableCell className="max-w-[200px] truncate text-muted-foreground">{shipment.recipient_address}</TableCell>
                   <TableCell className="max-w-[180px] truncate text-xs text-muted-foreground">{shipment.items_description || '-'}</TableCell>
                   <TableCell className="text-right font-medium">{formatCurrency(shipment.shipping_cost)}</TableCell>
-                  <TableCell>
-                    <Badge variant="secondary" className={config.className}>
-                      <StatusIcon className="w-3.5 h-3.5 mr-1" />
-                      {config.label}
-                    </Badge>
-                  </TableCell>
                   <TableCell className="text-muted-foreground">{formatDate(shipment.created_at)}</TableCell>
                   <TableCell className="text-right">
                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setViewShipment(shipment)}>
@@ -284,7 +278,7 @@ export default function Shipping() {
             })}
             {storeShipments.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">Tidak ada data pengiriman</TableCell>
+                <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">Tidak ada data pengiriman</TableCell>
               </TableRow>
             )}
           </TableBody>
@@ -300,13 +294,7 @@ export default function Shipping() {
             const StatusIcon = statusIcons[viewShipment.status];
             return (
               <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className={`${config.className} text-base px-3 py-1`}>
-                    <StatusIcon className="w-4 h-4 mr-1.5" />
-                    {config.label}
-                  </Badge>
-                  <span className="font-mono text-muted-foreground">{viewShipment.invoice_number}</span>
-                </div>
+                <span className="font-mono text-muted-foreground">{viewShipment.invoice_number}</span>
 
                 <div className="bg-muted/50 rounded-xl p-4 space-y-3">
                   <div className="flex items-center gap-2">
@@ -348,36 +336,14 @@ export default function Shipping() {
                   </div>
                 )}
 
-                {/* Status actions */}
-                <div className="border-t pt-4 space-y-3">
+                {/* Actions */}
+                <div className="border-t pt-4">
                   <Button variant="outline" className="w-full gap-2" onClick={() => {
                     const store = stores.find(s => s.id === activeStoreId);
                     if (store) printSuratJalan({ shipment: viewShipment, store });
                   }}>
                     <Printer className="w-4 h-4" /> Cetak Surat Jalan
                   </Button>
-
-                  <Label className="mb-2 block">Ubah Status</Label>
-                  <div className="flex gap-2 flex-wrap">
-                    {viewShipment.status === 'pending' && (
-                      <>
-                        <Button size="sm" onClick={() => handleUpdateStatus(viewShipment.id, 'shipped')} className="gap-1">
-                          <Truck className="w-3.5 h-3.5" /> Kirim
-                        </Button>
-                        <Button size="sm" variant="destructive" onClick={() => handleUpdateStatus(viewShipment.id, 'cancelled')} className="gap-1">
-                          <XCircle className="w-3.5 h-3.5" /> Batalkan
-                        </Button>
-                      </>
-                    )}
-                    {viewShipment.status === 'shipped' && (
-                      <Button size="sm" onClick={() => handleUpdateStatus(viewShipment.id, 'delivered')} className="gap-1 bg-green-600 hover:bg-green-700">
-                        <CheckCircle className="w-3.5 h-3.5" /> Sampai
-                      </Button>
-                    )}
-                    {(viewShipment.status === 'delivered' || viewShipment.status === 'cancelled') && (
-                      <p className="text-sm text-muted-foreground italic">Pengiriman sudah selesai</p>
-                    )}
-                  </div>
                 </div>
               </div>
             );
