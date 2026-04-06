@@ -59,14 +59,8 @@ export default function Shipping() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeStoreId, searchQuery, setTick]);
 
-  const stats = useMemo(() => {
-    const all = getShipmentsForStore(activeStoreId);
-    return {
-      total: all.length,
-      pending: all.filter(s => s.status === 'pending').length,
-      shipped: all.filter(s => s.status === 'shipped').length,
-      delivered: all.filter(s => s.status === 'delivered').length,
-    };
+  const totalShipments = useMemo(() => {
+    return getShipmentsForStore(activeStoreId).length;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeStoreId, setTick]);
 
@@ -185,30 +179,10 @@ export default function Shipping() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-card rounded-xl border border-border p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center"><Package className="w-5 h-5 text-blue-600" /></div>
-            <div><p className="text-sm text-muted-foreground">Total</p><p className="text-xl font-bold">{stats.total}</p></div>
-          </div>
-        </div>
-        <div className="bg-card rounded-xl border border-border p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-yellow-100 flex items-center justify-center"><Clock className="w-5 h-5 text-yellow-600" /></div>
-            <div><p className="text-sm text-muted-foreground">Menunggu</p><p className="text-xl font-bold">{stats.pending}</p></div>
-          </div>
-        </div>
-        <div className="bg-card rounded-xl border border-border p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center"><Truck className="w-5 h-5 text-blue-600" /></div>
-            <div><p className="text-sm text-muted-foreground">Dikirim</p><p className="text-xl font-bold">{stats.shipped}</p></div>
-          </div>
-        </div>
-        <div className="bg-card rounded-xl border border-border p-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center"><CheckCircle className="w-5 h-5 text-green-600" /></div>
-            <div><p className="text-sm text-muted-foreground">Sampai</p><p className="text-xl font-bold">{stats.delivered}</p></div>
-          </div>
+      <div className="bg-card rounded-xl border border-border p-4 w-fit">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center"><Package className="w-5 h-5 text-blue-600" /></div>
+          <div><p className="text-sm text-muted-foreground">Total Pengiriman</p><p className="text-xl font-bold">{totalShipments}</p></div>
         </div>
       </div>
 
