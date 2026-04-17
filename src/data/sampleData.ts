@@ -413,7 +413,7 @@ export function processRefund(sale: Sale, reason: string, processedBy: string): 
 
   // Mark sale as refunded
   sampleSales = sampleSales.map(s =>
-    s.id === sale.id ? { ...s, payment_status: 'refunded' as const, updated_at: new Date() } : s
+    s.id === sale.id ? { ...s, payment_status: 'refunded' as const, refund_reason: reason, updated_at: new Date() } : s
   );
 
   // Restore stock for all items in this sale
