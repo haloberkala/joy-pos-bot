@@ -469,13 +469,7 @@ export default function POS() {
                   <Wrench className="w-3.5 h-3.5" /> JASA
                 </button>
 
-                <button onClick={() => { if (items.length === 0 && serviceItems.length === 0) { toast.error('Keranjang kosong'); return; } setShowShipping(true); }}
-                  disabled={items.length === 0 && serviceItems.length === 0}
-                  className="px-3 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent text-[12px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5">
-                  <Truck className="w-3.5 h-3.5" /> KIRIM
-                </button>
-
-                {user?.role === 'owner' && (
+                {!isDebt && user?.role === 'owner' && (
                   <div className="relative group">
                     <button onClick={handleOwnerWithdrawal} disabled={items.length === 0 && serviceItems.length === 0}
                       className="px-3 py-2 rounded-lg bg-[hsl(40,72%,42%)] hover:bg-[hsl(40,72%,36%)] text-white text-[12px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
@@ -490,7 +484,10 @@ export default function POS() {
                 )}
 
                 {isDebt ? (
-                  <button onClick={() => handleCheckout('cash')}
+                  <button onClick={() => {
+                    if (items.length === 0 && serviceItems.length === 0) { toast.error('Keranjang kosong'); return; }
+                    setShowDebtModal(true);
+                  }}
                     disabled={items.length === 0 && serviceItems.length === 0}
                     className="px-4 py-2 rounded-lg bg-[hsl(40,72%,42%)] hover:bg-[hsl(40,72%,36%)] text-white text-[12px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                     SIMPAN UTANG
