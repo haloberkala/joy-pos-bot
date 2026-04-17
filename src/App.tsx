@@ -43,13 +43,13 @@ const App = () => (
               <Route path="purchases" element={<Purchases />} />
               <Route path="transactions" element={<Transactions />} />
               
-              <Route path="expenses" element={<Expenses />} />
+              <Route path="expenses" element={<ProtectedRoute allowedRoles={['owner']}><Expenses /></ProtectedRoute>} />
               <Route path="shipping" element={<Shipping />} />
               <Route path="sdm/attendance" element={<Attendance />} />
               <Route path="sdm/payroll" element={<PayrollPage />} />
               <Route path="sdm/evaluation" element={<Evaluation />} />
               <Route path="sdm/employees" element={<EmployeesPage />} />
-              <Route path="reports" element={<Reports />} />
+              <Route path="reports" element={<ProtectedRoute allowedRoles={['owner']}><Reports /></ProtectedRoute>} />
               <Route path="settings" element={<ProtectedRoute allowedRoles={['owner']}><Settings /></ProtectedRoute>} />
             </Route>
             <Route path="*" element={<NotFound />} />

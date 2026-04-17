@@ -15,6 +15,7 @@ import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { ProductListPanel } from '@/components/pos/ProductListPanel';
 import { ShippingModal } from '@/components/pos/ShippingModal';
+import { DebtModal } from '@/components/pos/DebtModal';
 
 // ========== OPEN BILL TYPES ==========
 interface Bill {
@@ -98,6 +99,7 @@ export default function POS() {
   const [isDebt, setIsDebt] = useState(false);
   const [dueDate, setDueDate] = useState('');
   const [showShipping, setShowShipping] = useState(false);
+  const [showDebtModal, setShowDebtModal] = useState(false);
   const [showRefund, setShowRefund] = useState(false);
   const [serviceDesc, setServiceDesc] = useState('');
   const [servicePrice, setServicePrice] = useState('');
@@ -116,7 +118,7 @@ export default function POS() {
   const grandTotal = total + serviceTotal;
 
   useEffect(() => { searchRef.current?.focus(); }, []);
-  useEffect(() => { if (paymentMethod && isDebt) handleConfirmPayment(0); }, [paymentMethod, isDebt]);
+  // Note: Debt flow now handled via DebtModal — no auto-trigger.
 
   useBarcodeScanner({
     onScan: (barcode) => {
@@ -207,6 +209,35 @@ export default function POS() {
     setCurrentSale(sale); setCurrentSaleDetails(details); setPaymentMethod(null);
     setShowReceipt(true); clearCart(); setServiceItems([]); setSelectedCustomer(null); setIsDebt(false); setDueDate('');
     closeBill(activeBillId); toast.success(isDebt ? 'Penjualan (Utang) berhasil dicatat!' : 'Pembayaran berhasil!');
+  };
+
+  const handleConfirmDebt = () => {
+    const now = new Date();
+    const sale: Sale = {
+      id: Date.now(), store_id: activeStoreId, user_id: 1, customer_id: selectedCustomer?.id || null,
+      invoice_number: `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(Date.now()).slice(-3)}`,
+      date: now, sub_total: grandTotal, discount: 0, tax: 0, grand_total: grandTotal,
+      payment_method: 'cash', payment_status: 'debt',
+      amount_received: 0, change_amount: 0,
+      due_date: dueDate ? new Date(dueDate) : null, created_at: now, updated_at: now,
+    };
+    const details: (SaleDetail & { product?: Product })[] = [
+      ...items.map((item, idx) => ({
+        id: Date.now() + idx, sale_id: sale.id, product_id: item.product.id, quantity: item.quantity, price_at_sale: item.price_per_unit, cost_at_sale: item.product.cost_price,
+        total_price: item.price_per_unit * item.quantity, price_mode: item.price_mode, product: item.product, created_at: now, updated_at: now,
+      })),
+      ...serviceItems.map((svc, idx) => ({
+        id: Date.now() + items.length + idx, sale_id: sale.id, product_id: 0, quantity: 1, price_at_sale: svc.price, cost_at_sale: 0,
+        total_price: svc.price, price_mode: 'retail' as const,
+        product: { name: `🔧 ${svc.description}`, id: 0, store_id: activeStoreId, code: '', quantity: 999, min_stock_alert: 0, cost_price: 0, selling_price: svc.price, selling_price_retail: svc.price, selling_price_wholesale: svc.price, selling_price_special: svc.price, wholesale_min_qty: 1, special_min_qty: 1, is_active: true, created_at: now, updated_at: now, created_by: null, updated_by: null, category_id: null, brand_id: null, unit_id: null } as Product,
+        created_at: now, updated_at: now,
+      })),
+    ];
+    setCurrentSale(sale); setCurrentSaleDetails(details);
+    setShowReceipt(true); clearCart(); setServiceItems([]); setSelectedCustomer(null); setIsDebt(false); setDueDate('');
+    setShowDebtModal(false);
+    closeBill(activeBillId);
+    toast.success('Penjualan (Utang) berhasil dicatat!');
   };
 
   const handleRefund = (sale: Sale, reason: string) => { processRefund(sale, reason, user?.name || 'Kasir'); toast.success(`Refund ${sale.invoice_number} berhasil! Stok dikembalikan.`); };
@@ -467,13 +498,7 @@ export default function POS() {
                   <Wrench className="w-3.5 h-3.5" /> JASA
                 </button>
 
-                <button onClick={() => { if (items.length === 0 && serviceItems.length === 0) { toast.error('Keranjang kosong'); return; } setShowShipping(true); }}
-                  disabled={items.length === 0 && serviceItems.length === 0}
-                  className="px-3 py-2 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent text-[12px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5">
-                  <Truck className="w-3.5 h-3.5" /> KIRIM
-                </button>
-
-                {user?.role === 'owner' && (
+                {!isDebt && user?.role === 'owner' && (
                   <div className="relative group">
                     <button onClick={handleOwnerWithdrawal} disabled={items.length === 0 && serviceItems.length === 0}
                       className="px-3 py-2 rounded-lg bg-[hsl(40,72%,42%)] hover:bg-[hsl(40,72%,36%)] text-white text-[12px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
@@ -488,7 +513,10 @@ export default function POS() {
                 )}
 
                 {isDebt ? (
-                  <button onClick={() => handleCheckout('cash')}
+                  <button onClick={() => {
+                    if (items.length === 0 && serviceItems.length === 0) { toast.error('Keranjang kosong'); return; }
+                    setShowDebtModal(true);
+                  }}
                     disabled={items.length === 0 && serviceItems.length === 0}
                     className="px-4 py-2 rounded-lg bg-[hsl(40,72%,42%)] hover:bg-[hsl(40,72%,36%)] text-white text-[12px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                     SIMPAN UTANG
@@ -523,6 +551,17 @@ export default function POS() {
           requireCustomer={false} />
       )}
       <ShippingModal isOpen={showShipping} onClose={() => setShowShipping(false)} items={items} total={grandTotal} customer={selectedCustomer} />
+      <DebtModal
+        isOpen={showDebtModal}
+        onClose={() => setShowDebtModal(false)}
+        items={items}
+        serviceItems={serviceItems}
+        total={grandTotal}
+        storeId={activeStoreId}
+        selectedCustomer={selectedCustomer}
+        onCustomerChange={setSelectedCustomer}
+        onConfirm={() => handleConfirmDebt()}
+      />
       <ReceiptModal isOpen={showReceipt} onClose={() => setShowReceipt(false)} sale={currentSale} saleDetails={currentSaleDetails}
         cashierName={user?.name || 'Kasir'} customerName={currentSale?.customer_id ? customers.find(c => c.id === currentSale.customer_id)?.name : undefined} />
       <RefundModal isOpen={showRefund} onClose={() => setShowRefund(false)} storeId={activeStoreId} onRefund={handleRefund} />

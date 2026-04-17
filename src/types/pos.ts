@@ -177,6 +177,7 @@ export interface Sale {
   change_amount: number;
   due_date?: Date | null;
   note?: string;
+  refund_reason?: string;
   created_at: Date;
   updated_at: Date;
 }

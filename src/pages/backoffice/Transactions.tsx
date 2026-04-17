@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Search, Download, Eye, Wallet, CreditCard, QrCode, AlertTriangle, Check, Clock, DollarSign, User, Printer } from 'lucide-react';
+import { Search, Download, Eye, Wallet, CreditCard, QrCode, AlertTriangle, Check, Clock, DollarSign, User, Printer, RotateCcw } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Sale, DebtPayment } from '@/types/pos';
@@ -196,6 +196,10 @@ export default function Transactions() {
                     <TableCell>
                       {sale.payment_status === 'paid' ? (
                         <Badge variant="default" className="bg-green-100 text-green-700 hover:bg-green-100 text-xs">Lunas</Badge>
+                      ) : sale.payment_status === 'refunded' ? (
+                        <Badge variant="default" className="bg-red-100 text-red-700 hover:bg-red-100 text-xs gap-1">
+                          <RotateCcw className="w-3 h-3" />Refund
+                        </Badge>
                       ) : (
                         <Badge variant="secondary" className="bg-orange-100 text-orange-700 hover:bg-orange-100 text-xs">Utang</Badge>
                       )}
@@ -303,6 +307,17 @@ export default function Transactions() {
                 <div><p className="text-muted-foreground">Pembayaran</p><p className="font-medium">{getPaymentLabel(selectedSale.payment_method)}</p></div>
                 <div><p className="text-muted-foreground">Status</p><p className="font-medium">{selectedSale.payment_status === 'paid' ? 'Lunas' : selectedSale.payment_status === 'refunded' ? 'Direfund' : 'Utang'}</p></div>
               </div>
+              {selectedSale.payment_status === 'refunded' && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <div className="flex items-center gap-2 text-red-700 mb-1">
+                    <RotateCcw className="w-4 h-4" />
+                    <p className="font-semibold text-sm">Alasan Refund</p>
+                  </div>
+                  <p className="text-sm text-red-900">
+                    {selectedSale.refund_reason || '(Tidak ada catatan alasan)'}
+                  </p>
+                </div>
+              )}
               <div className="border-t pt-4">
                 <p className="font-medium mb-2">Item</p>
                 <div className="space-y-2">
