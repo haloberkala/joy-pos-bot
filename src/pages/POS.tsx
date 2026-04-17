@@ -15,6 +15,7 @@ import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { ProductListPanel } from '@/components/pos/ProductListPanel';
 import { ShippingModal } from '@/components/pos/ShippingModal';
+import { DebtModal } from '@/components/pos/DebtModal';
 
 // ========== OPEN BILL TYPES ==========
 interface Bill {
@@ -98,6 +99,7 @@ export default function POS() {
   const [isDebt, setIsDebt] = useState(false);
   const [dueDate, setDueDate] = useState('');
   const [showShipping, setShowShipping] = useState(false);
+  const [showDebtModal, setShowDebtModal] = useState(false);
   const [showRefund, setShowRefund] = useState(false);
   const [serviceDesc, setServiceDesc] = useState('');
   const [servicePrice, setServicePrice] = useState('');
@@ -116,7 +118,7 @@ export default function POS() {
   const grandTotal = total + serviceTotal;
 
   useEffect(() => { searchRef.current?.focus(); }, []);
-  useEffect(() => { if (paymentMethod && isDebt) handleConfirmPayment(0); }, [paymentMethod, isDebt]);
+  // Note: Debt flow now handled via DebtModal — no auto-trigger.
 
   useBarcodeScanner({
     onScan: (barcode) => {
