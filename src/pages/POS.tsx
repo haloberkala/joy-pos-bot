@@ -211,6 +211,35 @@ export default function POS() {
     closeBill(activeBillId); toast.success(isDebt ? 'Penjualan (Utang) berhasil dicatat!' : 'Pembayaran berhasil!');
   };
 
+  const handleConfirmDebt = () => {
+    const now = new Date();
+    const sale: Sale = {
+      id: Date.now(), store_id: activeStoreId, user_id: 1, customer_id: selectedCustomer?.id || null,
+      invoice_number: `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(Date.now()).slice(-3)}`,
+      date: now, sub_total: grandTotal, discount: 0, tax: 0, grand_total: grandTotal,
+      payment_method: 'cash', payment_status: 'debt',
+      amount_received: 0, change_amount: 0,
+      due_date: dueDate ? new Date(dueDate) : null, created_at: now, updated_at: now,
+    };
+    const details: (SaleDetail & { product?: Product })[] = [
+      ...items.map((item, idx) => ({
+        id: Date.now() + idx, sale_id: sale.id, product_id: item.product.id, quantity: item.quantity, price_at_sale: item.price_per_unit, cost_at_sale: item.product.cost_price,
+        total_price: item.price_per_unit * item.quantity, price_mode: item.price_mode, product: item.product, created_at: now, updated_at: now,
+      })),
+      ...serviceItems.map((svc, idx) => ({
+        id: Date.now() + items.length + idx, sale_id: sale.id, product_id: 0, quantity: 1, price_at_sale: svc.price, cost_at_sale: 0,
+        total_price: svc.price, price_mode: 'retail' as const,
+        product: { name: `🔧 ${svc.description}`, id: 0, store_id: activeStoreId, code: '', quantity: 999, min_stock_alert: 0, cost_price: 0, selling_price: svc.price, selling_price_retail: svc.price, selling_price_wholesale: svc.price, selling_price_special: svc.price, wholesale_min_qty: 1, special_min_qty: 1, is_active: true, created_at: now, updated_at: now, created_by: null, updated_by: null, category_id: null, brand_id: null, unit_id: null } as Product,
+        created_at: now, updated_at: now,
+      })),
+    ];
+    setCurrentSale(sale); setCurrentSaleDetails(details);
+    setShowReceipt(true); clearCart(); setServiceItems([]); setSelectedCustomer(null); setIsDebt(false); setDueDate('');
+    setShowDebtModal(false);
+    closeBill(activeBillId);
+    toast.success('Penjualan (Utang) berhasil dicatat!');
+  };
+
   const handleRefund = (sale: Sale, reason: string) => { processRefund(sale, reason, user?.name || 'Kasir'); toast.success(`Refund ${sale.invoice_number} berhasil! Stok dikembalikan.`); };
 
   const activeBillCount = bills.filter(b => b.items.length > 0 || b.serviceItems.length > 0 || (b.id === activeBillId && (items.length > 0 || serviceItems.length > 0))).length;
@@ -522,6 +551,17 @@ export default function POS() {
           requireCustomer={false} />
       )}
       <ShippingModal isOpen={showShipping} onClose={() => setShowShipping(false)} items={items} total={grandTotal} customer={selectedCustomer} />
+      <DebtModal
+        isOpen={showDebtModal}
+        onClose={() => setShowDebtModal(false)}
+        items={items}
+        serviceItems={serviceItems}
+        total={grandTotal}
+        storeId={activeStoreId}
+        selectedCustomer={selectedCustomer}
+        onCustomerChange={setSelectedCustomer}
+        onConfirm={() => handleConfirmDebt()}
+      />
       <ReceiptModal isOpen={showReceipt} onClose={() => setShowReceipt(false)} sale={currentSale} saleDetails={currentSaleDetails}
         cashierName={user?.name || 'Kasir'} customerName={currentSale?.customer_id ? customers.find(c => c.id === currentSale.customer_id)?.name : undefined} />
       <RefundModal isOpen={showRefund} onClose={() => setShowRefund(false)} storeId={activeStoreId} onRefund={handleRefund} />
