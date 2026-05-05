@@ -2,8 +2,9 @@ import { useState, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   sampleSales, customers, stores, getDebtPaymentsForSale,
-  getTotalPaidForSale, getRemainingDebt, addDebtPayment,
+  getTotalPaidForSale, getRemainingDebt, addDebtPayment, markDebtAsPaid,
 } from '@/data/sampleData';
+import { getShipmentsForStore } from '@/data/shippingStore';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -19,7 +20,7 @@ import { toast } from 'sonner';
 import { Sale, DebtPayment } from '@/types/pos';
 
 export default function Debts() {
-  const { activeStoreId } = useAuth();
+  const { activeStoreId, user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'unpaid' | 'paid'>('unpaid');
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
