@@ -207,6 +207,7 @@ export default function POS() {
         created_at: now, updated_at: now,
       })),
     ];
+    addSale(sale, details);
     setCurrentSale(sale); setCurrentSaleDetails(details); setPaymentMethod(null);
     setShowReceipt(true); clearCart(); setServiceItems([]); setSelectedCustomer(null); setIsDebt(false); setDueDate('');
     closeBill(activeBillId); toast.success(isDebt ? 'Penjualan (Utang) berhasil dicatat!' : 'Pembayaran berhasil!');
