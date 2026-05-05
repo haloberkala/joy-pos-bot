@@ -257,7 +257,7 @@ export let sampleSales: Sale[] = [
 ];
 
 // ================ SALE DETAILS ================
-export const sampleSaleDetails: SaleDetail[] = [
+export let sampleSaleDetails: SaleDetail[] = [
   { id: 1, sale_id: 1, product_id: 1, quantity: 3, price_at_sale: 72000, cost_at_sale: 55000, total_price: 216000, price_mode: 'retail', created_at: new Date(), updated_at: new Date() },
   { id: 2, sale_id: 2, product_id: 3, quantity: 1, price_at_sale: 350000, cost_at_sale: 280000, total_price: 350000, price_mode: 'retail', created_at: new Date(), updated_at: new Date() },
   { id: 3, sale_id: 3, product_id: 9, quantity: 5, price_at_sale: 3500, cost_at_sale: 2500, total_price: 17500, price_mode: 'retail', created_at: new Date(), updated_at: new Date() },
@@ -359,12 +359,56 @@ export function addProduct(product: Product) {
   products = [...products, product];
 }
 
-export function getOrCreateCategory(name: string, storeId: number): number {
+export function updateProduct(id: number, updates: Partial<Product>) {
+  products = products.map(p => p.id === id ? { ...p, ...updates, updated_at: new Date() } : p);
+}
+
+export function deleteProduct(id: number) {
+  products = products.filter(p => p.id !== id);
+}
+
+// Sale recording (for POS-created sales)
+export function addSale(sale: Sale, details: SaleDetail[]) {
+  sampleSales = [sale, ...sampleSales];
+  sampleSaleDetails = [...sampleSaleDetails, ...details];
+  // Decrement stock for product items (skip service items product_id=0)
+  details.forEach(d => {
+    if (d.product_id > 0) {
+      products = products.map(p =>
+        p.id === d.product_id ? { ...p, quantity: Math.max(0, p.quantity - d.quantity), updated_at: new Date() } : p
+      );
+    }
+  });
+}
+
+// Mark a debt sale as fully paid (with timestamp + actor)
+export function markDebtAsPaid(saleId: number, paidByName: string, paidByRole: string) {
+  const sale = sampleSales.find(s => s.id === saleId);
+  if (!sale) return;
+  const remaining = getRemainingDebt(sale);
+  if (remaining > 0) {
+    debtPayments = [...debtPayments, { id: Date.now(), sale_id: saleId, amount: remaining, date: new Date(), note: `Ditandai lunas oleh ${paidByName}`, created_at: new Date() }];
+  }
+  sampleSales = sampleSales.map(s =>
+    s.id === saleId ? { ...s, payment_status: 'paid' as const, paid_at: new Date(), paid_by_name: paidByName, paid_by_role: paidByRole, updated_at: new Date() } : s
+  );
+}
+
+// Category/Brand CRUD (used by Products page inline create)
+export function addCategory(name: string, storeId: number, icon?: string): number {
+  return getOrCreateCategory(name, storeId, icon);
+}
+
+export function addBrand(name: string, storeId: number): number {
+  return getOrCreateBrand(name, storeId);
+}
+
+export function getOrCreateCategory(name: string, storeId: number, icon?: string): number {
   const existing = categories.find(c => c.name.toLowerCase() === name.toLowerCase() && c.store_id === storeId);
   if (existing) return existing.id;
   const newId = Math.max(0, ...categories.map(c => c.id)) + 1;
   const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-  const newCat: Category = { id: newId, store_id: storeId, name, slug, created_at: new Date(), updated_at: new Date() };
+  const newCat: Category = { id: newId, store_id: storeId, name, slug, icon, created_at: new Date(), updated_at: new Date() };
   categories = [...categories, newCat];
   return newId;
 }

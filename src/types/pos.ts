@@ -178,6 +178,9 @@ export interface Sale {
   due_date?: Date | null;
   note?: string;
   refund_reason?: string;
+  paid_at?: Date;
+  paid_by_name?: string;
+  paid_by_role?: string;
   created_at: Date;
   updated_at: Date;
 }
