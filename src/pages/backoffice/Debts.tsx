@@ -267,6 +267,30 @@ export default function Debts() {
                 )}
               </div>
 
+              {/* Linked shipment (if any) */}
+              {(() => {
+                const ship = getShipmentsForStore(activeStoreId).find(s => s.sale_id === selectedSale.id);
+                if (!ship) return null;
+                return (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm">
+                    <p className="font-semibold text-blue-700 mb-1">📦 Pengiriman Terkait</p>
+                    <p>{ship.recipient_name} • {ship.recipient_phone}</p>
+                    <p className="text-xs text-muted-foreground">{ship.recipient_address}</p>
+                    <p className="text-xs mt-1">Ongkir: {formatCurrency(ship.shipping_cost)}</p>
+                  </div>
+                );
+              })()}
+
+              {/* Paid info */}
+              {selectedSale.payment_status === 'paid' && selectedSale.paid_at && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-sm">
+                  <p className="font-semibold text-green-700">✓ Sudah Lunas</p>
+                  <p className="text-xs text-muted-foreground">
+                    Ditandai oleh <strong>{selectedSale.paid_by_name}</strong> ({selectedSale.paid_by_role}) pada {formatDate(selectedSale.paid_at)}
+                  </p>
+                </div>
+              )}
+
               {/* Pay form */}
               {selectedSale.payment_status === 'debt' && (
                 <div className="border-t pt-4 space-y-3">
@@ -285,6 +309,11 @@ export default function Debts() {
                   <Button onClick={handlePay} className="w-full gap-2">
                     <DollarSign className="w-4 h-4" /> Konfirmasi Pembayaran
                   </Button>
+                  {(user?.role === 'owner' || user?.role === 'admin') && (
+                    <Button onClick={handleMarkPaid} variant="outline" className="w-full gap-2 border-green-500 text-green-700 hover:bg-green-50">
+                      <Check className="w-4 h-4" /> Ya, Tandai Lunas
+                    </Button>
+                  )}
                 </div>
               )}
             </div>
