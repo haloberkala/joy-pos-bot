@@ -4,7 +4,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { PaymentModal } from '@/components/pos/PaymentModal';
 import { ReceiptModal } from '@/components/pos/ReceiptModal';
 import { RefundModal } from '@/components/pos/RefundModal';
-import { getProductsForStore, stores, customers, processRefund } from '@/data/sampleData';
+import { getProductsForStore, stores, customers, processRefund, addSale } from '@/data/sampleData';
+import { addShipment } from '@/data/shippingStore';
 import { PaymentMethod, Sale, SaleDetail, Product, Customer, PriceMode, ServiceItem, CartItem } from '@/types/pos';
 import { Settings, LogOut, User, ShieldCheck, UserCog, ScanBarcode, Building2, Trash2, Search, ChevronDown, Truck, Wrench, Plus, Crown, X, RotateCcw, FileText, Info } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -211,15 +212,18 @@ export default function POS() {
     closeBill(activeBillId); toast.success(isDebt ? 'Penjualan (Utang) berhasil dicatat!' : 'Pembayaran berhasil!');
   };
 
-  const handleConfirmDebt = () => {
+  const handleConfirmDebt = (opts: { shipping?: { recipient_name: string; recipient_phone: string; recipient_address: string; shipping_cost: number; note?: string } } = {}) => {
     const now = new Date();
+    const invoice = `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(Date.now()).slice(-3)}`;
     const sale: Sale = {
       id: Date.now(), store_id: activeStoreId, user_id: 1, customer_id: selectedCustomer?.id || null,
-      invoice_number: `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(Date.now()).slice(-3)}`,
+      invoice_number: invoice,
       date: now, sub_total: grandTotal, discount: 0, tax: 0, grand_total: grandTotal,
       payment_method: 'cash', payment_status: 'debt',
       amount_received: 0, change_amount: 0,
-      due_date: dueDate ? new Date(dueDate) : null, created_at: now, updated_at: now,
+      due_date: dueDate ? new Date(dueDate) : null,
+      note: opts.shipping ? `Termasuk pengiriman ke ${opts.shipping.recipient_address}` : undefined,
+      created_at: now, updated_at: now,
     };
     const details: (SaleDetail & { product?: Product })[] = [
       ...items.map((item, idx) => ({
@@ -233,11 +237,36 @@ export default function POS() {
         created_at: now, updated_at: now,
       })),
     ];
+
+    // Persist sale into shared store so it appears in Back Office Transactions/Debts
+    addSale(sale, details);
+
+    // If shipping requested, create linked shipment record (links sale_id + invoice)
+    if (opts.shipping && selectedCustomer) {
+      const itemsDesc = items.map(i => `${i.product.name} x${i.quantity}`).join(', ');
+      addShipment({
+        id: Date.now() + 1,
+        store_id: activeStoreId,
+        sale_id: sale.id,
+        invoice_number: invoice,
+        customer_id: selectedCustomer.id,
+        recipient_name: opts.shipping.recipient_name,
+        recipient_phone: opts.shipping.recipient_phone,
+        recipient_address: opts.shipping.recipient_address,
+        items_description: itemsDesc,
+        note: opts.shipping.note,
+        shipping_cost: opts.shipping.shipping_cost,
+        status: 'pending',
+        created_at: now,
+        updated_at: now,
+      });
+    }
+
     setCurrentSale(sale); setCurrentSaleDetails(details);
     setShowReceipt(true); clearCart(); setServiceItems([]); setSelectedCustomer(null); setIsDebt(false); setDueDate('');
     setShowDebtModal(false);
     closeBill(activeBillId);
-    toast.success('Penjualan (Utang) berhasil dicatat!');
+    toast.success(opts.shipping ? 'Utang & pengiriman tercatat!' : 'Penjualan (Utang) berhasil dicatat!');
   };
 
   const handleRefund = (sale: Sale, reason: string) => { processRefund(sale, reason, user?.name || 'Kasir'); toast.success(`Refund ${sale.invoice_number} berhasil! Stok dikembalikan.`); };
@@ -560,7 +589,7 @@ export default function POS() {
         storeId={activeStoreId}
         selectedCustomer={selectedCustomer}
         onCustomerChange={setSelectedCustomer}
-        onConfirm={() => handleConfirmDebt()}
+        onConfirm={(opts) => handleConfirmDebt(opts)}
       />
       <ReceiptModal isOpen={showReceipt} onClose={() => setShowReceipt(false)} sale={currentSale} saleDetails={currentSaleDetails}
         cashierName={user?.name || 'Kasir'} customerName={currentSale?.customer_id ? customers.find(c => c.id === currentSale.customer_id)?.name : undefined} />
