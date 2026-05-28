@@ -1,12 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { stores as allStores } from '@/data/sampleData';
-import { Store as StoreType } from '@/types/pos';
+import { getAllStores, createStore, updateStore, deleteStore, Store as StoreType } from '@/services/storesService';
 import { toast } from 'sonner';
 import {
   Store, Plus, Pencil, Trash2, ShoppingCart, LayoutDashboard,
-  MapPin, Phone, LogOut, Building2, X,
+  MapPin, LogOut, Building2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,36 +22,94 @@ export default function OwnerPortal() {
   const { user, logout, setActiveStoreId } = useAuth();
   const navigate = useNavigate();
 
-  const [storeList, setStoreList] = useState<StoreType[]>([...allStores]);
+  const [storeList, setStoreList] = useState<StoreType[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [editStore, setEditStore] = useState<StoreType | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<StoreType | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const [formName, setFormName] = useState('');
   const [formAddress, setFormAddress] = useState('');
-  const [formPhone, setFormPhone] = useState('');
 
-  const openCreate = () => { setEditStore(null); setFormName(''); setFormAddress(''); setFormPhone(''); setIsFormOpen(true); };
-  const openEdit = (store: StoreType) => { setEditStore(store); setFormName(store.name); setFormAddress(store.address); setFormPhone(store.phone); setIsFormOpen(true); };
+  // Load stores from Supabase
+  useEffect(() => {
+    loadStores();
+  }, []);
 
-  const handleSave = () => {
-    if (!formName.trim()) { toast.error('Nama toko wajib diisi'); return; }
-    if (editStore) {
-      setStoreList(prev => prev.map(s => s.id === editStore.id ? { ...s, name: formName, address: formAddress, phone: formPhone, updated_at: new Date() } : s));
-      toast.success('Toko berhasil diperbarui');
-    } else {
-      const newId = Math.max(...storeList.map(s => s.id), 0) + 1;
-      setStoreList(prev => [...prev, { id: newId, name: formName, address: formAddress, phone: formPhone, created_at: new Date(), updated_at: new Date() }]);
-      toast.success('Toko baru berhasil ditambahkan');
+  const loadStores = async () => {
+    try {
+      setIsLoading(true);
+      const stores = await getAllStores();
+      setStoreList(stores);
+    } catch (error) {
+      console.error('Error loading stores:', error);
+      toast.error('Gagal memuat data toko');
+    } finally {
+      setIsLoading(false);
     }
-    setIsFormOpen(false);
   };
 
-  const handleDelete = () => {
+  const openCreate = () => { 
+    setEditStore(null); 
+    setFormName(''); 
+    setFormAddress(''); 
+    setIsFormOpen(true); 
+  };
+  
+  const openEdit = (store: StoreType) => { 
+    setEditStore(store); 
+    setFormName(store.name); 
+    setFormAddress(store.address); 
+    setIsFormOpen(true); 
+  };
+
+  const handleSave = async () => {
+    if (!formName.trim()) { 
+      toast.error('Nama toko wajib diisi'); 
+      return; 
+    }
+    
+    setIsSaving(true);
+    try {
+      if (editStore) {
+        // Update existing store
+        await updateStore(editStore.id, {
+          name: formName,
+          address: formAddress,
+        });
+        toast.success('Toko berhasil diperbarui');
+      } else {
+        // Create new store
+        await createStore({
+          name: formName,
+          address: formAddress,
+        });
+        toast.success('Toko baru berhasil ditambahkan');
+      }
+      
+      setIsFormOpen(false);
+      loadStores(); // Reload list
+    } catch (error) {
+      console.error('Error saving store:', error);
+      toast.error('Gagal menyimpan data toko');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
     if (!deleteTarget) return;
-    setStoreList(prev => prev.filter(s => s.id !== deleteTarget.id));
-    toast.success(`Toko "${deleteTarget.name}" dihapus`);
-    setDeleteTarget(null);
+    
+    try {
+      await deleteStore(deleteTarget.id);
+      toast.success(`Toko "${deleteTarget.name}" dihapus`);
+      setDeleteTarget(null);
+      loadStores(); // Reload list
+    } catch (error) {
+      console.error('Error deleting store:', error);
+      toast.error('Gagal menghapus toko');
+    }
   };
 
   const enterStore = (storeId: number, target: 'pos' | 'backoffice') => {
@@ -96,7 +153,16 @@ export default function OwnerPortal() {
 
         {/* Store Cards Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {storeList.map((store) => (
+          {isLoading ? (
+            <div className="col-span-full text-center py-12 text-muted-foreground">
+              Memuat data toko...
+            </div>
+          ) : storeList.length === 0 ? (
+            <div className="col-span-full text-center py-12 text-muted-foreground">
+              Belum ada toko. Klik "Tambah Toko" untuk membuat toko baru.
+            </div>
+          ) : (
+            storeList.map((store) => (
             <div key={store.id} className="group relative rounded-xl border border-border bg-white hover:shadow-sm transition-all duration-150 overflow-hidden">
               <div className="p-5 space-y-4">
                 <div className="flex items-start justify-between">
@@ -121,7 +187,6 @@ export default function OwnerPortal() {
 
                 <div className="space-y-1 text-[12px] text-muted-foreground">
                   {store.address && (<div className="flex items-center gap-2"><MapPin className="w-3.5 h-3.5 shrink-0" /><span className="truncate">{store.address}</span></div>)}
-                  {store.phone && (<div className="flex items-center gap-2"><Phone className="w-3.5 h-3.5 shrink-0" /><span>{store.phone}</span></div>)}
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 pt-1">
@@ -136,7 +201,8 @@ export default function OwnerPortal() {
                 </div>
               </div>
             </div>
-          ))}
+          ))
+          )}
         </div>
       </main>
 
@@ -149,11 +215,12 @@ export default function OwnerPortal() {
           <div className="space-y-4 py-2">
             <div className="space-y-2"><Label>Nama Toko *</Label><Input value={formName} onChange={e => setFormName(e.target.value)} placeholder="Nama toko" /></div>
             <div className="space-y-2"><Label>Alamat</Label><Input value={formAddress} onChange={e => setFormAddress(e.target.value)} placeholder="Alamat toko" /></div>
-            <div className="space-y-2"><Label>Telepon</Label><Input value={formPhone} onChange={e => setFormPhone(e.target.value)} placeholder="No. telepon" /></div>
           </div>
           <DialogFooter>
-            <DialogClose asChild><Button variant="ghost">Batal</Button></DialogClose>
-            <Button onClick={handleSave}>{editStore ? 'Simpan' : 'Tambah'}</Button>
+            <DialogClose asChild><Button variant="ghost" disabled={isSaving}>Batal</Button></DialogClose>
+            <Button onClick={handleSave} disabled={isSaving}>
+              {isSaving ? 'Menyimpan...' : (editStore ? 'Simpan' : 'Tambah')}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

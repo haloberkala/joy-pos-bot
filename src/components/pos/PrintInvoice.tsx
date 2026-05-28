@@ -44,7 +44,6 @@ export function printInvoice({ sale, saleDetails, store }: PrintInvoiceProps) {
       <div class="header">
         <h1>${store.name}</h1>
         <p>${store.address}</p>
-        <p>Telp: ${store.phone}</p>
       </div>
 
       <div style="text-align:center;margin-bottom:16px;font-size:16px;font-weight:700;">FAKTUR / INVOICE</div>
@@ -97,12 +96,11 @@ export function printInvoice({ sale, saleDetails, store }: PrintInvoiceProps) {
         <div class="summary-row total"><span>Total</span><span>${formatCurrency(sale.grand_total)}</span></div>
         <div class="summary-row"><span>Dibayar</span><span>${formatCurrency(sale.amount_received)}</span></div>
         ${sale.change_amount > 0 ? `<div class="summary-row"><span>Kembalian</span><span>${formatCurrency(sale.change_amount)}</span></div>` : ''}
-        <div class="summary-row"><span>Status</span><span>${sale.payment_status === 'paid' ? '✅ Lunas' : '⏳ Utang'}</span></div>
       </div>
 
       <div class="footer">
         <p>Terima kasih atas kepercayaan Anda</p>
-        <p>${store.name} • ${store.phone}</p>
+        <p>${store.name}</p>
       </div>
     </body>
     </html>

@@ -1,6 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { Sale } from '@/types/pos';
-import { sampleSaleDetails, getProduct } from '@/data/sampleData';
+import { getSaleItemsBySaleIds } from '@/services/salesService';
 import { formatCurrency } from '@/lib/format';
 import { Card } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -9,45 +9,85 @@ import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 interface TopProductsTableProps {
   sales: Sale[];
+  storeId: number;
   limit?: number;
 }
 
 interface ProductSales {
-  productId: number;
+  productId: number | null;
   productName: string;
   quantitySold: number;
   totalRevenue: number;
   avgPrice: number;
 }
 
-export function TopProductsTable({ sales, limit = 10 }: TopProductsTableProps) {
-  const productSales = useMemo(() => {
-    const salesMap: Record<number, ProductSales> = {};
-    const saleIds = new Set(sales.map(s => s.id));
+export function TopProductsTable({ sales, storeId, limit = 10 }: TopProductsTableProps) {
+  const [saleItems, setSaleItems] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-    sampleSaleDetails
-      .filter(d => saleIds.has(d.sale_id))
-      .forEach(d => {
-        const product = getProduct(d.product_id);
-        if (!salesMap[d.product_id]) {
-          salesMap[d.product_id] = {
-            productId: d.product_id,
-            productName: product?.name || `Produk #${d.product_id}`,
-            quantitySold: 0,
-            totalRevenue: 0,
-            avgPrice: d.price_at_sale,
-          };
-        }
-        salesMap[d.product_id].quantitySold += d.quantity;
-        salesMap[d.product_id].totalRevenue += d.total_price;
-      });
+  useEffect(() => {
+    loadSaleItems();
+  }, [sales]);
+
+  const loadSaleItems = async () => {
+    try {
+      setIsLoading(true);
+      const saleIds = sales.map(s => s.id);
+      if (saleIds.length === 0) {
+        setSaleItems([]);
+        return;
+      }
+      const items = await getSaleItemsBySaleIds(saleIds);
+      setSaleItems(items);
+    } catch (error) {
+      console.error('Error loading sale items:', error);
+      setSaleItems([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const productSales = useMemo(() => {
+    const salesMap: Record<string, ProductSales> = {};
+
+    saleItems.forEach(item => {
+      const key = item.product_id ? `prod-${item.product_id}` : `service-${item.product_name}`;
+      
+      if (!salesMap[key]) {
+        salesMap[key] = {
+          productId: item.product_id,
+          productName: item.product_name,
+          quantitySold: 0,
+          totalRevenue: 0,
+          avgPrice: item.price_per_unit,
+        };
+      }
+      salesMap[key].quantitySold += item.quantity;
+      salesMap[key].totalRevenue += item.total_price;
+    });
 
     return Object.values(salesMap)
       .sort((a, b) => b.totalRevenue - a.totalRevenue)
       .slice(0, limit);
-  }, [sales, limit]);
+  }, [saleItems, limit]);
 
   const maxRevenue = productSales[0]?.totalRevenue || 1;
+
+  if (isLoading) {
+    return (
+      <Card className="p-4">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="font-semibold text-foreground">Produk Terlaris</h3>
+            <p className="text-sm text-muted-foreground">Memuat data...</p>
+          </div>
+        </div>
+        <div className="rounded-md border p-8 text-center">
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card className="p-4">
@@ -72,7 +112,7 @@ export function TopProductsTable({ sales, limit = 10 }: TopProductsTableProps) {
             {productSales.map((product, index) => {
               const performancePercent = (product.totalRevenue / maxRevenue) * 100;
               return (
-                <TableRow key={product.productId}>
+                <TableRow key={`${product.productId}-${index}`}>
                   <TableCell>
                     <Badge variant={index < 3 ? "default" : "secondary"} className="w-6 h-6 flex items-center justify-center p-0">
                       {index + 1}

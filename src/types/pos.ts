@@ -35,7 +35,7 @@ export interface Category {
   store_id: number;
   name: string;
   slug: string;
-  icon?: string;
+  description?: string;
   created_at: Date;
   updated_at: Date;
 }

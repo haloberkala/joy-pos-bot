@@ -10,9 +10,10 @@ import Login from "./pages/Login";
 import BackofficeLayout from "./layouts/BackofficeLayout";
 import Dashboard from "./pages/backoffice/Dashboard";
 import Products from "./pages/backoffice/Products";
+import ProductClassification from "./pages/backoffice/ProductClassification";
 import Purchases from "./pages/backoffice/Purchases";
 import Transactions from "./pages/backoffice/Transactions";
-
+import Customers from "./pages/backoffice/Customers";
 import Expenses from "./pages/backoffice/Expenses";
 import Reports from "./pages/backoffice/Reports";
 import Settings from "./pages/backoffice/Settings";
@@ -40,9 +41,10 @@ const App = () => (
             <Route path="/backoffice" element={<ProtectedRoute allowedRoles={['owner', 'admin']}><BackofficeLayout /></ProtectedRoute>}>
               <Route index element={<Dashboard />} />
               <Route path="products" element={<Products />} />
+              <Route path="products/categories-brands" element={<ProductClassification />} />
               <Route path="purchases" element={<Purchases />} />
               <Route path="transactions" element={<Transactions />} />
-              
+              <Route path="customers" element={<Customers />} />
               <Route path="expenses" element={<ProtectedRoute allowedRoles={['owner']}><Expenses /></ProtectedRoute>} />
               <Route path="shipping" element={<Shipping />} />
               <Route path="sdm/attendance" element={<Attendance />} />

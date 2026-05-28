@@ -1,20 +1,30 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { sampleExpenses, expenseCategories } from '@/data/sampleData';
+import { 
+  getExpensesByStore, 
+  getExpenseCategories, 
+  createExpense, 
+  deleteExpense,
+  createExpenseCategory,
+  updateExpenseCategory,
+  deleteExpenseCategory,
+  Expense,
+  ExpenseCategory 
+} from '@/services/expensesService';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Plus, Search, Wallet, TrendingDown, Trash2, Receipt } from 'lucide-react';
+import { Plus, Search, Wallet, TrendingDown, Trash2, Receipt, Edit, X } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { DateFilter, DateFilterType, DateRange, getDateRangeFromFilter } from '@/components/backoffice/DateFilter';
-import { Expense } from '@/types/pos';
 import { toast } from 'sonner';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { DeleteConfirmDialog } from '@/components/ui/delete-confirm-dialog';
 
 const COLORS = [
   'hsl(245, 100%, 67%)', 'hsl(40, 72%, 42%)', 'hsl(4, 68%, 46%)', 'hsl(220, 70%, 55%)',
@@ -23,11 +33,16 @@ const COLORS = [
 
 export default function Expenses() {
   const { activeStoreId } = useAuth();
-  const [expenses, setExpenses] = useState<Expense[]>(sampleExpenses);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [expenseCategories, setExpenseCategories] = useState<ExpenseCategory[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [dateFilterType, setDateFilterType] = useState<DateFilterType>('all');
   const [dateRange, setDateRange] = useState<DateRange>(getDateRangeFromFilter('all'));
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
   const [formCategory, setFormCategory] = useState<string>('1');
   const [formAmount, setFormAmount] = useState('');
@@ -35,23 +50,70 @@ export default function Expenses() {
   const [formNote, setFormNote] = useState('');
   const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
 
+  // Category form state
+  const [categoryName, setCategoryName] = useState('');
+  const [categoryDescription, setCategoryDescription] = useState('');
+  const [editingCategory, setEditingCategory] = useState<ExpenseCategory | null>(null);
+  const [deleteCategoryTarget, setDeleteCategoryTarget] = useState<ExpenseCategory | null>(null);
+
+  // Load data from Supabase
+  useEffect(() => {
+    loadData();
+  }, [activeStoreId]);
+
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      const [expensesData, categoriesData] = await Promise.all([
+        getExpensesByStore(activeStoreId),
+        getExpenseCategories(),
+      ]);
+      
+      setExpenses(expensesData);
+      setExpenseCategories(categoriesData);
+    } catch (error) {
+      console.error('Error loading data:', error);
+      toast.error('Gagal memuat data pengeluaran');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleDateFilterChange = (type: DateFilterType, range: DateRange) => {
     setDateFilterType(type);
     setDateRange(range);
   };
 
   const filteredExpenses = useMemo(() => {
-    let filtered = expenses.filter(e => e.store_id === activeStoreId);
-    if (dateRange.from) filtered = filtered.filter((e) => e.date >= dateRange.from!);
-    if (dateRange.to) filtered = filtered.filter((e) => e.date <= dateRange.to!);
+    let filtered = expenses;
+    
+    // Date filter
+    if (dateRange.from) {
+      const fromTime = dateRange.from.getTime();
+      filtered = filtered.filter((e) => new Date(e.expense_date).getTime() >= fromTime);
+    }
+    if (dateRange.to) {
+      const toTime = dateRange.to.getTime();
+      filtered = filtered.filter((e) => new Date(e.expense_date).getTime() <= toTime);
+    }
+    
+    // Category filter
+    if (categoryFilter !== 'all') {
+      filtered = filtered.filter((e) => e.category_id === Number(categoryFilter));
+    }
+    
+    // Search filter
     if (searchQuery) {
       filtered = filtered.filter((e) =>
         e.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         String(e.id).includes(searchQuery)
       );
     }
-    return filtered.sort((a, b) => b.date.getTime() - a.date.getTime());
-  }, [expenses, activeStoreId, dateRange, searchQuery]);
+    
+    return filtered.sort((a, b) => 
+      new Date(b.expense_date).getTime() - new Date(a.expense_date).getTime()
+    );
+  }, [expenses, dateRange, categoryFilter, searchQuery]);
 
   const totalExpenses = filteredExpenses.reduce((sum, e) => sum + e.amount, 0);
 
@@ -69,35 +131,119 @@ export default function Expenses() {
     return expenseCategories.find((c) => c.id === categoryId)?.name || String(categoryId);
   };
 
-  const handleAddExpense = () => {
+  const handleAddExpense = async () => {
     if (!formAmount || !formTitle) {
       toast.error('Isi semua field yang wajib');
       return;
     }
-    const newExpense: Expense = {
-      id: Date.now(),
-      store_id: activeStoreId,
-      user_id: 1,
-      category_id: Number(formCategory),
-      title: formTitle,
-      amount: parseFloat(formAmount),
-      date: new Date(formDate),
-      note: formNote || undefined,
-      created_at: new Date(),
-      updated_at: new Date(),
-    };
-    setExpenses((prev) => [newExpense, ...prev]);
-    setIsAddModalOpen(false);
-    setFormAmount('');
-    setFormTitle('');
-    setFormNote('');
-    toast.success('Pengeluaran berhasil ditambahkan');
+    
+    try {
+      setIsSaving(true);
+      
+      await createExpense({
+        store_id: activeStoreId,
+        category_id: Number(formCategory),
+        title: formTitle,
+        amount: parseFloat(formAmount),
+        expense_date: formDate,
+        note: formNote || undefined,
+      });
+      
+      setIsAddModalOpen(false);
+      setFormAmount('');
+      setFormTitle('');
+      setFormNote('');
+      setFormDate(new Date().toISOString().split('T')[0]);
+      
+      await loadData();
+      toast.success('Pengeluaran berhasil ditambahkan');
+    } catch (error) {
+      console.error('Error adding expense:', error);
+      toast.error('Gagal menambahkan pengeluaran');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleDeleteExpense = (id: number) => {
-    setExpenses((prev) => prev.filter((e) => e.id !== id));
-    toast.success('Pengeluaran berhasil dihapus');
+  const handleDeleteExpense = async (id: number) => {
+    try {
+      await deleteExpense(id);
+      await loadData();
+      toast.success('Pengeluaran berhasil dihapus');
+    } catch (error) {
+      console.error('Error deleting expense:', error);
+      toast.error('Gagal menghapus pengeluaran');
+    }
   };
+
+  const handleSaveCategory = async () => {
+    if (!categoryName.trim()) {
+      toast.error('Nama kategori wajib diisi');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      
+      if (editingCategory) {
+        await updateExpenseCategory(editingCategory.id, categoryName, categoryDescription || undefined);
+        toast.success('Kategori berhasil diupdate');
+      } else {
+        await createExpenseCategory(categoryName, categoryDescription || undefined);
+        toast.success('Kategori berhasil ditambahkan');
+      }
+      
+      setIsCategoryModalOpen(false);
+      setCategoryName('');
+      setCategoryDescription('');
+      setEditingCategory(null);
+      await loadData();
+    } catch (error) {
+      console.error('Error saving category:', error);
+      toast.error('Gagal menyimpan kategori');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleEditCategory = (category: ExpenseCategory) => {
+    setEditingCategory(category);
+    setCategoryName(category.name);
+    setCategoryDescription(category.description || '');
+    setIsCategoryModalOpen(true);
+  };
+
+  const handleDeleteCategory = async () => {
+    if (!deleteCategoryTarget) return;
+
+    try {
+      await deleteExpenseCategory(deleteCategoryTarget.id);
+      await loadData();
+      setDeleteCategoryTarget(null);
+      toast.success('Kategori berhasil dihapus');
+    } catch (error) {
+      console.error('Error deleting category:', error);
+      toast.error('Gagal menghapus kategori. Mungkin masih ada pengeluaran yang menggunakan kategori ini.');
+    }
+  };
+
+  const openCategoryModal = () => {
+    setEditingCategory(null);
+    setCategoryName('');
+    setCategoryDescription('');
+    setIsCategoryModalOpen(true);
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Manajemen Pengeluaran</h1>
+          <p className="text-muted-foreground">Memuat data...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -172,11 +318,24 @@ export default function Expenses() {
         </div>
 
         <div className="lg:col-span-2 space-y-4">
-          <div className="flex gap-4">
+          <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input placeholder="Cari pengeluaran..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
             </div>
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="w-full sm:w-[200px]">
+                <SelectValue placeholder="Semua Kategori" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Kategori</SelectItem>
+                {expenseCategories.map((cat) => (
+                  <SelectItem key={cat.id} value={String(cat.id)}>
+                    {cat.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Dialog open={isAddModalOpen} onOpenChange={setIsAddModalOpen}>
               <DialogTrigger asChild>
                 <Button className="gap-2"><Plus className="w-4 h-4" />Tambah Pengeluaran</Button>
@@ -186,12 +345,17 @@ export default function Expenses() {
                 <div className="space-y-4 py-4">
                   <div className="space-y-2">
                     <Label>Kategori</Label>
-                    <Select value={formCategory} onValueChange={setFormCategory}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {expenseCategories.map((cat) => (<SelectItem key={cat.id} value={String(cat.id)}>{cat.name}</SelectItem>))}
-                      </SelectContent>
-                    </Select>
+                    <div className="flex gap-2">
+                      <Select value={formCategory} onValueChange={setFormCategory}>
+                        <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {expenseCategories.map((cat) => (<SelectItem key={cat.id} value={String(cat.id)}>{cat.name}</SelectItem>))}
+                        </SelectContent>
+                      </Select>
+                      <Button type="button" variant="outline" size="icon" onClick={openCategoryModal} title="Kelola Kategori">
+                        <Plus className="w-4 h-4" />
+                      </Button>
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <Label>Judul</Label>
@@ -210,8 +374,10 @@ export default function Expenses() {
                     <Textarea placeholder="Catatan pengeluaran..." value={formNote} onChange={(e) => setFormNote(e.target.value)} />
                   </div>
                   <div className="flex justify-end gap-2 pt-4">
-                    <Button variant="outline" onClick={() => setIsAddModalOpen(false)}>Batal</Button>
-                    <Button onClick={handleAddExpense}>Simpan</Button>
+                    <Button variant="outline" onClick={() => setIsAddModalOpen(false)} disabled={isSaving}>Batal</Button>
+                    <Button onClick={handleAddExpense} disabled={isSaving}>
+                      {isSaving ? 'Menyimpan...' : 'Simpan'}
+                    </Button>
                   </div>
                 </div>
               </DialogContent>
@@ -232,7 +398,7 @@ export default function Expenses() {
               <TableBody>
                 {filteredExpenses.map((expense) => (
                   <TableRow key={expense.id}>
-                    <TableCell className="text-muted-foreground">{formatDate(expense.date)}</TableCell>
+                    <TableCell className="text-muted-foreground">{formatDate(new Date(expense.expense_date))}</TableCell>
                     <TableCell className="font-medium max-w-[200px] truncate">{expense.title}</TableCell>
                     <TableCell><Badge variant="secondary">{getCategoryName(expense.category_id)}</Badge></TableCell>
                     <TableCell className="text-right font-semibold text-red-600">-{formatCurrency(expense.amount)}</TableCell>
@@ -251,6 +417,108 @@ export default function Expenses() {
           </div>
         </div>
       </div>
+
+      {/* Category Management Modal */}
+      <Dialog open={isCategoryModalOpen} onOpenChange={setIsCategoryModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>{editingCategory ? 'Edit Kategori' : 'Kelola Kategori Pengeluaran'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-6 py-4">
+            {/* Form Add/Edit Category */}
+            <div className="bg-muted/50 rounded-lg p-4 space-y-4">
+              <h3 className="font-semibold text-sm">{editingCategory ? 'Edit Kategori' : 'Tambah Kategori Baru'}</h3>
+              <div className="space-y-3">
+                <div className="space-y-2">
+                  <Label>Nama Kategori *</Label>
+                  <Input 
+                    placeholder="Contoh: Gaji Karyawan, Listrik & Air" 
+                    value={categoryName} 
+                    onChange={(e) => setCategoryName(e.target.value)} 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Deskripsi (opsional)</Label>
+                  <Textarea 
+                    placeholder="Deskripsi kategori..." 
+                    value={categoryDescription} 
+                    onChange={(e) => setCategoryDescription(e.target.value)}
+                    rows={2}
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  {editingCategory && (
+                    <Button 
+                      variant="outline" 
+                      onClick={() => {
+                        setEditingCategory(null);
+                        setCategoryName('');
+                        setCategoryDescription('');
+                      }}
+                    >
+                      Batal Edit
+                    </Button>
+                  )}
+                  <Button onClick={handleSaveCategory} disabled={isSaving}>
+                    {isSaving ? 'Menyimpan...' : editingCategory ? 'Update' : 'Tambah'}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* List of Categories */}
+            <div>
+              <h3 className="font-semibold text-sm mb-3">Daftar Kategori</h3>
+              <div className="border rounded-lg divide-y max-h-[300px] overflow-y-auto">
+                {expenseCategories.map((cat) => (
+                  <div key={cat.id} className="p-3 flex items-start justify-between hover:bg-muted/50">
+                    <div className="flex-1">
+                      <p className="font-medium">{cat.name}</p>
+                      {cat.description && (
+                        <p className="text-xs text-muted-foreground mt-1">{cat.description}</p>
+                      )}
+                    </div>
+                    <div className="flex gap-1 ml-2">
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8"
+                        onClick={() => handleEditCategory(cat)}
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        onClick={() => setDeleteCategoryTarget(cat)}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <Button variant="outline" onClick={() => setIsCategoryModalOpen(false)}>
+                Tutup
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Category Confirmation */}
+      <DeleteConfirmDialog
+        open={!!deleteCategoryTarget}
+        onOpenChange={(open) => !open && setDeleteCategoryTarget(null)}
+        onConfirm={handleDeleteCategory}
+        title="Hapus Kategori Pengeluaran?"
+        itemName={deleteCategoryTarget?.name}
+        description="Kategori ini akan dihapus. Pengeluaran dengan kategori ini akan terpengaruh."
+      />
     </div>
   );
 }

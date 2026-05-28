@@ -1,36 +1,27 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 import { UserRole } from '@/types/pos';
-
-// Demo users for UI testing (no backend yet)
-// Admin hanya punya akses ke 1 toko, Owner bisa akses semua
-const DEMO_USERS = [
-  { id: 'owner-1', email: 'owner@demo.com', password: 'owner123', name: 'Ahmad Owner', role: 'owner' as UserRole, storeIds: [1, 2, 3] },
-  { id: 'admin-1', email: 'admin@demo.com', password: 'admin123', name: 'Budi Admin', role: 'admin' as UserRole, storeIds: [1] },
-  { id: 'admin-2', email: 'admin2@demo.com', password: 'admin123', name: 'Dewi Admin', role: 'admin' as UserRole, storeIds: [2] },
-  { id: 'cashier-1', email: 'kasir@demo.com', password: 'kasir123', name: 'Citra Kasir', role: 'cashier' as UserRole, storeIds: [1] },
-  { id: 'cashier-2', email: 'kasir2@demo.com', password: 'kasir123', name: 'Eko Kasir', role: 'cashier' as UserRole, storeIds: [2] },
-];
+import { toast } from 'sonner';
+import * as authService from '@/services/authService';
+import { supabase } from '@/lib/supabase';
 
 interface User {
-  id: string;
-  email: string;
+  id: number;
+  username: string;
   name: string;
   role: UserRole;
   storeIds: number[];
+  storeId: number | null;
 }
 
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (username: string, password: string) => Promise<{ success: boolean; user?: User }>;
   logout: () => void;
   hasAccess: (requiredRoles: UserRole[]) => boolean;
-  /** The active store for the current user session */
   activeStoreId: number;
   setActiveStoreId: (id: number) => void;
-  /** All stores this user can access */
   accessibleStoreIds: number[];
-  /** Whether user can switch stores (owner only) */
   canSwitchStore: boolean;
 }
 
@@ -41,51 +32,162 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [activeStoreId, setActiveStoreIdState] = useState<number>(1);
 
-  // Check for existing session on mount
+  // Initialize auth on mount
   useEffect(() => {
-    const storedUser = localStorage.getItem('demo_user');
-    const storedStoreId = localStorage.getItem('demo_active_store');
-    if (storedUser) {
+    const initAuth = async () => {
       try {
-        const parsed = JSON.parse(storedUser);
-        setUser(parsed);
-        if (storedStoreId) {
-          setActiveStoreIdState(Number(storedStoreId));
-        } else if (parsed.storeIds?.length > 0) {
-          setActiveStoreIdState(parsed.storeIds[0]);
+        const sessionToken = authService.getSessionToken();
+        
+        if (!sessionToken) {
+          setIsLoading(false);
+          return;
         }
-      } catch {
-        localStorage.removeItem('demo_user');
+
+        // Check if session expired
+        if (authService.isSessionExpired()) {
+          authService.clearSessionToken();
+          setIsLoading(false);
+          return;
+        }
+
+        // Validate session
+        const authUser = await authService.validateSession(sessionToken);
+        
+        if (!authUser) {
+          authService.clearSessionToken();
+          setIsLoading(false);
+          return;
+        }
+
+        // Fetch actual store IDs from database
+        let storeIds: number[] = [];
+        
+        if (authUser.role === 'owner') {
+          // Owner can access all stores - fetch from database
+          const { data: stores } = await supabase
+            .from('stores')
+            .select('id')
+            .order('id', { ascending: true });
+          
+          storeIds = stores?.map(s => s.id) || [];
+        } else {
+          // Admin/Cashier only access their assigned store
+          storeIds = authUser.store_id ? [authUser.store_id] : [];
+        }
+
+        const userProfile: User = {
+          id: authUser.id,
+          username: authUser.username,
+          name: authUser.name,
+          role: authUser.role as UserRole,
+          storeIds,
+          storeId: authUser.store_id,
+        };
+
+        setUser(userProfile);
+
+        // Restore active store from localStorage
+        const storedStoreId = localStorage.getItem('active_store_id');
+        if (storedStoreId && storeIds.includes(Number(storedStoreId))) {
+          setActiveStoreIdState(Number(storedStoreId));
+        } else if (storeIds.length > 0) {
+          // Use first available store
+          setActiveStoreIdState(storeIds[0]);
+          localStorage.setItem('active_store_id', String(storeIds[0]));
+        }
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+        authService.clearSessionToken();
+      } finally {
+        setIsLoading(false);
       }
-    }
-    setIsLoading(false);
+    };
+
+    initAuth();
   }, []);
 
-  const login = async (email: string, password: string): Promise<boolean> => {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    const foundUser = DEMO_USERS.find(
-      u => u.email.toLowerCase() === email.toLowerCase() && u.password === password
-    );
-    
-    if (foundUser) {
-      const { password: _, ...userWithoutPassword } = foundUser;
-      setUser(userWithoutPassword);
-      localStorage.setItem('demo_user', JSON.stringify(userWithoutPassword));
-      // Set active store to user's first store
-      const firstStore = foundUser.storeIds[0] || 1;
-      setActiveStoreIdState(firstStore);
-      localStorage.setItem('demo_active_store', String(firstStore));
-      return true;
+  const login = async (username: string, password: string): Promise<{ success: boolean; user?: User }> => {
+    try {
+      const result = await authService.login(username, password);
+
+      if (!result.success || !result.user) {
+        toast.error('Login gagal', {
+          description: result.message || 'Username atau password salah',
+        });
+        return { success: false };
+      }
+
+      // Save session token
+      if (result.session_token && result.expires_at) {
+        authService.saveSessionToken(result.session_token, result.expires_at);
+      }
+
+      // Fetch actual store IDs from database
+      let storeIds: number[] = [];
+      
+      if (result.user.role === 'owner') {
+        // Owner can access all stores - fetch from database
+        const { data: stores } = await supabase
+          .from('stores')
+          .select('id')
+          .order('id', { ascending: true });
+        
+        storeIds = stores?.map(s => s.id) || [];
+      } else {
+        // Admin/Cashier only access their assigned store
+        storeIds = result.user.store_id ? [result.user.store_id] : [];
+      }
+
+      const userProfile: User = {
+        id: result.user.id,
+        username: result.user.username,
+        name: result.user.name,
+        role: result.user.role as UserRole,
+        storeIds,
+        storeId: result.user.store_id,
+      };
+
+      setUser(userProfile);
+
+      // Set active store
+      const storedStoreId = localStorage.getItem('active_store_id');
+      if (storedStoreId && storeIds.includes(Number(storedStoreId))) {
+        setActiveStoreIdState(Number(storedStoreId));
+      } else if (storeIds.length > 0) {
+        // Use first available store
+        setActiveStoreIdState(storeIds[0]);
+        localStorage.setItem('active_store_id', String(storeIds[0]));
+      }
+
+      return { success: true, user: userProfile };
+    } catch (error) {
+      console.error('Login error:', error);
+      toast.error('Login gagal', {
+        description: 'Terjadi kesalahan saat login',
+      });
+      return { success: false };
     }
-    
-    return false;
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('demo_user');
-    localStorage.removeItem('demo_active_store');
+  const logout = async () => {
+    try {
+      const sessionToken = authService.getSessionToken();
+      if (sessionToken) {
+        await authService.logout(sessionToken);
+      }
+      
+      authService.clearSessionToken();
+      setUser(null);
+      setActiveStoreIdState(1);
+      
+      toast.success('Logout berhasil');
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Force clear even if logout fails
+      authService.clearSessionToken();
+      setUser(null);
+      toast.error('Logout gagal, tapi session sudah dibersihkan');
+    }
   };
 
   const hasAccess = (requiredRoles: UserRole[]): boolean => {
@@ -98,7 +200,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Owner can switch to any store, admin/cashier only their assigned stores
     if (user.role === 'owner' || user.storeIds.includes(id)) {
       setActiveStoreIdState(id);
-      localStorage.setItem('demo_active_store', String(id));
+      localStorage.setItem('active_store_id', String(id));
     }
   };
 

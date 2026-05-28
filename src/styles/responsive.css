@@ -1,0 +1,243 @@
+/* Responsive Utilities for POS Application */
+
+/* Touch-friendly minimum sizes */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Responsive table wrapper */
+.table-responsive {
+  @apply overflow-x-auto -mx-4 sm:mx-0;
+}
+
+.table-responsive table {
+  @apply min-w-full;
+}
+
+/* Mobile-friendly cards */
+@media (max-width: 640px) {
+  .card-grid {
+    @apply grid-cols-1 !important;
+  }
+  
+  .stats-grid {
+    @apply grid-cols-2 gap-3 !important;
+  }
+}
+
+/* Responsive dialog/modal */
+@media (max-width: 768px) {
+  [role="dialog"] {
+    @apply max-w-[95vw] max-h-[90vh] !important;
+  }
+}
+
+/* Responsive text sizes */
+.text-responsive-sm {
+  @apply text-xs sm:text-sm;
+}
+
+.text-responsive-base {
+  @apply text-sm sm:text-base;
+}
+
+.text-responsive-lg {
+  @apply text-base sm:text-lg;
+}
+
+.text-responsive-xl {
+  @apply text-lg sm:text-xl;
+}
+
+.text-responsive-2xl {
+  @apply text-xl sm:text-2xl;
+}
+
+/* Responsive spacing */
+.space-responsive {
+  @apply space-y-4 sm:space-y-6;
+}
+
+.gap-responsive {
+  @apply gap-3 sm:gap-4 lg:gap-6;
+}
+
+.p-responsive {
+  @apply p-4 sm:p-6 lg:p-8;
+}
+
+/* Hide on mobile */
+.hide-mobile {
+  @apply hidden sm:block;
+}
+
+/* Show only on mobile */
+.show-mobile {
+  @apply block sm:hidden;
+}
+
+/* Responsive button groups */
+.button-group-responsive {
+  @apply flex flex-col sm:flex-row gap-2 sm:gap-3;
+}
+
+/* Responsive form grid */
+.form-grid-responsive {
+  @apply grid grid-cols-1 sm:grid-cols-2 gap-4;
+}
+
+/* Scrollable horizontal on mobile */
+.scroll-mobile {
+  @apply overflow-x-auto sm:overflow-x-visible;
+}
+
+/* Full width on mobile */
+.full-mobile {
+  @apply w-full sm:w-auto;
+}
+
+/* Responsive padding for main content */
+.main-content {
+  @apply px-4 sm:px-6 lg:px-8 py-4 sm:py-6;
+}
+
+/* Responsive table cells - hide on mobile */
+.table-cell-hide-mobile {
+  @apply hidden md:table-cell;
+}
+
+/* Compact mode for mobile */
+@media (max-width: 640px) {
+  .compact-mobile {
+    @apply text-xs p-2 !important;
+  }
+  
+  .compact-mobile-icon {
+    @apply w-3 h-3 !important;
+  }
+}
+
+/* Responsive tabs */
+.tabs-responsive {
+  @apply overflow-x-auto;
+}
+
+.tabs-responsive [role="tablist"] {
+  @apply flex-nowrap min-w-max;
+}
+
+/* Sticky header on mobile */
+.sticky-mobile-header {
+  @apply sticky top-0 z-10 bg-white border-b;
+}
+
+/* Responsive dialog content */
+.dialog-content-responsive {
+  @apply max-h-[85vh] overflow-y-auto;
+}
+
+/* Touch-friendly input */
+input, textarea, select, button {
+  @apply touch-manipulation;
+}
+
+/* Prevent zoom on input focus (iOS) */
+input, textarea, select {
+  font-size: 16px !important;
+}
+
+@media (min-width: 768px) {
+  input, textarea, select {
+    font-size: 14px !important;
+  }
+}
+
+/* Responsive badge */
+.badge-responsive {
+  @apply text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1;
+}
+
+/* Responsive icon sizes */
+.icon-sm-responsive {
+  @apply w-3 h-3 sm:w-4 sm:h-4;
+}
+
+.icon-md-responsive {
+  @apply w-4 h-4 sm:w-5 sm:h-5;
+}
+
+.icon-lg-responsive {
+  @apply w-5 h-5 sm:w-6 sm:h-6;
+}
+
+/* Safe area for mobile devices (notch) */
+.safe-area-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Responsive grid for summary cards */
+.summary-grid {
+  @apply grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4;
+}
+
+/* Responsive action buttons */
+.action-buttons {
+  @apply flex flex-col sm:flex-row gap-2 sm:gap-3 items-stretch sm:items-center;
+}
+
+.action-buttons > * {
+  @apply w-full sm:w-auto;
+}
+
+/* Responsive search bar */
+.search-bar-responsive {
+  @apply w-full sm:max-w-md;
+}
+
+/* Mobile-optimized table */
+@media (max-width: 768px) {
+  .mobile-table-card {
+    @apply block;
+  }
+  
+  .mobile-table-card thead {
+    @apply hidden;
+  }
+  
+  .mobile-table-card tbody {
+    @apply block;
+  }
+  
+  .mobile-table-card tr {
+    @apply block mb-4 border rounded-lg p-4;
+  }
+  
+  .mobile-table-card td {
+    @apply block text-right;
+  }
+  
+  .mobile-table-card td::before {
+    content: attr(data-label);
+    @apply float-left font-semibold;
+  }
+}
+
+/* Responsive flex direction */
+.flex-responsive {
+  @apply flex flex-col sm:flex-row;
+}
+
+/* Responsive justify */
+.justify-responsive {
+  @apply justify-start sm:justify-between;
+}
+
+/* Responsive items alignment */
+.items-responsive {
+  @apply items-start sm:items-center;
+}

@@ -1,6 +1,5 @@
 import { Sale } from '@/types/pos';
 import { formatCurrency, formatDate } from '@/lib/format';
-import { stores } from '@/data/sampleData';
 import { Card } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
@@ -54,15 +53,14 @@ export function TransactionsTable({ sales, limit = 10, showAll = false }: Transa
           <TableHeader>
             <TableRow>
               <TableHead>Invoice</TableHead>
-              <TableHead>Toko</TableHead>
               <TableHead>Waktu</TableHead>
               <TableHead>Pembayaran</TableHead>
+              <TableHead>Status</TableHead>
               <TableHead className="text-right">Total</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {displayed.map((sale) => {
-              const store = stores.find(s => s.id === sale.store_id);
               return (
                 <TableRow key={sale.id}>
                   <TableCell>
@@ -74,13 +72,24 @@ export function TransactionsTable({ sales, limit = 10, showAll = false }: Transa
                     </div>
                   </TableCell>
                   <TableCell>
-                    <span className="text-sm">{store?.name.replace('Minimarket Berkah - ', '') || '-'}</span>
-                  </TableCell>
-                  <TableCell>
                     <span className="text-sm text-muted-foreground">{formatDate(sale.date)}</span>
                   </TableCell>
                   <TableCell>
                     <PaymentBadge method={sale.payment_method} />
+                  </TableCell>
+                  <TableCell>
+                    <Badge 
+                      variant={sale.payment_status === 'paid' ? 'default' : 'secondary'}
+                      className={
+                        sale.payment_status === 'paid' 
+                          ? 'bg-green-100 text-green-700 hover:bg-green-100'
+                          : sale.payment_status === 'debt'
+                          ? 'bg-orange-100 text-orange-700 hover:bg-orange-100'
+                          : 'bg-red-100 text-red-700 hover:bg-red-100'
+                      }
+                    >
+                      {sale.payment_status === 'paid' ? 'Lunas' : sale.payment_status === 'debt' ? 'Utang' : 'Refund'}
+                    </Badge>
                   </TableCell>
                   <TableCell className="text-right font-semibold">
                     {formatCurrency(sale.grand_total)}

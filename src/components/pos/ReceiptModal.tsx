@@ -92,8 +92,17 @@ export function ReceiptModal({ isOpen, onClose, sale, saleDetails, cashierName, 
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-sm">
+    <Dialog open={isOpen} onOpenChange={(open) => {
+      // Only allow closing via buttons, not backdrop or ESC
+      // onOpenChange will be called with false when user tries to close
+      // We ignore it - only explicit onClose() calls from buttons will work
+    }}>
+      <DialogContent 
+        className="sm:max-w-sm" 
+        hideCloseButton
+        onPointerDownOutside={(e) => e.preventDefault()} // Disable backdrop click
+        onEscapeKeyDown={(e) => e.preventDefault()}      // Disable ESC key
+      >
         <DialogHeader><DialogTitle className="text-center">Struk Pembayaran</DialogTitle></DialogHeader>
         <div id="receipt-print-area" className="space-y-4 font-mono text-[12px]">
           <div className="text-center border-b border-dashed border-border pb-3">

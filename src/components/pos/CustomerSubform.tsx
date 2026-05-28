@@ -1,12 +1,17 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Customer } from '@/types/pos';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 import { Search, User, UserPlus, Edit2, X, Check } from 'lucide-react';
-import { addCustomer, updateCustomer, findCustomerByPhone, getCustomersForStore } from '@/data/sampleData';
 import { toast } from 'sonner';
+import { 
+  getCustomersByStore, 
+  createCustomer, 
+  updateCustomer as updateCustomerService,
+  Customer as DBCustomer 
+} from '@/services/customersService';
 
 type View = 'select' | 'add' | 'edit';
 
@@ -28,37 +33,134 @@ export function CustomerSubform({ storeId, selectedCustomer, onCustomerChange, r
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [editing, setEditing] = useState<Customer | null>(null);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
-  const list = useMemo(() => getCustomersForStore(storeId), [storeId]);
+  // Load customers from database
+  useEffect(() => {
+    loadCustomers();
+  }, [storeId]);
+
+  const loadCustomers = async () => {
+    try {
+      setIsLoading(true);
+      const data = await getCustomersByStore(storeId);
+      // Convert DBCustomer to Customer (POS type)
+      const converted: Customer[] = data.map(c => ({
+        id: c.id,
+        store_id: c.store_id,
+        name: c.name,
+        phone: c.phone,
+        address: c.address || undefined,
+        created_at: new Date(c.created_at),
+        updated_at: new Date(c.updated_at),
+      }));
+      setCustomers(converted);
+    } catch (error) {
+      console.error('Error loading customers:', error);
+      toast.error('Gagal memuat data pelanggan');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const filtered = useMemo(() => {
-    if (!search) return list;
+    if (!search) return customers;
     const q = search.toLowerCase();
-    return list.filter(c => c.phone.includes(search) || c.name.toLowerCase().includes(q));
-  }, [list, search]);
+    return customers.filter(c => c.phone.includes(search) || c.name.toLowerCase().includes(q));
+  }, [customers, search]);
 
   const reset = () => { setName(''); setPhone(''); setAddress(''); setEditing(null); };
 
-  const handleAdd = () => {
-    if (!name.trim() || !phone.trim()) { toast.error('Nama dan telepon wajib diisi'); return; }
-    if (findCustomerByPhone(phone, storeId)) { toast.error('Nomor telepon sudah terdaftar'); return; }
-    const c: Customer = { id: Date.now(), store_id: storeId, name: name.trim(), phone: phone.trim(), address: address.trim() || undefined, created_at: new Date(), updated_at: new Date() };
-    addCustomer(c);
-    onCustomerChange(c);
-    toast.success(`Pelanggan ${c.name} ditambahkan`);
-    reset(); setView('select');
+  const handleAdd = async () => {
+    if (!name.trim() || !phone.trim()) { 
+      toast.error('Nama dan telepon wajib diisi'); 
+      return; 
+    }
+    
+    // Check duplicate phone
+    if (customers.find(c => c.phone === phone.trim())) { 
+      toast.error('Nomor telepon sudah terdaftar'); 
+      return; 
+    }
+    
+    try {
+      const newCustomer = await createCustomer({
+        store_id: storeId,
+        name: name.trim(),
+        phone: phone.trim(),
+        address: address.trim() || undefined,
+      });
+      
+      const converted: Customer = {
+        id: newCustomer.id,
+        store_id: newCustomer.store_id,
+        name: newCustomer.name,
+        phone: newCustomer.phone,
+        address: newCustomer.address || undefined,
+        created_at: new Date(newCustomer.created_at),
+        updated_at: new Date(newCustomer.updated_at),
+      };
+      
+      setCustomers(prev => [...prev, converted]);
+      onCustomerChange(converted);
+      toast.success(`Pelanggan ${converted.name} ditambahkan`);
+      reset(); 
+      setView('select');
+    } catch (error: any) {
+      console.error('Error adding customer:', error);
+      toast.error(error.message || 'Gagal menambahkan pelanggan');
+    }
   };
 
-  const handleEdit = () => {
-    if (!editing || !name.trim() || !phone.trim()) { toast.error('Nama dan telepon wajib diisi'); return; }
-    updateCustomer(editing.id, { name: name.trim(), phone: phone.trim(), address: address.trim() || undefined });
-    const upd = { ...editing, name: name.trim(), phone: phone.trim(), address: address.trim() || undefined };
-    if (selectedCustomer?.id === editing.id) onCustomerChange(upd);
-    toast.success('Data pelanggan diperbarui');
-    reset(); setView('select');
+  const handleEdit = async () => {
+    if (!editing || !name.trim() || !phone.trim()) { 
+      toast.error('Nama dan telepon wajib diisi'); 
+      return; 
+    }
+    
+    try {
+      const updated = await updateCustomerService(editing.id, {
+        store_id: storeId,
+        name: name.trim(),
+        phone: phone.trim(),
+        address: address.trim() || undefined,
+      });
+      
+      const converted: Customer = {
+        id: updated.id,
+        store_id: updated.store_id,
+        name: updated.name,
+        phone: updated.phone,
+        address: updated.address || undefined,
+        created_at: new Date(updated.created_at),
+        updated_at: new Date(updated.updated_at),
+      };
+      
+      setCustomers(prev => prev.map(c => c.id === editing.id ? converted : c));
+      if (selectedCustomer?.id === editing.id) onCustomerChange(converted);
+      toast.success('Data pelanggan diperbarui');
+      reset(); 
+      setView('select');
+    } catch (error: any) {
+      console.error('Error updating customer:', error);
+      toast.error(error.message || 'Gagal memperbarui pelanggan');
+    }
   };
 
-  const startEdit = (c: Customer) => { setEditing(c); setName(c.name); setPhone(c.phone); setAddress(c.address || ''); setView('edit'); };
-  const startAdd = () => { reset(); if (search && /^\d+$/.test(search)) setPhone(search); setView('add'); };
+  const startEdit = (c: Customer) => { 
+    setEditing(c); 
+    setName(c.name); 
+    setPhone(c.phone); 
+    setAddress(c.address || ''); 
+    setView('edit'); 
+  };
+  
+  const startAdd = () => { 
+    reset(); 
+    if (search && /^\d+$/.test(search)) setPhone(search); 
+    setView('add'); 
+  };
 
   return (
     <div className="border border-border rounded-xl p-3 space-y-3">
@@ -84,19 +186,28 @@ export function CustomerSubform({ storeId, selectedCustomer, onCustomerChange, r
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
             <Input placeholder="Cari nama / telepon..." value={search} onChange={e => setSearch(e.target.value)} className="pl-8 h-8 text-[12px] rounded-lg" />
           </div>
-          <div className="max-h-28 overflow-y-auto space-y-0.5">
-            {filtered.slice(0, 5).map(c => (
-              <div key={c.id} className="flex items-center justify-between p-1.5 rounded-lg hover:bg-surface group">
-                <button onClick={() => { onCustomerChange(c); setSearch(''); }} className="flex items-center gap-2 flex-1 text-left">
-                  <div className="w-6 h-6 rounded-full bg-surface flex items-center justify-center"><User className="w-3 h-3 text-muted-foreground" /></div>
-                  <div><p className="font-medium text-[12px]">{c.name}</p><p className="text-[10px] text-muted-foreground">{c.phone}</p></div>
-                </button>
-                <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100" onClick={e => { e.stopPropagation(); startEdit(c); }}>
-                  <Edit2 className="w-3 h-3" />
-                </Button>
-              </div>
-            ))}
-          </div>
+          {isLoading ? (
+            <div className="text-center py-4 text-[11px] text-muted-foreground">Memuat...</div>
+          ) : (
+            <div className="max-h-28 overflow-y-auto space-y-0.5">
+              {filtered.slice(0, 5).map(c => (
+                <div key={c.id} className="flex items-center justify-between p-1.5 rounded-lg hover:bg-surface group">
+                  <button onClick={() => { onCustomerChange(c); setSearch(''); }} className="flex items-center gap-2 flex-1 text-left">
+                    <div className="w-6 h-6 rounded-full bg-surface flex items-center justify-center"><User className="w-3 h-3 text-muted-foreground" /></div>
+                    <div><p className="font-medium text-[12px]">{c.name}</p><p className="text-[10px] text-muted-foreground">{c.phone}</p></div>
+                  </button>
+                  <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100" onClick={e => { e.stopPropagation(); startEdit(c); }}>
+                    <Edit2 className="w-3 h-3" />
+                  </Button>
+                </div>
+              ))}
+              {filtered.length === 0 && (
+                <div className="text-center py-4 text-[11px] text-muted-foreground">
+                  {search ? 'Tidak ada pelanggan yang cocok' : 'Belum ada pelanggan'}
+                </div>
+              )}
+            </div>
+          )}
           <div className="flex gap-2">
             {!required && !selectedCustomer && (
               <span className="text-[11px] text-muted-foreground self-center flex-1">Lewati jika umum</span>

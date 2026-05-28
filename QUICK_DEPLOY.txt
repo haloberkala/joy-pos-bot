@@ -1,0 +1,212 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                  🚀 QUICK DEPLOY - Edge Function                             ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ OPTION 1: Automated Script (Recommended)                                    │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+   Run this command:
+   
+   ./deploy-edge-function.sh
+   
+   The script will:
+   ✅ Install Supabase CLI (if needed)
+   ✅ Login to Supabase
+   ✅ List your projects
+   ✅ Link to your project
+   ✅ Deploy the Edge Function
+   ✅ Show deployment status
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ OPTION 2: Manual Commands                                                   │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+   Step 1: Install CLI
+   ────────────────────────────────────────
+   npm install -g supabase
+   
+   Step 2: Login
+   ────────────────────────────────────────
+   supabase login
+   
+   Step 3: Link Project
+   ────────────────────────────────────────
+   supabase link --project-ref YOUR_PROJECT_REF
+   
+   Get YOUR_PROJECT_REF from:
+   https://supabase.com/dashboard/project/YOUR_PROJECT_REF
+                                          ^^^^^^^^^^^^^^^^
+   
+   Step 4: Deploy
+   ────────────────────────────────────────
+   supabase functions deploy update-employee-password
+   
+   Step 5: Verify
+   ────────────────────────────────────────
+   supabase functions list
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ OPTION 3: Via Supabase Dashboard                                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+   1. Go to: https://supabase.com/dashboard
+   2. Open your project
+   3. Click "Edge Functions" in sidebar
+   4. Click "Create Function"
+   5. Name: update-employee-password
+   6. Copy code from: supabase/functions/update-employee-password/index.ts
+   7. Paste into editor
+   8. Click "Deploy"
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ TEST AFTER DEPLOYMENT                                                        │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+   1. Open your application
+   2. Login as Owner/Admin
+   3. Go to "Manajemen Karyawan"
+   4. Click "Edit" on any employee
+   5. Enter new password (min 6 chars)
+   6. Click "Simpan"
+   7. ✅ Should succeed!
+   8. Test login with new password
+   9. ✅ Login should work!
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ TROUBLESHOOTING                                                              │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+   Error: "supabase: command not found"
+   ────────────────────────────────────────
+   # Restart terminal after npm install
+   # Or use npx:
+   npx supabase login
+   
+   Error: "Project not found"
+   ────────────────────────────────────────
+   # List your projects:
+   supabase projects list
+   
+   # Use correct project ref
+   
+   Error: "Function deployment failed"
+   ────────────────────────────────────────
+   # Check function code exists:
+   ls -la supabase/functions/update-employee-password/
+   
+   # Try again:
+   supabase functions deploy update-employee-password
+   
+   Error: Still getting "User not allowed"
+   ────────────────────────────────────────
+   # Verify function is deployed:
+   supabase functions list
+   
+   # Check logs:
+   supabase functions logs update-employee-password
+   
+   # Verify frontend is calling the function:
+   # Check browser console for network requests
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ VERIFY DEPLOYMENT                                                            │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+   Check deployed functions:
+   ────────────────────────────────────────
+   supabase functions list
+   
+   Expected output:
+   ┌──────────────────────────────┬─────────┐
+   │ NAME                         │ STATUS  │
+   ├──────────────────────────────┼─────────┤
+   │ update-employee-password     │ ACTIVE  │
+   └──────────────────────────────┴─────────┘
+   
+   View logs:
+   ────────────────────────────────────────
+   supabase functions logs update-employee-password
+   
+   Or in Dashboard:
+   Edge Functions > update-employee-password > Logs
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ WHAT HAPPENS AFTER DEPLOYMENT                                                │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+   BEFORE (Error):
+   Frontend → supabase.auth.admin → ❌ User not allowed
+   
+   AFTER (Fixed):
+   Frontend → Edge Function → Supabase Auth → ✅ Success!
+   
+   The Edge Function:
+   ✅ Runs on Supabase servers
+   ✅ Has service role key (admin access)
+   ✅ Updates password securely
+   ✅ Returns success/error to frontend
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ COST                                                                         │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+   FREE TIER:
+   - 500,000 invocations/month
+   - 2GB bandwidth/month
+   
+   Your usage:
+   - Update password = 1 invocation
+   - ~10-50 updates/month
+   
+   ✅ FREE TIER IS MORE THAN ENOUGH!
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ FILES INVOLVED                                                               │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+   ✅ supabase/functions/update-employee-password/index.ts
+      Edge Function code (already created)
+   
+   ✅ src/services/employeesService.ts
+      Frontend service (already updated)
+   
+   ✅ src/pages/backoffice/Employees.tsx
+      UI with password input (already updated)
+   
+   📖 DEPLOY_EDGE_FUNCTION.md
+      Detailed deployment guide
+   
+   🚀 deploy-edge-function.sh
+      Automated deployment script
+   
+   📋 QUICK_DEPLOY.txt
+      This quick reference
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ SUMMARY                                                                      │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+   Problem: Update password error (User not allowed)
+   
+   Solution: Deploy Edge Function
+   
+   Command: ./deploy-edge-function.sh
+   
+   Or: supabase functions deploy update-employee-password
+   
+   Result: Update password will work! ✅
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ NEED HELP?                                                                   │
+└──────────────────────────────────────────────────────────────────────────────┘
+
+   📖 Read: DEPLOY_EDGE_FUNCTION.md
+   📖 Read: SETUP_PASSWORD_UPDATE.md
+   
+   🔗 Supabase Docs:
+      https://supabase.com/docs/guides/functions
+   
+   💬 Discord:
+      https://discord.supabase.com
+

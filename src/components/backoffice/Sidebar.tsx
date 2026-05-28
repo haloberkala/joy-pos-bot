@@ -1,22 +1,43 @@
 import { NavLink } from '@/components/NavLink';
 import { useAuth, canAccessMenu } from '@/contexts/AuthContext';
-import { stores } from '@/data/sampleData';
+import { getAllStores, Store } from '@/services/storesService';
 import {
-  LayoutDashboard, Package, Receipt, Settings, Store, ChevronLeft, LogOut,
+  LayoutDashboard, Package, Receipt, Settings, Store as StoreIcon, ChevronLeft, LogOut,
   ShieldCheck, UserCog, User, Wallet, FileBarChart, ShoppingCart, Building2, Truck,
-  ChevronDown, ClipboardList, Banknote, Star, UserPlus, Users,
+  ChevronDown, ClipboardList, Banknote, Star, UserPlus, Users, Tag, List, Menu, X,
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { toast } from 'sonner';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export function Sidebar() {
-  const { user, logout, activeStoreId } = useAuth();
+  const { user, logout, activeStoreId, setActiveStoreId } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [sdmOpen, setSdmOpen] = useState(() => location.pathname.startsWith('/backoffice/sdm'));
+  const [productsOpen, setProductsOpen] = useState(() => location.pathname.startsWith('/backoffice/products'));
+  const [stores, setStores] = useState<Store[]>([]);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  useEffect(() => {
+    loadStores();
+  }, []);
+
+  const loadStores = async () => {
+    try {
+      const storesData = await getAllStores();
+      setStores(storesData);
+    } catch (error) {
+      console.error('Error loading stores:', error);
+    }
+  };
 
   const handleLogout = () => { logout(); navigate('/login'); toast.success('Logout berhasil'); };
+
+  const handleStoreChange = (storeId: number) => {
+    setActiveStoreId(storeId);
+    toast.success('Toko berhasil diganti');
+  };
 
   const getRoleLabel = (role: string) => {
     switch (role) { case 'owner': return 'Owner'; case 'admin': return 'Kepala Toko'; case 'cashier': return 'Kasir'; default: return 'User'; }
@@ -30,18 +51,23 @@ export function Sidebar() {
 
   const topItems = [
     { to: '/backoffice', icon: LayoutDashboard, label: 'Dashboard', end: true, menuKey: 'dashboard' },
-    { to: '/backoffice/products', icon: Package, label: 'Produk & Stok', menuKey: 'products' },
     { to: '/backoffice/purchases', icon: ShoppingCart, label: 'Kulakan/Supply', menuKey: 'purchases' },
-    { to: '/backoffice/transactions', icon: Receipt, label: 'Transaksi', menuKey: 'transactions' },
+    { to: '/backoffice/transactions', icon: Receipt, label: 'Transaksi & Utang', menuKey: 'transactions' },
+    { to: '/backoffice/customers', icon: Users, label: 'Pelanggan', menuKey: 'transactions' },
     { to: '/backoffice/shipping', icon: Truck, label: 'Pengiriman', menuKey: 'transactions' },
     { to: '/backoffice/expenses', icon: Wallet, label: 'Pengeluaran', menuKey: 'expenses' },
   ];
 
+  const productsSubItems = [
+    { to: '/backoffice/products', icon: List, label: 'Daftar Produk' },
+    { to: '/backoffice/products/categories-brands', icon: Tag, label: 'Klasifikasi Produk' },
+  ];
+
   const sdmSubItems = [
+    { to: '/backoffice/sdm/employees', icon: UserPlus, label: 'Manajemen Karyawan' },
     { to: '/backoffice/sdm/attendance', icon: ClipboardList, label: 'Rekap Absensi' },
     { to: '/backoffice/sdm/payroll', icon: Banknote, label: 'Penggajian' },
     { to: '/backoffice/sdm/evaluation', icon: Star, label: 'Evaluasi' },
-    { to: '/backoffice/sdm/employees', icon: UserPlus, label: 'Manajemen Karyawan' },
   ];
 
   const bottomItems = [
@@ -50,14 +76,44 @@ export function Sidebar() {
   ];
 
   const isSdmActive = location.pathname.startsWith('/backoffice/sdm');
+  const isProductsActive = location.pathname.startsWith('/backoffice/products');
   const showSdm = canAccessMenu(user?.role, 'sdm');
+  const showProducts = canAccessMenu(user?.role, 'products');
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [location.pathname]);
 
   return (
-    <aside className="w-60 bg-white border-r border-border flex flex-col">
+    <>
+      {/* Mobile Menu Button */}
+      <button
+        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+        className="lg:hidden fixed top-4 left-4 z-50 p-2 rounded-lg bg-white border border-border shadow-lg"
+      >
+        {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+      </button>
+
+      {/* Overlay */}
+      {mobileMenuOpen && (
+        <div
+          className="lg:hidden fixed inset-0 bg-black/50 z-40"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside className={`
+        fixed lg:static inset-y-0 left-0 z-40
+        w-64 lg:w-60 bg-white border-r border-border flex flex-col
+        transform transition-transform duration-300 ease-in-out
+        ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+      `}>
       <div className="p-4 border-b border-border">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-            <Store className="w-4 h-4 text-primary-foreground" />
+            <StoreIcon className="w-4 h-4 text-primary-foreground" />
           </div>
           <div>
             <h1 className="text-[15px] font-medium text-foreground">MiniPOS</h1>
@@ -67,10 +123,28 @@ export function Sidebar() {
       </div>
 
       <div className="px-4 py-3 border-b border-border">
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-surface rounded-lg">
-          <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
-          <span className="text-[12px] font-medium truncate text-foreground">{activeStore?.name}</span>
-        </div>
+        {user?.role === 'owner' ? (
+          <div className="relative">
+            <select
+              value={activeStoreId}
+              onChange={(e) => handleStoreChange(Number(e.target.value))}
+              className="appearance-none w-full pl-7 pr-6 py-1.5 rounded-lg text-[12px] font-medium border border-border bg-white text-foreground cursor-pointer focus:outline-none focus:border-primary"
+            >
+              {stores.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+            <Building2 className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+            <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-surface rounded-lg">
+            <Building2 className="w-3.5 h-3.5 text-muted-foreground" />
+            <span className="text-[12px] font-medium truncate text-foreground">{activeStore?.name}</span>
+          </div>
+        )}
       </div>
 
       <div className="px-4 py-3 border-b border-border">
@@ -91,6 +165,29 @@ export function Sidebar() {
             <item.icon className="w-[14px] h-[14px]" /><span>{item.label}</span>
           </NavLink>
         ))}
+
+        {/* Products collapsible */}
+        {showProducts && (
+          <div>
+            <button
+              onClick={() => setProductsOpen(!productsOpen)}
+              className={`w-full ${linkCls} ${isProductsActive ? 'text-primary font-medium' : ''}`}
+            >
+              <Package className="w-[14px] h-[14px]" />
+              <span className="flex-1 text-left">Produk & Stok</span>
+              <ChevronDown className={`w-3.5 h-3.5 transition-transform ${productsOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {productsOpen && (
+              <div className="ml-4 mt-0.5 space-y-0.5 border-l border-border pl-3">
+                {productsSubItems.map(item => (
+                  <NavLink key={item.to} to={item.to} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" activeClassName={activeCls}>
+                    <item.icon className="w-3.5 h-3.5" /><span>{item.label}</span>
+                  </NavLink>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* SDM collapsible */}
         {showSdm && (
@@ -136,5 +233,6 @@ export function Sidebar() {
         </button>
       </div>
     </aside>
+    </>
   );
 }

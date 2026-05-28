@@ -1,0 +1,27 @@
+
+  // Update purchase note handler
+  const handleUpdateNote = async () => {
+    if (!viewPurchase) return;
+    
+    try {
+      await updatePurchaseNote(viewPurchase.id, editedNote);
+      toast.success('Catatan berhasil diperbarui');
+      setIsEditingNote(false);
+      // Update local state
+      setViewPurchase({ ...viewPurchase, note: editedNote });
+      loadData(); // Reload to sync
+    } catch (error) {
+      console.error('Error updating note:', error);
+      toast.error('Gagal memperbarui catatan');
+    }
+  };
+
+  const startEditNote = () => {
+    setEditedNote(viewPurchase?.note || '');
+    setIsEditingNote(true);
+  };
+
+  const cancelEditNote = () => {
+    setIsEditingNote(false);
+    setEditedNote('');
+  };

@@ -12,7 +12,6 @@ export interface DebtConfirmShipping {
   recipient_phone: string;
   recipient_address: string;
   shipping_cost: number;
-  note?: string;
 }
 
 interface DebtModalProps {
@@ -24,18 +23,18 @@ interface DebtModalProps {
   storeId: number;
   selectedCustomer: Customer | null;
   onCustomerChange: (c: Customer | null) => void;
-  /** Called with optional shipping payload. POS handles sale creation. */
-  onConfirm: (opts: { shipping?: DebtConfirmShipping }) => void;
+  /** Called with dueDate (required) and optional shipping payload. POS handles sale creation. */
+  onConfirm: (opts: { dueDate: string; shipping?: DebtConfirmShipping }) => void;
 }
 
 export function DebtModal({ isOpen, onClose, items, total, storeId, selectedCustomer, onCustomerChange, onConfirm }: DebtModalProps) {
   const { activeStoreId } = useAuth();
+  const [dueDate, setDueDate] = useState('');
   const [withShipping, setWithShipping] = useState(false);
   const [recipientName, setRecipientName] = useState(selectedCustomer?.name || '');
   const [recipientPhone, setRecipientPhone] = useState(selectedCustomer?.phone || '');
   const [recipientAddress, setRecipientAddress] = useState(selectedCustomer?.address || '');
   const [shippingCost, setShippingCost] = useState('');
-  const [shipNote, setShipNote] = useState('');
 
   useEffect(() => {
     if (selectedCustomer) {
@@ -47,21 +46,22 @@ export function DebtModal({ isOpen, onClose, items, total, storeId, selectedCust
 
   const handleSubmit = () => {
     if (!selectedCustomer) { toast.error('Pelanggan wajib dipilih untuk transaksi utang'); return; }
+    if (!dueDate) { toast.error('Tanggal jatuh tempo wajib diisi'); return; }
     if (withShipping) {
       if (!recipientName || !recipientPhone || !recipientAddress) {
         toast.error('Lengkapi data pengiriman'); return;
       }
       onConfirm({
+        dueDate,
         shipping: {
           recipient_name: recipientName,
           recipient_phone: recipientPhone,
           recipient_address: recipientAddress,
           shipping_cost: parseFloat(shippingCost) || 0,
-          note: shipNote || undefined,
         },
       });
     } else {
-      onConfirm({});
+      onConfirm({ dueDate });
     }
   };
 
@@ -87,6 +87,21 @@ export function DebtModal({ isOpen, onClose, items, total, storeId, selectedCust
           {/* Shared customer subform — same as Transfer/QRIS */}
           <CustomerSubform storeId={storeId} selectedCustomer={selectedCustomer} onCustomerChange={onCustomerChange} required />
 
+          {/* Due Date Input (Required) */}
+          <div className="space-y-2">
+            <label className={labelCls}>
+              Tanggal Jatuh Tempo (Maksimal Lunas) <span className="text-destructive">*</span>
+            </label>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className={inputCls}
+              required
+            />
+            <p className="text-[11px] text-muted-foreground">Batas waktu pelunasan utang</p>
+          </div>
+
           {/* Shipping toggle */}
           <div className="border border-border rounded-xl p-3">
             <label className="flex items-center gap-2 cursor-pointer select-none">
@@ -98,6 +113,7 @@ export function DebtModal({ isOpen, onClose, items, total, storeId, selectedCust
 
             {withShipping && (
               <div className="mt-3 space-y-3">
+                {/* Row 1: Nama Penerima & Telepon (2 columns) */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={labelCls}>Nama Penerima *</label>
@@ -108,19 +124,17 @@ export function DebtModal({ isOpen, onClose, items, total, storeId, selectedCust
                     <input value={recipientPhone} onChange={e => setRecipientPhone(e.target.value)} className={inputCls} />
                   </div>
                 </div>
+                
+                {/* Row 2: Alamat Pengiriman (full width) */}
                 <div>
                   <label className={labelCls}><MapPin className="w-3.5 h-3.5 inline mr-1" />Alamat Pengiriman *</label>
                   <textarea value={recipientAddress} onChange={e => setRecipientAddress(e.target.value)} rows={2} className={`${inputCls} resize-none`} />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={labelCls}>Ongkir (Rp)</label>
-                    <input type="number" value={shippingCost} onChange={e => setShippingCost(e.target.value)} className={inputCls} placeholder="0" />
-                  </div>
-                  <div>
-                    <label className={labelCls}>Catatan</label>
-                    <input value={shipNote} onChange={e => setShipNote(e.target.value)} className={inputCls} placeholder="Opsional" />
-                  </div>
+                
+                {/* Row 3: Ongkir (full width) */}
+                <div>
+                  <label className={labelCls}>Ongkir (Rp)</label>
+                  <input type="number" value={shippingCost} onChange={e => setShippingCost(e.target.value)} className={inputCls} placeholder="0" />
                 </div>
               </div>
             )}
@@ -128,7 +142,7 @@ export function DebtModal({ isOpen, onClose, items, total, storeId, selectedCust
 
           <div className="flex gap-3 pt-2">
             <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-border text-foreground font-medium text-[13px] hover:bg-accent">Batal</button>
-            <button onClick={handleSubmit} disabled={!selectedCustomer}
+            <button onClick={handleSubmit} disabled={!selectedCustomer || !dueDate}
               className="flex-1 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-[13px] hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
               <Check className="w-3.5 h-3.5" /> Konfirmasi Simpan Utang
             </button>

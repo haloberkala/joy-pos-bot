@@ -1,21 +1,16 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-  products,
-  categories,
-  brands,
-  units,
-  getProductsForStore,
-  getCategoriesForStore,
-  getBrandsForStore,
-  getUnitsForStore,
-  addProduct,
-  getOrCreateCategory,
-  getOrCreateBrand,
-  getOrCreateUnit,
-  deleteProduct,
-  sampleStockOpnames,
-} from "@/data/sampleData";
+import { 
+  getProductsByStore, 
+  deleteProduct, 
+  bulkCreateProducts,
+  Product,
+  CreateProductInput 
+} from "@/services/productsService";
+import { getAllCategories, getOrCreateCategory } from "@/services/categoriesService";
+import { getAllBrands, getOrCreateBrand } from "@/services/brandsService";
+import { getAllUnits, getOrCreateUnit, Unit } from "@/services/unitsService";
+import { getStockOpnamesByStore } from "@/services/stockOpnameService";
 import { formatCurrency } from "@/lib/format";
 import { formatDate } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -76,6 +71,9 @@ export default function Products() {
   const { activeStoreId } = useAuth();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
+  const [selectedBrand, setSelectedBrand] = useState<string>("all");
+  const [selectedUnit, setSelectedUnit] = useState<string>("all");
+  const [activeStockFilter, setActiveStockFilter] = useState<"all" | "low" | "out">("all");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
@@ -89,6 +87,72 @@ export default function Products() {
   const [showBulkQr, setShowBulkQr] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Supabase integration
+  const [storeProducts, setStoreProducts] = useState<Product[]>([]);
+  const [stockOpnames, setStockOpnames] = useState<any[]>([]);
+  const [storeCategories, setStoreCategories] = useState<any[]>([]);
+  const [storeBrands, setStoreBrands] = useState<any[]>([]);
+  const [storeUnits, setStoreUnits] = useState<Unit[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load products from Supabase
+  useEffect(() => {
+    loadProducts();
+    loadStockOpnames();
+    loadCategories();
+    loadBrands();
+    loadUnits();
+  }, [activeStoreId, refreshKey]);
+
+  const loadProducts = async () => {
+    try {
+      setIsLoading(true);
+      const products = await getProductsByStore(activeStoreId);
+      setStoreProducts(products);
+    } catch (error) {
+      console.error('Error loading products:', error);
+      toast.error('Gagal memuat produk');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadStockOpnames = async () => {
+    try {
+      const opnames = await getStockOpnamesByStore(activeStoreId, 10);
+      setStockOpnames(opnames);
+    } catch (error) {
+      console.error('Error loading stock opnames:', error);
+    }
+  };
+
+  const loadCategories = async () => {
+    try {
+      const categories = await getAllCategories(activeStoreId);
+      setStoreCategories(categories);
+    } catch (error) {
+      console.error('Error loading categories:', error);
+    }
+  };
+
+  const loadBrands = async () => {
+    try {
+      const brands = await getAllBrands(activeStoreId);
+      setStoreBrands(brands);
+    } catch (error) {
+      console.error('Error loading brands:', error);
+    }
+  };
+
+  const loadUnits = async () => {
+    try {
+      const units = await getAllUnits(activeStoreId);
+      setStoreUnits(units);
+    } catch (error) {
+      console.error('Error loading units:', error);
+    }
+  };
 
   // Barcode download helper
   const downloadBarcode = (product: Product) => {
@@ -194,22 +258,9 @@ export default function Products() {
     });
   };
 
-  const storeProducts = useMemo(
-    () => getProductsForStore(activeStoreId),
-    [activeStoreId, refreshKey],
-  );
-  const storeCategories = useMemo(
-    () => getCategoriesForStore(activeStoreId),
-    [activeStoreId],
-  );
-  const storeBrands = useMemo(
-    () => getBrandsForStore(activeStoreId),
-    [activeStoreId],
-  );
-
   useBarcodeScanner({
     onScan: (barcode) => {
-      const product = products.find((p) => p.code === barcode);
+      const product = storeProducts.find((p) => p.code === barcode);
       if (product) {
         setSearchQuery(barcode);
         toast.success(`Produk ditemukan: ${product.name}`);
@@ -227,13 +278,18 @@ export default function Products() {
     }
   }, [editingProduct]);
 
-  const handleDeleteProduct = (product: Product) => {
+  const handleDeleteProduct = async (product: Product) => {
     if (
       confirm(`Apakah Anda yakin ingin menghapus produk "${product.name}"?`)
     ) {
-      deleteProduct(product.id);
-      setRefreshKey((k) => k + 1);
-      toast.success("Produk berhasil dihapus");
+      try {
+        await deleteProduct(product.id);
+        setRefreshKey((k) => k + 1);
+        toast.success("Produk berhasil dihapus");
+      } catch (error) {
+        console.error('Error deleting product:', error);
+        toast.error('Gagal menghapus produk');
+      }
     }
   };
 
@@ -244,18 +300,38 @@ export default function Products() {
     const matchesCategory =
       selectedCategory === "all" ||
       product.category_id === Number(selectedCategory);
-    return matchesSearch && matchesCategory;
+    const matchesBrand =
+      selectedBrand === "all" ||
+      product.brand_id === Number(selectedBrand);
+    const matchesUnit =
+      selectedUnit === "all" ||
+      product.unit_id === Number(selectedUnit);
+    
+    // Apply stock filter
+    let matchesStockFilter = true;
+    if (activeStockFilter === "low") {
+      matchesStockFilter = product.quantity < product.min_stock_alert && product.quantity > 0;
+    } else if (activeStockFilter === "out") {
+      matchesStockFilter = product.quantity === 0;
+    }
+    
+    return matchesSearch && matchesCategory && matchesBrand && matchesUnit && matchesStockFilter;
   });
 
   const getCategoryLabel = (categoryId: number | null) => {
     if (!categoryId) return "-";
-    const c = categories.find((c) => c.id === categoryId);
-    return c ? `${c.icon || ""} ${c.name}` : "-";
+    const c = storeCategories.find((c) => c.id === categoryId);
+    return c ? c.name : "-";
   };
 
   const getBrandName = (brandId: number | null) => {
     if (!brandId) return "-";
-    return brands.find((b) => b.id === brandId)?.name || "-";
+    return storeBrands.find((b) => b.id === brandId)?.name || "-";
+  };
+
+  const getUnitName = (unitId: number | null) => {
+    if (!unitId) return "";
+    return storeUnits.find((u) => u.id === unitId)?.name || "";
   };
 
   const getStockStatus = (qty: number, min: number) => {
@@ -278,41 +354,33 @@ export default function Products() {
   const handleDownloadTemplate = () => {
     const templateData = [
       {
-        "Nama Produk*": "",
-        "Kode/Barcode*": "",
         Kategori: "",
         Brand: "",
+        "Nama Produk *": "",
+        "Barcode/SKU *": "",
         Satuan: "",
-        "Singkatan Satuan": "",
-        "Harga Modal*": "",
-        "Harga Jual Eceran*": "",
-        "Harga Jual Grosir": "",
-        "Min Qty Grosir": "",
-        "Harga Jual Spesial": "",
-        "Min Qty Spesial": "",
         "Stok Awal": "",
-        "Min Stok Alert": "",
-        "Tanggal Kadaluarsa": "",
+        "Stok Minimum": "",
+        "Harga Modal *": "",
+        "Harga Jual Spesial": "",
+        "Harga Jual Grosir": "",
+        "Harga Jual Eceran *": "",
       },
     ];
 
     const exampleData = [
       {
-        "Nama Produk*": "Mie Instan Merah",
-        "Kode/Barcode*": "MIE001",
         Kategori: "Makanan",
         Brand: "Indofood",
+        "Nama Produk *": "Mie Instan Merah",
+        "Barcode/SKU *": "MIE001",
         Satuan: "Pcs",
-        "Singkatan Satuan": "Pcs",
-        "Harga Modal*": "2500",
-        "Harga Jual Eceran*": "3500",
-        "Harga Jual Grosir": "3200",
-        "Min Qty Grosir": "10",
-        "Harga Jual Spesial": "3000",
-        "Min Qty Spesial": "20",
         "Stok Awal": "50",
-        "Min Stok Alert": "10",
-        "Tanggal Kadaluarsa": "2025-12-31",
+        "Stok Minimum": "10",
+        "Harga Modal *": "2500",
+        "Harga Jual Spesial": "3000",
+        "Harga Jual Grosir": "3200",
+        "Harga Jual Eceran *": "3500",
       },
     ];
 
@@ -320,20 +388,16 @@ export default function Products() {
     const wsExample = XLSX.utils.json_to_sheet(exampleData);
 
     ws["!cols"] = [
-      { wch: 30 },
-      { wch: 18 },
-      { wch: 18 },
+      { wch: 15 },
+      { wch: 15 },
+      { wch: 25 },
       { wch: 15 },
       { wch: 12 },
       { wch: 12 },
-      { wch: 15 },
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 15 },
-      { wch: 18 },
-      { wch: 15 },
       { wch: 12 },
-      { wch: 14 },
+      { wch: 15 },
+      { wch: 18 },
+      { wch: 18 },
       { wch: 18 },
     ];
     wsExample["!cols"] = ws["!cols"];
@@ -351,109 +415,104 @@ export default function Products() {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       try {
-        const data = new Uint8Array(ev.target?.result as ArrayBuffer);
+        const data = ev.target?.result;
         const workbook = XLSX.read(data, { type: "array" });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet);
+        const sheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet);
 
-        let success = 0;
-        const errors: string[] = [];
-        const existingCodes = new Set(products.map((p) => p.code));
+        if (jsonData.length === 0) {
+          toast.error("File Excel kosong");
+          return;
+        }
 
-        rows.forEach((row, idx) => {
-          const rowNum = idx + 2;
-          const name = String(row["Nama Produk*"] || "").trim();
-          const code = String(row["Kode/Barcode*"] || "").trim();
-          const costPrice = parseFloat(row["Harga Modal*"]) || 0;
-          const retailPrice = parseFloat(row["Harga Jual Eceran*"]) || 0;
-          const wholesalePrice =
-            parseFloat(row["Harga Jual Grosir"]) || retailPrice;
-          const wholesaleMinQty = parseInt(row["Min Qty Grosir"]) || 10;
+        toast.info(`Memproses ${jsonData.length} produk...`);
 
-          if (!name) {
-            errors.push(`Baris ${rowNum}: Nama produk kosong`);
-            return;
+        const productsToImport: CreateProductInput[] = [];
+
+        for (const row of jsonData) {
+          try {
+            // Validate required fields
+            const name = row["Nama Produk *"]?.toString().trim();
+            const code = row["Barcode/SKU *"]?.toString().trim();
+            const costPrice = parseFloat(row["Harga Modal *"]);
+            const retailPrice = parseFloat(row["Harga Jual Eceran *"]);
+
+            if (!name || !code || isNaN(costPrice) || isNaN(retailPrice)) {
+              continue; // Skip invalid rows
+            }
+
+            // Get or create category
+            let categoryId: number | undefined;
+            const categoryName = row["Kategori"]?.toString().trim();
+            if (categoryName) {
+              const category = await getOrCreateCategory(categoryName);
+              categoryId = category.id;
+            }
+
+            // Get or create brand
+            let brandId: number | undefined;
+            const brandName = row["Brand"]?.toString().trim();
+            if (brandName) {
+              const brand = await getOrCreateBrand(brandName);
+              brandId = brand.id;
+            }
+
+            // Parse optional fields
+            const wholesalePrice = parseFloat(row["Harga Jual Grosir"]) || retailPrice;
+            const specialPrice = parseFloat(row["Harga Jual Spesial"]) || retailPrice;
+            const quantity = parseInt(row["Stok Awal"]) || 0;
+            const minStockAlert = parseInt(row["Stok Minimum"]) || 5;
+
+            productsToImport.push({
+              store_id: activeStoreId,
+              code,
+              name,
+              category_id: categoryId,
+              brand_id: brandId,
+              unit: row["Satuan"]?.toString().trim() || null,
+              unit_abbr: null,
+              cost_price: costPrice,
+              selling_price_retail: retailPrice,
+              selling_price_wholesale: wholesalePrice,
+              selling_price_special: specialPrice,
+              wholesale_min_qty: 10,
+              special_min_qty: 20,
+              quantity,
+              min_stock_alert: minStockAlert,
+              expiry_date: undefined,
+            });
+          } catch (error) {
+            console.error('Error processing row:', error);
           }
-          if (!code) {
-            errors.push(`Baris ${rowNum}: Kode/Barcode kosong`);
-            return;
-          }
-          if (costPrice <= 0) {
-            errors.push(`Baris ${rowNum}: Harga modal tidak valid`);
-            return;
-          }
-          if (retailPrice <= 0) {
-            errors.push(`Baris ${rowNum}: Harga jual eceran tidak valid`);
-            return;
-          }
-          if (existingCodes.has(code)) {
-            errors.push(`Baris ${rowNum}: Kode "${code}" sudah ada (duplikat)`);
-            return;
-          }
+        }
 
-          const categoryName = String(row["Kategori"] || "").trim();
-          const brandName = String(row["Brand"] || "").trim();
-          const unitName = String(row["Satuan"] || "").trim();
-          const unitShort = String(row["Singkatan Satuan"] || "").trim();
+        if (productsToImport.length === 0) {
+          toast.error("Tidak ada produk valid untuk diimport");
+          setImportResults({ success: 0, errors: ["Tidak ada data valid"] });
+          return;
+        }
 
-          const categoryId = categoryName
-            ? getOrCreateCategory(categoryName, activeStoreId)
-            : null;
-          const brandId = brandName
-            ? getOrCreateBrand(brandName, activeStoreId)
-            : null;
-          const unitId = unitName
-            ? getOrCreateUnit(
-                unitName,
-                unitShort || unitName.substring(0, 3),
-                activeStoreId,
-              )
-            : null;
+        // Bulk import
+        const result = await bulkCreateProducts(productsToImport);
+        setImportResults(result);
 
-          const newProduct: Product = {
-            id: Date.now() + idx,
-            store_id: activeStoreId,
-            category_id: categoryId,
-            brand_id: brandId,
-            unit_id: unitId,
-            name,
-            code,
-            expiry_date: row["Tanggal Kadaluarsa"]
-              ? String(row["Tanggal Kadaluarsa"])
-              : null,
-            quantity: parseInt(row["Stok Awal"]) || 0,
-            min_stock_alert: parseInt(row["Min Stok Alert"]) || 10,
-            cost_price: costPrice,
-            selling_price: retailPrice,
-            selling_price_retail: retailPrice,
-            selling_price_wholesale: wholesalePrice,
-            selling_price_special:
-              parseFloat(row["Harga Jual Spesial"]) ||
-              Math.round(wholesalePrice * 0.9),
-            wholesale_min_qty: wholesaleMinQty,
-            special_min_qty:
-              parseInt(row["Min Qty Spesial"]) || wholesaleMinQty * 2,
-            is_active: true,
-            created_at: new Date(),
-            updated_at: new Date(),
-            created_by: null,
-            updated_by: null,
-          };
+        if (result.success > 0) {
+          setRefreshKey((k) => k + 1);
+          toast.success(`${result.success} produk berhasil diimport`);
+        }
 
-          addProduct(newProduct);
-          existingCodes.add(code);
-          success++;
-        });
-
-        setImportResults({ success, errors });
-        if (success > 0) toast.success(`${success} produk berhasil diimport`);
-        if (errors.length > 0) toast.error(`${errors.length} baris gagal`);
-      } catch (err) {
-        toast.error("File tidak valid. Pastikan format Excel sesuai template.");
+        if (result.errors.length > 0) {
+          toast.error(`${result.errors.length} produk gagal diimport`);
+        }
+      } catch (error) {
+        console.error('Error importing Excel:', error);
+        toast.error("Gagal memproses file Excel");
       }
     };
+
     reader.readAsArrayBuffer(file);
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -514,7 +573,7 @@ export default function Products() {
 
       {/* Stock Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-card rounded-xl border border-border p-4">
+        <div className="bg-card rounded-xl border border-border p-4 cursor-default">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
               <Package className="w-5 h-5 text-blue-600" />
@@ -525,7 +584,7 @@ export default function Products() {
             </div>
           </div>
         </div>
-        <div className="bg-card rounded-xl border border-border p-4">
+        <div className="bg-card rounded-xl border border-border p-4 cursor-default">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
               <TrendingUp className="w-5 h-5 text-green-600" />
@@ -538,28 +597,50 @@ export default function Products() {
             </div>
           </div>
         </div>
-        <div className="bg-card rounded-xl border border-border p-4">
+        <button 
+          onClick={() => setActiveStockFilter(activeStockFilter === "low" ? "all" : "low")}
+          className={`bg-card rounded-xl border-2 p-4 cursor-pointer transition-all ${
+            activeStockFilter === "low" 
+              ? "border-orange-500 bg-orange-50" 
+              : "border-border hover:border-orange-300"
+          }`}
+        >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
-              <TrendingDown className="w-5 h-5 text-orange-600" />
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+              activeStockFilter === "low" ? "bg-orange-200" : "bg-orange-100"
+            }`}>
+              <TrendingDown className={`w-5 h-5 ${
+                activeStockFilter === "low" ? "text-orange-700" : "text-orange-600"
+              }`} />
             </div>
-            <div>
+            <div className="text-left">
               <p className="text-sm text-muted-foreground">Stok Menipis</p>
               <p className="text-xl font-bold">{lowStockCount}</p>
             </div>
           </div>
-        </div>
-        <div className="bg-card rounded-xl border border-border p-4">
+        </button>
+        <button 
+          onClick={() => setActiveStockFilter(activeStockFilter === "out" ? "all" : "out")}
+          className={`bg-card rounded-xl border-2 p-4 cursor-pointer transition-all ${
+            activeStockFilter === "out" 
+              ? "border-red-500 bg-red-50" 
+              : "border-border hover:border-red-300"
+          }`}
+        >
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-red-100 flex items-center justify-center">
-              <AlertTriangle className="w-5 h-5 text-red-600" />
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+              activeStockFilter === "out" ? "bg-red-200" : "bg-red-100"
+            }`}>
+              <AlertTriangle className={`w-5 h-5 ${
+                activeStockFilter === "out" ? "text-red-700" : "text-red-600"
+              }`} />
             </div>
-            <div>
+            <div className="text-left">
               <p className="text-sm text-muted-foreground">Stok Habis</p>
               <p className="text-xl font-bold">{outOfStockCount}</p>
             </div>
           </div>
-        </div>
+        </button>
       </div>
 
       {/* Tabs: Produk, Opname */}
@@ -593,47 +674,75 @@ export default function Products() {
                 data-barcode-input="true"
               />
             </div>
-            <div className="flex gap-2 overflow-x-auto">
-              <Button
-                variant={selectedCategory === "all" ? "default" : "outline"}
-                size="sm"
-                onClick={() => setSelectedCategory("all")}
-              >
-                Semua
-              </Button>
-              {storeCategories.map((c) => (
-                <Button
-                  key={c.id}
-                  variant={
-                    selectedCategory === String(c.id) ? "default" : "outline"
-                  }
-                  size="sm"
-                  onClick={() => setSelectedCategory(String(c.id))}
-                  className="whitespace-nowrap"
-                >
-                  {c.icon} {c.name}
-                </Button>
-              ))}
-            </div>
+            
+            {/* Filter Kategori */}
+            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+              <SelectTrigger className="w-full lg:w-[180px]">
+                <SelectValue placeholder="Semua Kategori" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Kategori</SelectItem>
+                {storeCategories.map((c) => (
+                  <SelectItem key={c.id} value={String(c.id)}>
+                    {c.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Filter Brand */}
+            <Select value={selectedBrand} onValueChange={setSelectedBrand}>
+              <SelectTrigger className="w-full lg:w-[180px]">
+                <SelectValue placeholder="Semua Brand" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Brand</SelectItem>
+                {storeBrands.map((b) => (
+                  <SelectItem key={b.id} value={String(b.id)}>
+                    {b.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Filter Satuan */}
+            <Select value={selectedUnit} onValueChange={setSelectedUnit}>
+              <SelectTrigger className="w-full lg:w-[180px]">
+                <SelectValue placeholder="Semua Satuan" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Semua Satuan</SelectItem>
+                {storeUnits.map((u) => (
+                  <SelectItem key={u.id} value={String(u.id)}>
+                    {u.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Products Table - Merged */}
           <div className="bg-card rounded-xl border border-border overflow-hidden">
-            <Table>
+            {isLoading ? (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground">Memuat produk...</p>
+              </div>
+            ) : (
+              <Table>
               <TableHeader>
-                <TableRow>
-                  <TableHead>Produk</TableHead>
-                  <TableHead>Kode</TableHead>
-                  <TableHead>Kategori</TableHead>
-                  <TableHead className="text-right">Modal</TableHead>
-                  <TableHead className="text-right">Eceran</TableHead>
-                  <TableHead className="text-right">Grosir</TableHead>
-                  <TableHead className="text-right">Stok</TableHead>
-                  <TableHead className="text-right">Min. Alert</TableHead>
-                  <TableHead className="text-right">Nilai Stok</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-center">Barcode</TableHead>
-                  <TableHead className="text-right">Aksi</TableHead>
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="font-semibold">Produk</TableHead>
+                  <TableHead className="font-semibold">Kode</TableHead>
+                  <TableHead className="font-semibold">Kategori</TableHead>
+                  <TableHead className="font-semibold">Brand</TableHead>
+                  <TableHead className="text-right font-semibold">Modal</TableHead>
+                  <TableHead className="text-right font-semibold">Eceran</TableHead>
+                  <TableHead className="text-right font-semibold">Grosir</TableHead>
+                  <TableHead className="text-right font-semibold">Spesial</TableHead>
+                  <TableHead className="text-center font-semibold">Stok</TableHead>
+                  <TableHead className="text-center font-semibold">Stok Minimum</TableHead>
+                  <TableHead className="text-center font-semibold">Status</TableHead>
+                  <TableHead className="text-center font-semibold">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -643,80 +752,70 @@ export default function Products() {
                     product.min_stock_alert,
                   );
                   return (
-                    <TableRow key={product.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center text-lg">
-                            {categories.find(
-                              (c) => c.id === product.category_id,
-                            )?.icon || "📦"}
-                          </div>
-                          <div>
-                            <span className="font-medium block">
-                              {product.name}
-                            </span>
-                            <span className="text-xs text-muted-foreground">
-                              {getBrandName(product.brand_id)}
-                            </span>
-                          </div>
-                        </div>
+                    <TableRow key={product.id} className="hover:bg-muted/50">
+                      <TableCell className="font-medium py-4">
+                        {product.name}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="py-4">
                         <span className="font-mono text-sm text-muted-foreground">
                           {product.code}
                         </span>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
+                      <TableCell className="text-sm text-muted-foreground py-4">
                         {getCategoryLabel(product.category_id)}
                       </TableCell>
-                      <TableCell className="text-right text-muted-foreground">
+                      <TableCell className="text-sm text-muted-foreground py-4">
+                        {getBrandName(product.brand_id)}
+                      </TableCell>
+                      <TableCell className="text-right text-sm text-muted-foreground py-4">
                         {formatCurrency(product.cost_price)}
                       </TableCell>
-                      <TableCell className="text-right font-medium">
+                      <TableCell className="text-right font-medium text-sm py-4">
                         {formatCurrency(product.selling_price_retail)}
                       </TableCell>
-                      <TableCell className="text-right font-medium text-blue-600">
+                      <TableCell className="text-right font-medium text-sm text-blue-600 py-4">
                         {formatCurrency(product.selling_price_wholesale)}
                       </TableCell>
-                      <TableCell className="text-right font-medium text-lg">
-                        {product.quantity}
+                      <TableCell className="text-right font-medium text-sm text-purple-600 py-4">
+                        {formatCurrency(product.selling_price_special)}
                       </TableCell>
-                      <TableCell className="text-right text-sm text-muted-foreground">
+                      <TableCell className="text-center font-medium text-sm py-4">
+                        {product.quantity} {getUnitName(product.unit_id)}
+                      </TableCell>
+                      <TableCell className="text-center text-sm text-muted-foreground py-4">
                         {product.min_stock_alert}
                       </TableCell>
-                      <TableCell className="text-right font-medium text-green-600">
-                        {formatCurrency(product.quantity * product.cost_price)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={stockStatus.variant}>
+                      <TableCell className="text-center py-4">
+                        <Badge variant={stockStatus.variant} className="font-normal">
                           {stockStatus.label}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-center">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() => setQrProduct(product)}
-                        >
-                          <Barcode className="w-4 h-4" />
-                        </Button>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
+                      <TableCell className="text-center py-4">
+                        <div className="flex items-center justify-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => setQrProduct(product)}
+                            title="Lihat Barcode"
+                          >
+                            <Barcode className="w-4 h-4" />
+                          </Button>
                           <Button
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8"
                             onClick={() => setEditingProduct(product)}
+                            title="Edit Produk"
                           >
                             <Edit className="w-4 h-4" />
                           </Button>
                           <Button
                             variant="ghost"
                             size="icon"
-                            className="h-8 w-8 text-destructive"
+                            className="h-8 w-8 text-destructive hover:text-destructive"
                             onClick={() => handleDeleteProduct(product)}
+                            title="Hapus Produk"
                           >
                             <Trash2 className="w-4 h-4" />
                           </Button>
@@ -726,8 +825,9 @@ export default function Products() {
                   );
                 })}
               </TableBody>
-            </Table>
-            {filteredProducts.length === 0 && (
+              </Table>
+            )}
+            {!isLoading && filteredProducts.length === 0 && (
               <div className="text-center py-12 text-muted-foreground">
                 <p>Tidak ada produk ditemukan</p>
               </div>
@@ -758,24 +858,29 @@ export default function Products() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sampleStockOpnames
-                  .filter((o) => o.store_id === activeStoreId)
-                  .map((opname) => (
-                    <TableRow key={opname.id}>
-                      <TableCell className="font-medium">
-                        {opname.opname_number}
-                      </TableCell>
-                      <TableCell>{formatDate(opname.date)}</TableCell>
-                      <TableCell className="text-muted-foreground">
-                        {opname.note || "-"}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="ghost" size="icon" className="h-8 w-8">
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                {stockOpnames.map((opname) => (
+                  <TableRow key={opname.id}>
+                    <TableCell className="font-medium">
+                      {opname.opname_number}
+                    </TableCell>
+                    <TableCell>{formatDate(new Date(opname.opname_date))}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {opname.note || "-"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {stockOpnames.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                      Belum ada stock opname
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </div>

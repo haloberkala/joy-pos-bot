@@ -1,0 +1,128 @@
+      {/* View Purchase Detail Dialog */}
+      <Dialog open={!!viewPurchase} onOpenChange={() => { setViewPurchase(null); setIsEditingNote(false); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle>Detail Pembelian</DialogTitle>
+          </DialogHeader>
+          {viewPurchase && (
+            <>
+              {/* Scrollable Content */}
+              <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+                {/* Info Grid */}
+                <div className="grid grid-cols-2 gap-4 text-sm bg-slate-50 dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-800">
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Referensi</p>
+                    <p className="font-semibold mt-1">{viewPurchase.reference_no}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Tanggal</p>
+                    <p className="font-semibold mt-1">{formatDate(viewPurchase.date)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Supplier</p>
+                    <p className="font-semibold mt-1">{getSupplierName(viewPurchase.supplier_id)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground uppercase tracking-wide">Total</p>
+                    <p className="font-bold text-primary text-lg mt-1">{formatCurrency(viewPurchase.total_amount)}</p>
+                  </div>
+                </div>
+                
+                {/* Image Proof Section */}
+                {viewPurchase.image_proof && (
+                  <div className="border-t pt-4">
+                    <p className="font-semibold mb-3 text-sm">Bukti Pembelian</p>
+                    <div className="relative rounded-lg overflow-hidden border-2 border-slate-200 dark:border-slate-800">
+                      <img 
+                        src={viewPurchase.image_proof} 
+                        alt="Bukti pembelian" 
+                        className="w-full max-h-64 object-contain bg-slate-50 dark:bg-slate-900 cursor-pointer hover:opacity-90 transition-opacity"
+                        onClick={() => setViewImageProof(viewPurchase.image_proof)}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2 flex items-center gap-1">
+                      <Eye className="w-3 h-3" /> Klik gambar untuk memperbesar
+                    </p>
+                  </div>
+                )}
+                
+                {/* Note Section with Edit Feature */}
+                <div className="border-t pt-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <p className="font-semibold text-sm">Catatan</p>
+                    {!isEditingNote && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1 h-7"
+                        onClick={startEditNote}
+                      >
+                        <Edit2 className="w-3 h-3" /> Edit
+                      </Button>
+                    )}
+                  </div>
+                  {isEditingNote ? (
+                    <div className="space-y-2">
+                      <Textarea
+                        value={editedNote}
+                        onChange={(e) => setEditedNote(e.target.value)}
+                        placeholder="Tambahkan catatan..."
+                        rows={3}
+                        className="resize-none"
+                      />
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="outline" onClick={cancelEditNote}>
+                          Batal
+                        </Button>
+                        <Button size="sm" onClick={handleUpdateNote}>
+                          Simpan Catatan
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground bg-slate-50 dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-800">
+                      {viewPurchase.note || <span className="italic">Tidak ada catatan</span>}
+                    </p>
+                  )}
+                </div>
+                
+                {/* Items Section */}
+                <div className="border-t pt-4">
+                  <p className="font-semibold mb-3 text-sm">Item Pembelian</p>
+                  <div className="space-y-2 bg-slate-50 dark:bg-slate-900 p-4 rounded-lg border border-slate-200 dark:border-slate-800">
+                    {purchaseDetails.map((item) => (
+                      <div key={item.id} className="flex justify-between text-sm py-2 border-b border-slate-200 dark:border-slate-800 last:border-0">
+                        <span className="text-muted-foreground">
+                          {item.product?.name || `#${item.product_id}`} <span className="font-semibold">x{item.quantity}</span>
+                        </span>
+                        <span className="font-semibold">
+                          {formatCurrency(item.sub_total)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              
+              {/* Fixed Footer with Action Buttons */}
+              <div className="flex justify-between items-center pt-4 mt-2 border-t bg-background">
+                <div className="flex gap-2">
+                  {user?.role === 'owner' && (
+                    <Button 
+                      variant="destructive" 
+                      size="sm" 
+                      className="gap-2"
+                      onClick={() => handleDeletePurchase(viewPurchase)}
+                    >
+                      <Trash2 className="w-4 h-4" /> Hapus Riwayat
+                    </Button>
+                  )}
+                </div>
+                <Button variant="outline" onClick={() => { setViewPurchase(null); setIsEditingNote(false); }}>
+                  Tutup
+                </Button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>

@@ -33,6 +33,7 @@ export function printSuratJalan({ shipment, store, items }: PrintSuratJalanProps
     <head>
       <title>Surat Jalan ${suratJalanNo}</title>
       <style>
+        @page { margin: 0; }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Arial, sans-serif; padding: 40px; color: #1a1a1a; font-size: 13px; }
         .header { text-align: center; border-bottom: 2px solid #2a9d8f; padding-bottom: 16px; margin-bottom: 24px; }
@@ -53,14 +54,16 @@ export function printSuratJalan({ shipment, store, items }: PrintSuratJalanProps
         .sig-box p { font-size: 12px; color: #666; margin-bottom: 60px; }
         .sig-box .line { border-top: 1px solid #333; padding-top: 4px; font-weight: 600; }
         .footer { text-align: center; margin-top: 40px; color: #888; font-size: 11px; border-top: 1px solid #eee; padding-top: 16px; }
-        @media print { body { padding: 20px; } }
+        @media print { 
+          body { padding: 20px; }
+          @page { margin: 0; }
+        }
       </style>
     </head>
     <body>
       <div class="header">
         <h1>${store.name}</h1>
         <p>${store.address}</p>
-        <p>Telp: ${store.phone}</p>
       </div>
 
       <div class="title">SURAT JALAN</div>
@@ -95,8 +98,6 @@ export function printSuratJalan({ shipment, store, items }: PrintSuratJalanProps
         </tbody>
       </table>
 
-      ${shipment.note ? `<p style="margin-bottom:20px;font-size:12px;color:#666"><strong>Catatan:</strong> ${shipment.note}</p>` : ''}
-
       <div class="signatures">
         <div class="sig-box">
           <p>Pengirim</p>
@@ -109,7 +110,7 @@ export function printSuratJalan({ shipment, store, items }: PrintSuratJalanProps
       </div>
 
       <div class="footer">
-        <p>${store.name} • ${store.phone}</p>
+        <p>${store.name}</p>
       </div>
     </body>
     </html>
@@ -119,8 +120,15 @@ export function printSuratJalan({ shipment, store, items }: PrintSuratJalanProps
   if (printWindow) {
     printWindow.document.write(printContent);
     printWindow.document.close();
+    
+    // Wait for content to load, then print
     printWindow.onload = () => {
-      printWindow.print();
+      // Small delay to ensure styles are applied
+      setTimeout(() => {
+        printWindow.print();
+        // Close window after printing (optional)
+        // printWindow.close();
+      }, 250);
     };
   }
 }

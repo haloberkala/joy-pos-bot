@@ -1,17 +1,84 @@
+import { useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { getStoreById, updateStore } from '@/services/storesService';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
-import { Store, Bell, Printer, Shield } from 'lucide-react';
+import { Store } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function Settings() {
+  const { activeStoreId } = useAuth();
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Store data
+  const [storeName, setStoreName] = useState('');
+  const [storeAddress, setStoreAddress] = useState('');
+
+  // Load store data
+  useEffect(() => {
+    loadStoreData();
+  }, [activeStoreId]);
+
+  const loadStoreData = async () => {
+    try {
+      setIsLoading(true);
+      const store = await getStoreById(activeStoreId);
+      
+      if (store) {
+        setStoreName(store.name);
+        setStoreAddress(store.address || '');
+      }
+    } catch (error) {
+      console.error('Error loading store data:', error);
+      toast.error('Gagal memuat data toko');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!storeName.trim()) {
+      toast.error('Nama toko tidak boleh kosong');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      
+      await updateStore(activeStoreId, {
+        name: storeName.trim(),
+        address: storeAddress.trim() || null,
+      });
+
+      toast.success('Pengaturan toko berhasil disimpan');
+    } catch (error) {
+      console.error('Error saving store settings:', error);
+      toast.error('Gagal menyimpan pengaturan');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6 max-w-2xl">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Pengaturan</h1>
+          <p className="text-muted-foreground">Memuat data...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-2xl">
       {/* Page Header */}
       <div>
         <h1 className="text-2xl font-bold text-foreground">Pengaturan</h1>
-        <p className="text-muted-foreground">Kelola pengaturan aplikasi POS Anda</p>
+        <p className="text-muted-foreground">Kelola informasi toko Anda</p>
       </div>
 
       {/* Store Settings */}
@@ -28,117 +95,27 @@ export default function Settings() {
         <Separator />
         <div className="grid gap-4">
           <div className="grid gap-2">
-            <Label htmlFor="storeName">Nama Toko</Label>
-            <Input id="storeName" defaultValue="Toko POS" />
+            <Label htmlFor="storeName">Nama Toko *</Label>
+            <Input 
+              id="storeName" 
+              value={storeName}
+              onChange={(e) => setStoreName(e.target.value)}
+              placeholder="Masukkan nama toko"
+            />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="storeAddress">Alamat</Label>
-            <Input id="storeAddress" defaultValue="Jl. Contoh No. 123" />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="storePhone">Telepon</Label>
-            <Input id="storePhone" defaultValue="021-12345678" />
-          </div>
-        </div>
-        <Button>Simpan Perubahan</Button>
-      </div>
-
-      {/* Notification Settings */}
-      <div className="bg-card rounded-xl border border-border p-6 space-y-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-blue-100">
-            <Bell className="w-5 h-5 text-blue-600" />
-          </div>
-          <div>
-            <h2 className="font-semibold text-foreground">Notifikasi</h2>
-            <p className="text-sm text-muted-foreground">Pengaturan notifikasi</p>
+            <Input 
+              id="storeAddress" 
+              value={storeAddress}
+              onChange={(e) => setStoreAddress(e.target.value)}
+              placeholder="Masukkan alamat toko"
+            />
           </div>
         </div>
-        <Separator />
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Notifikasi Stok Menipis</p>
-              <p className="text-sm text-muted-foreground">
-                Dapatkan notifikasi saat stok produk menipis
-              </p>
-            </div>
-            <Switch defaultChecked />
-          </div>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Notifikasi Transaksi</p>
-              <p className="text-sm text-muted-foreground">
-                Dapatkan notifikasi untuk setiap transaksi baru
-              </p>
-            </div>
-            <Switch />
-          </div>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Laporan Harian</p>
-              <p className="text-sm text-muted-foreground">
-                Terima ringkasan laporan penjualan harian
-              </p>
-            </div>
-            <Switch defaultChecked />
-          </div>
-        </div>
-      </div>
-
-      {/* Printer Settings */}
-      <div className="bg-card rounded-xl border border-border p-6 space-y-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-purple-100">
-            <Printer className="w-5 h-5 text-purple-600" />
-          </div>
-          <div>
-            <h2 className="font-semibold text-foreground">Printer</h2>
-            <p className="text-sm text-muted-foreground">Pengaturan printer struk</p>
-          </div>
-        </div>
-        <Separator />
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Cetak Otomatis</p>
-              <p className="text-sm text-muted-foreground">
-                Otomatis cetak struk setelah transaksi
-              </p>
-            </div>
-            <Switch />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="printerName">Nama Printer</Label>
-            <Input id="printerName" placeholder="Pilih printer..." />
-          </div>
-        </div>
-      </div>
-
-      {/* Security Settings */}
-      <div className="bg-card rounded-xl border border-border p-6 space-y-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-green-100">
-            <Shield className="w-5 h-5 text-green-600" />
-          </div>
-          <div>
-            <h2 className="font-semibold text-foreground">Keamanan</h2>
-            <p className="text-sm text-muted-foreground">Pengaturan keamanan akun</p>
-          </div>
-        </div>
-        <Separator />
-        <div className="space-y-4">
-          <Button variant="outline">Ubah Password</Button>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Autentikasi 2 Faktor</p>
-              <p className="text-sm text-muted-foreground">
-                Tambahkan lapisan keamanan ekstra
-              </p>
-            </div>
-            <Switch />
-          </div>
-        </div>
+        <Button onClick={handleSave} disabled={isSaving}>
+          {isSaving ? 'Menyimpan...' : 'Simpan Perubahan'}
+        </Button>
       </div>
     </div>
   );

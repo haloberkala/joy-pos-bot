@@ -76,7 +76,12 @@ export function DateFilter({ value, dateRange, onChange }: DateFilterProps) {
   };
 
   const handleApplyCustomRange = () => {
-    onChange('custom', tempRange);
+    // Ensure date range includes full days (00:00:00 to 23:59:59)
+    const normalizedRange: DateRange = {
+      from: tempRange.from ? startOfDay(tempRange.from) : undefined,
+      to: tempRange.to ? endOfDay(tempRange.to) : (tempRange.from ? endOfDay(tempRange.from) : undefined),
+    };
+    onChange('custom', normalizedRange);
     setIsCalendarOpen(false);
   };
 
@@ -115,20 +120,33 @@ export function DateFilter({ value, dateRange, onChange }: DateFilterProps) {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen}>
+      <Popover open={isCalendarOpen} onOpenChange={setIsCalendarOpen} modal={true}>
         <PopoverTrigger asChild>
           <span />
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="end">
+        <PopoverContent 
+          className="w-auto p-0" 
+          align="end"
+          onInteractOutside={(e) => {
+            // Only prevent closing if clicking inside the calendar/buttons
+            const target = e.target as HTMLElement;
+            if (target.closest('[role="dialog"]') || target.closest('button')) {
+              e.preventDefault();
+            }
+          }}
+        >
           <div className="p-3 border-b">
             <p className="text-sm font-medium">Pilih Rentang Tanggal</p>
           </div>
           <Calendar
             mode="range"
             selected={{ from: tempRange.from, to: tempRange.to }}
-            onSelect={(range) => setTempRange({ from: range?.from, to: range?.to })}
+            onSelect={(range) => {
+              setTempRange({ from: range?.from, to: range?.to });
+            }}
             numberOfMonths={2}
-            className="p-3 pointer-events-auto"
+            initialFocus={false}
+            className="p-3"
           />
           <div className="p-3 border-t flex justify-end gap-2">
             <Button variant="outline" size="sm" onClick={() => setIsCalendarOpen(false)}>

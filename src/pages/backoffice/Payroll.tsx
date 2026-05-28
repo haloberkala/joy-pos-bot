@@ -1,6 +1,12 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { employees, payrolls, generatePayroll, markPayrollTransferred } from '@/data/sdmData';
+import { 
+  getPayrollsByPeriod, 
+  generatePayrollsForMonth, 
+  markPayrollTransferred as markTransferred,
+  Payroll 
+} from '@/services/payrollService';
+import { getEmployeesByStore } from '@/services/employeesService';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -18,27 +24,66 @@ export default function Payroll() {
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(now.getFullYear());
   const [slipDetail, setSlipDetail] = useState<number | null>(null);
-  const [, setTick] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isGenerating, setIsGenerating] = useState(false);
 
-  const storePayrolls = useMemo(() =>
-    payrolls.filter(p => p.store_id === activeStoreId && p.month === selectedMonth && p.year === selectedYear),
-    [activeStoreId, selectedMonth, selectedYear, slipDetail]
-  );
+  // Data from Supabase
+  const [payrolls, setPayrolls] = useState<Payroll[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]);
 
-  const handleGenerate = () => {
-    const newP = generatePayroll(activeStoreId, selectedMonth, selectedYear);
-    if (newP.length === 0) {
-      toast.info('Penggajian sudah digenerate untuk periode ini');
-    } else {
-      toast.success(`${newP.length} slip gaji berhasil digenerate`);
+  // Load data from Supabase
+  useEffect(() => {
+    loadData();
+  }, [activeStoreId, selectedMonth, selectedYear]);
+
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      const [payrollsData, employeesData] = await Promise.all([
+        getPayrollsByPeriod(activeStoreId, selectedYear, selectedMonth),
+        getEmployeesByStore(activeStoreId),
+      ]);
+      
+      setPayrolls(payrollsData);
+      setEmployees(employeesData);
+    } catch (error) {
+      console.error('Error loading data:', error);
+      toast.error('Gagal memuat data penggajian');
+    } finally {
+      setIsLoading(false);
     }
-    setTick(t => t + 1);
   };
 
-  const handleTransfer = (id: number) => {
-    markPayrollTransferred(id);
-    toast.success('Ditandai sudah transfer');
-    setTick(t => t + 1);
+  const storePayrolls = useMemo(() => payrolls, [payrolls]);
+
+  const handleGenerate = async () => {
+    try {
+      setIsGenerating(true);
+      const newPayrolls = await generatePayrollsForMonth(activeStoreId, selectedYear, selectedMonth);
+      
+      if (newPayrolls.length === 0) {
+        toast.info('Penggajian sudah digenerate untuk periode ini');
+      } else {
+        toast.success(`${newPayrolls.length} slip gaji berhasil digenerate`);
+        await loadData();
+      }
+    } catch (error) {
+      console.error('Error generating payroll:', error);
+      toast.error('Gagal generate penggajian');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleTransfer = async (id: number) => {
+    try {
+      await markTransferred(id);
+      await loadData();
+      toast.success('Ditandai sudah transfer');
+    } catch (error) {
+      console.error('Error marking transferred:', error);
+      toast.error('Gagal menandai transfer');
+    }
   };
 
   const slipPayroll = slipDetail ? payrolls.find(p => p.id === slipDetail) : null;
@@ -46,11 +91,25 @@ export default function Payroll() {
 
   const totalGaji = storePayrolls.reduce((s, p) => s + p.total_salary, 0);
 
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-foreground">Penggajian</h1>
+        </div>
+        <p className="text-muted-foreground">Memuat data...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-foreground">Penggajian</h1>
-        <Button onClick={handleGenerate}><Calculator className="w-4 h-4 mr-2" />Generate Gaji</Button>
+        <Button onClick={handleGenerate} disabled={isGenerating}>
+          <Calculator className="w-4 h-4 mr-2" />
+          {isGenerating ? 'Generating...' : 'Generate Gaji'}
+        </Button>
       </div>
 
       {/* Period selector */}

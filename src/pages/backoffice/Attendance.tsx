@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { attendances, employees, updateAttendance } from '@/data/sdmData';
-import { Attendance as AttendanceType } from '@/types/pos';
+import { getAttendancesByStore, updateAttendance, Attendance } from '@/services/attendanceService';
+import { getEmployeesByStore } from '@/services/employeesService';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -32,26 +32,54 @@ export default function Attendance() {
   const [filterEmployee, setFilterEmployee] = useState<string>('all');
   const [filterMonth, setFilterMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
   const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [editRow, setEditRow] = useState<AttendanceType | null>(null);
+  const [editRow, setEditRow] = useState<Attendance | null>(null);
   const [editStatus, setEditStatus] = useState<SimpleStatus>('hadir');
   const [editNote, setEditNote] = useState('');
-  const [, setTick] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const storeEmployees = useMemo(() => employees.filter(e => e.store_id === activeStoreId), [activeStoreId]);
+  // Data from Supabase
+  const [attendances, setAttendances] = useState<Attendance[]>([]);
+  const [employees, setEmployees] = useState<any[]>([]);
+
+  // Load data from Supabase
+  useEffect(() => {
+    loadData();
+  }, [activeStoreId]);
+
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      const [attendancesData, employeesData] = await Promise.all([
+        getAttendancesByStore(activeStoreId),
+        getEmployeesByStore(activeStoreId),
+      ]);
+      
+      setAttendances(attendancesData);
+      setEmployees(employeesData);
+    } catch (error) {
+      console.error('Error loading data:', error);
+      toast.error('Gagal memuat data absensi');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const storeEmployees = useMemo(() => employees.filter(e => e.store_id === activeStoreId), [employees, activeStoreId]);
 
   const filtered = useMemo(() => {
     return attendances.filter(a => {
       const emp = employees.find(e => e.id === a.employee_id);
       if (!emp || emp.store_id !== activeStoreId) return false;
       if (filterEmployee !== 'all' && a.employee_id !== Number(filterEmployee)) return false;
-      if (filterMonth && !a.date.startsWith(filterMonth)) return false;
+      if (filterMonth && !a.attendance_date.startsWith(filterMonth)) return false;
       if (filterStatus !== 'all') {
         const simple = toSimpleStatus(a.status);
         if (simple !== filterStatus) return false;
       }
       return true;
-    }).sort((a, b) => b.date.localeCompare(a.date));
-  }, [activeStoreId, filterEmployee, filterMonth, filterStatus, editRow]);
+    }).sort((a, b) => b.attendance_date.localeCompare(a.attendance_date));
+  }, [attendances, employees, activeStoreId, filterEmployee, filterMonth, filterStatus]);
 
   // Monthly summary
   const summary = useMemo(() => {
@@ -64,21 +92,46 @@ export default function Attendance() {
     return map;
   }, [filtered]);
 
-  const openEdit = (row: AttendanceType) => {
+  const openEdit = (row: Attendance) => {
     setEditRow(row);
     setEditStatus(toSimpleStatus(row.status));
     setEditNote(row.note);
   };
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!editRow) return;
-    // Map simple status back to the original type format
-    const mappedStatus = editStatus === 'hadir' ? 'hadir' : 'alpha';
-    updateAttendance(editRow.id, { status: mappedStatus as any, note: editNote.trim() });
-    toast.success('Absensi berhasil diperbarui');
-    setEditRow(null);
-    setTick(t => t + 1);
+    
+    try {
+      setIsSaving(true);
+      
+      // Map simple status back to the original type format
+      const mappedStatus = editStatus === 'hadir' ? 'hadir' : 'alpha';
+      
+      await updateAttendance(editRow.id, { 
+        status: mappedStatus as any, 
+        note: editNote.trim(),
+        is_manual_edit: true,
+      });
+      
+      await loadData();
+      toast.success('Absensi berhasil diperbarui');
+      setEditRow(null);
+    } catch (error) {
+      console.error('Error updating attendance:', error);
+      toast.error('Gagal memperbarui absensi');
+    } finally {
+      setIsSaving(false);
+    }
   };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-2xl font-bold text-foreground">Rekap Absensi</h1>
+        <p className="text-muted-foreground">Memuat data...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -109,7 +162,7 @@ export default function Attendance() {
       {/* Monthly Summary Cards */}
       {filterEmployee === 'all' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {storeEmployees.filter(e => e.status === 'active').map(emp => {
+          {storeEmployees.filter(e => e.is_active).map(emp => {
             const s = summary[emp.id] || { hadir: 0, tidak_hadir: 0 };
             return (
               <div key={emp.id} className="bg-card border border-border rounded-lg p-3">
@@ -151,7 +204,7 @@ export default function Attendance() {
               return (
                 <TableRow key={row.id}>
                   <TableCell className="font-medium">{emp?.name}</TableCell>
-                  <TableCell>{row.date}</TableCell>
+                  <TableCell>{row.attendance_date}</TableCell>
                   <TableCell>{row.clock_in || '-'}</TableCell>
                   <TableCell>{row.clock_out || '-'}</TableCell>
                   <TableCell>{durH !== null ? `${durH}j ${durM}m` : '-'}</TableCell>
@@ -176,7 +229,7 @@ export default function Attendance() {
           <DialogHeader><DialogTitle>Edit Absensi</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              {employees.find(e => e.id === editRow?.employee_id)?.name} — {editRow?.date}
+              {employees.find(e => e.id === editRow?.employee_id)?.name} — {editRow?.attendance_date}
             </p>
             <div>
               <label className="text-sm font-medium">Status</label>
@@ -195,7 +248,9 @@ export default function Attendance() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditRow(null)}>Batal</Button>
-            <Button onClick={saveEdit}>Simpan</Button>
+            <Button onClick={saveEdit} disabled={isSaving}>
+              {isSaving ? 'Menyimpan...' : 'Simpan'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

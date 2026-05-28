@@ -4,20 +4,15 @@ import { useAuth } from "@/contexts/AuthContext";
 import { PaymentModal } from "@/components/pos/PaymentModal";
 import { ReceiptModal } from "@/components/pos/ReceiptModal";
 import { RefundModal } from "@/components/pos/RefundModal";
-import {
-  getProductsForStore,
-  stores,
-  customers,
-  processRefund,
-  addSale,
-} from "@/data/sampleData";
-import { addShipment } from "@/data/shippingStore";
+import { getProductsByStore, getProductByCode, Product } from "@/services/productsService";
+import { getCustomersByStore, Customer } from "@/services/customersService";
+import { getAllStores, Store } from "@/services/storesService";
+import { createSale, processRefund as processRefundService, Sale as DBSale, SaleItem as DBSaleItem } from "@/services/salesService";
+import { createShipment } from "@/services/shipmentsService";
 import {
   PaymentMethod,
   Sale,
   SaleDetail,
-  Product,
-  Customer,
   PriceMode,
   ServiceItem,
   CartItem,
@@ -55,7 +50,7 @@ import { DebtModal } from "@/components/pos/DebtModal";
 // ========== OPEN BILL TYPES ==========
 interface Bill {
   id: number;
-  label: string;
+  // label removed - will be rendered dynamically based on index
   customerName: string;
   items: CartItem[];
   serviceItems: ServiceItem[];
@@ -73,7 +68,7 @@ function findNextBillNumber(bills: Bill[]): number {
 function createBillWithNumber(num: number): Bill {
   return {
     id: num,
-    label: `Bill ${num}`,
+    // label removed - will be rendered dynamically
     customerName: "",
     items: [],
     serviceItems: [],
@@ -186,7 +181,6 @@ export default function POS() {
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [isDebt, setIsDebt] = useState(false);
-  const [dueDate, setDueDate] = useState("");
   const [showShipping, setShowShipping] = useState(false);
   const [showDebtModal, setShowDebtModal] = useState(false);
   const [showRefund, setShowRefund] = useState(false);
@@ -206,14 +200,53 @@ export default function POS() {
   } = useAuth();
   const navigate = useNavigate();
 
+  // Fetch products and customers from Supabase
+  const [storeProducts, setStoreProducts] = useState<Product[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [stores, setStores] = useState<Store[]>([]);
+  const [isLoadingData, setIsLoadingData] = useState(true);
+
+  // Load stores once on mount
+  useEffect(() => {
+    loadStores();
+  }, []);
+
+  // Load store-specific data when activeStoreId changes
+  useEffect(() => {
+    loadStoreData();
+  }, [activeStoreId]);
+
+  const loadStores = async () => {
+    try {
+      const storesData = await getAllStores();
+      setStores(storesData);
+    } catch (error) {
+      console.error('Error loading stores:', error);
+      toast.error('Gagal memuat daftar toko');
+    }
+  };
+
+  const loadStoreData = async () => {
+    try {
+      setIsLoadingData(true);
+      const [productsData, customersData] = await Promise.all([
+        getProductsByStore(activeStoreId),
+        getCustomersByStore(activeStoreId),
+      ]);
+      setStoreProducts(productsData);
+      setCustomers(customersData);
+    } catch (error) {
+      console.error('Error loading store data:', error);
+      toast.error('Gagal memuat data toko');
+    } finally {
+      setIsLoadingData(false);
+    }
+  };
+
   useEffect(() => {
     selectedCustomerRef.current = selectedCustomer;
   }, [selectedCustomer]);
 
-  const storeProducts = useMemo(
-    () => getProductsForStore(activeStoreId),
-    [activeStoreId],
-  );
   const activeStore = stores.find((s) => s.id === activeStoreId);
   const serviceTotal = useMemo(
     () => serviceItems.reduce((sum, s) => sum + s.price, 0),
@@ -295,39 +328,88 @@ export default function POS() {
     setPaymentMethod(method);
   };
 
-  const handleOwnerWithdrawal = () => {
+  const handleOwnerWithdrawal = async () => {
     if (items.length === 0 && serviceItems.length === 0) {
       toast.error("Keranjang kosong");
       return;
     }
     setIsOwnerWithdrawal(true);
-    processOwnerWithdrawal();
+    await processOwnerWithdrawal();
   };
 
-  const processOwnerWithdrawal = () => {
+  const processOwnerWithdrawal = async () => {
     const now = new Date();
-    const sale: Sale = {
-      id: Date.now(),
-      store_id: activeStoreId,
-      user_id: 1,
-      customer_id: selectedCustomer?.id || null,
-      invoice_number: `OWN-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(Date.now()).slice(-3)}`,
-      date: now,
-      sub_total: grandTotal,
-      discount: grandTotal,
-      tax: 0,
-      grand_total: 0,
-      payment_method: "cash",
-      payment_status: "paid",
-      amount_received: 0,
-      change_amount: 0,
-      note: "Pengambilan Owner",
-      created_at: now,
-      updated_at: now,
-    };
-    const details: (SaleDetail & { product?: Product })[] = items.map(
-      (item, idx) => ({
-        id: Date.now() + idx,
+    const invoiceNumber = `OWN-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(Date.now()).slice(-3)}`;
+    
+    try {
+      // Prepare sale items
+      const saleItems = [
+        ...items.map(item => ({
+          product_id: item.product.id,
+          product_name: item.product.name,
+          product_code: item.product.code,
+          quantity: item.quantity,
+          price_per_unit: item.price_per_unit,
+          cost_per_unit: item.product.cost_price,
+          total_price: item.price_per_unit * item.quantity,
+          price_mode: item.price_mode,
+          is_service: false,
+        })),
+        ...serviceItems.map(svc => ({
+          product_id: null,
+          product_name: `🔧 ${svc.description}`,
+          product_code: null,
+          quantity: 1,
+          price_per_unit: svc.price,
+          cost_per_unit: 0,
+          total_price: svc.price,
+          price_mode: 'retail' as const,
+          is_service: true,
+        })),
+      ];
+
+      // Create sale in Supabase with full discount (owner withdrawal)
+      const sale = await createSale({
+        store_id: activeStoreId,
+        customer_id: selectedCustomer?.id || null,
+        invoice_number: invoiceNumber,
+        sale_date: now,
+        sub_total: grandTotal,
+        discount: grandTotal, // Full discount for owner withdrawal
+        tax: 0,
+        grand_total: 0, // Zero total after discount
+        payment_method: 'cash',
+        payment_status: 'paid',
+        amount_received: 0,
+        change_amount: 0,
+        note: 'Pengambilan Owner',
+        cashier_name: user?.name || 'Owner',
+        items: saleItems,
+      });
+
+      // Convert to local Sale format for receipt
+      const localSale: Sale = {
+        id: sale.id,
+        store_id: sale.store_id,
+        user_id: 1,
+        customer_id: sale.customer_id,
+        invoice_number: sale.invoice_number,
+        date: new Date(sale.sale_date),
+        sub_total: sale.sub_total,
+        discount: sale.discount,
+        tax: sale.tax,
+        grand_total: sale.grand_total,
+        payment_method: sale.payment_method,
+        payment_status: sale.payment_status,
+        amount_received: sale.amount_received,
+        change_amount: sale.change_amount,
+        note: sale.note,
+        created_at: new Date(sale.created_at),
+        updated_at: new Date(sale.updated_at),
+      };
+
+      const localDetails: (SaleDetail & { product?: Product })[] = items.map(item => ({
+        id: Date.now(),
         sale_id: sale.id,
         product_id: item.product.id,
         quantity: item.quantity,
@@ -338,47 +420,105 @@ export default function POS() {
         product: item.product,
         created_at: now,
         updated_at: now,
-      }),
-    );
-    setCurrentSale(sale);
-    setCurrentSaleDetails(details);
-    clearCart();
-    setServiceItems([]);
-    setShowReceipt(true);
-    setSelectedCustomer(null);
-    setIsOwnerWithdrawal(false);
-    closeBill(activeBillId);
-    toast.success("Pengambilan Owner berhasil dicatat!");
+      }));
+
+      setCurrentSale(localSale);
+      setCurrentSaleDetails(localDetails);
+      clearCart();
+      setServiceItems([]);
+      setShowReceipt(true);
+      setSelectedCustomer(null);
+      setIsOwnerWithdrawal(false);
+      closeBill(activeBillId);
+      
+      // Reload products to update stock
+      loadStoreData();
+      
+      toast.success("Pengambilan Owner berhasil dicatat!");
+    } catch (error) {
+      console.error('Error saving owner withdrawal:', error);
+      toast.error('Gagal menyimpan pengambilan owner');
+      setIsOwnerWithdrawal(false);
+    }
   };
 
   const handleCustomerChangeInPayment = (customer: Customer | null) => {
     setSelectedCustomer(customer);
   };
 
-  const handleConfirmPayment = (amountPaid: number) => {
+  const handleConfirmPayment = async (amountPaid: number) => {
     const now = new Date();
-    const sale: Sale = {
-      id: Date.now(),
-      store_id: activeStoreId,
-      user_id: 1,
-      customer_id: selectedCustomer?.id || null,
-      invoice_number: `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(Date.now()).slice(-3)}`,
-      date: now,
-      sub_total: grandTotal,
-      discount: 0,
-      tax: 0,
-      grand_total: grandTotal,
-      payment_method: paymentMethod!,
-      payment_status: isDebt ? "debt" : "paid",
-      amount_received: isDebt ? 0 : amountPaid,
-      change_amount: isDebt ? 0 : Math.max(0, amountPaid - grandTotal),
-      due_date: isDebt && dueDate ? new Date(dueDate) : null,
-      created_at: now,
-      updated_at: now,
-    };
-    const details: (SaleDetail & { product?: Product })[] = [
-      ...items.map((item, idx) => ({
-        id: Date.now() + idx,
+    const invoiceNumber = `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(Date.now()).slice(-3)}`;
+    
+    try {
+      // Prepare sale items
+      const saleItems = [
+        ...items.map(item => ({
+          product_id: item.product.id,
+          product_name: item.product.name,
+          product_code: item.product.code,
+          quantity: item.quantity,
+          price_per_unit: item.price_per_unit,
+          cost_per_unit: item.product.cost_price,
+          total_price: item.price_per_unit * item.quantity,
+          price_mode: item.price_mode,
+          is_service: false,
+        })),
+        ...serviceItems.map(svc => ({
+          product_id: null,
+          product_name: `🔧 ${svc.description}`,
+          product_code: null,
+          quantity: 1,
+          price_per_unit: svc.price,
+          cost_per_unit: 0,
+          total_price: svc.price,
+          price_mode: 'retail' as const,
+          is_service: true,
+        })),
+      ];
+
+      // Create sale in Supabase
+      const sale = await createSale({
+        store_id: activeStoreId,
+        customer_id: selectedCustomer?.id || null,
+        invoice_number: invoiceNumber,
+        sale_date: now,
+        sub_total: grandTotal,
+        discount: 0,
+        tax: 0,
+        grand_total: grandTotal,
+        payment_method: paymentMethod!,
+        payment_status: isDebt ? 'debt' : 'paid',
+        amount_received: isDebt ? 0 : amountPaid,
+        change_amount: isDebt ? 0 : Math.max(0, amountPaid - grandTotal),
+        due_date: isDebt && dueDate ? new Date(dueDate) : null,
+        cashier_name: user?.name || 'Kasir',
+        items: saleItems,
+      });
+
+      // Convert to local Sale format for receipt
+      const localSale: Sale = {
+        id: sale.id,
+        store_id: sale.store_id,
+        user_id: 1,
+        customer_id: sale.customer_id,
+        invoice_number: sale.invoice_number,
+        date: new Date(sale.sale_date),
+        sub_total: sale.sub_total,
+        discount: sale.discount,
+        tax: sale.tax,
+        grand_total: sale.grand_total,
+        payment_method: sale.payment_method,
+        payment_status: sale.payment_status,
+        amount_received: sale.amount_received,
+        change_amount: sale.change_amount,
+        due_date: sale.due_date ? new Date(sale.due_date) : null,
+        created_at: new Date(sale.created_at),
+        updated_at: new Date(sale.updated_at),
+      };
+
+      const localDetails: (SaleDetail & { product?: Product })[] = items.map(item => ({
+        id: Date.now(),
         sale_id: sale.id,
         product_id: item.product.id,
         quantity: item.quantity,
@@ -389,61 +529,33 @@ export default function POS() {
         product: item.product,
         created_at: now,
         updated_at: now,
-      })),
-      ...serviceItems.map((svc, idx) => ({
-        id: Date.now() + items.length + idx,
-        sale_id: sale.id,
-        product_id: 0,
-        quantity: 1,
-        price_at_sale: svc.price,
-        cost_at_sale: 0,
-        total_price: svc.price,
-        price_mode: "retail" as const,
-        product: {
-          name: `🔧 ${svc.description}`,
-          id: 0,
-          store_id: activeStoreId,
-          code: "",
-          quantity: 999,
-          min_stock_alert: 0,
-          cost_price: 0,
-          selling_price: svc.price,
-          selling_price_retail: svc.price,
-          selling_price_wholesale: svc.price,
-          selling_price_special: svc.price,
-          wholesale_min_qty: 1,
-          special_min_qty: 1,
-          is_active: true,
-          created_at: now,
-          updated_at: now,
-          created_by: null,
-          updated_by: null,
-          category_id: null,
-          brand_id: null,
-          unit_id: null,
-        } as Product,
-        created_at: now,
-        updated_at: now,
-      })),
-    ];
-    addSale(sale, details);
-    setCurrentSale(sale);
-    setCurrentSaleDetails(details);
-    setPaymentMethod(null);
-    setShowReceipt(true);
-    clearCart();
-    setServiceItems([]);
-    setSelectedCustomer(null);
-    setIsDebt(false);
-    setDueDate("");
-    closeBill(activeBillId);
-    toast.success(
-      isDebt ? "Penjualan (Utang) berhasil dicatat!" : "Pembayaran berhasil!",
-    );
+      }));
+
+      setCurrentSale(localSale);
+      setCurrentSaleDetails(localDetails);
+      setPaymentMethod(null);
+      setShowReceipt(true);
+      clearCart();
+      setServiceItems([]);
+      setSelectedCustomer(null);
+      setIsDebt(false);
+      closeBill(activeBillId);
+      
+      // Reload products to update stock
+      loadStoreData();
+      
+      toast.success(
+        isDebt ? "Penjualan (Utang) berhasil dicatat!" : "Pembayaran berhasil!",
+      );
+    } catch (error) {
+      console.error('Error saving sale:', error);
+      toast.error('Gagal menyimpan transaksi');
+    }
   };
 
-  const handleConfirmDebt = (
+  const handleConfirmDebt = async (
     opts: {
+      dueDate: string;
       shipping?: {
         recipient_name: string;
         recipient_phone: string;
@@ -451,35 +563,103 @@ export default function POS() {
         shipping_cost: number;
         note?: string;
       };
-    } = {},
+    },
   ) => {
     const now = new Date();
-    const invoice = `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(Date.now()).slice(-3)}`;
-    const sale: Sale = {
-      id: Date.now(),
-      store_id: activeStoreId,
-      user_id: 1,
-      customer_id: selectedCustomer?.id || null,
-      invoice_number: invoice,
-      date: now,
-      sub_total: grandTotal,
-      discount: 0,
-      tax: 0,
-      grand_total: grandTotal,
-      payment_method: "cash",
-      payment_status: "debt",
-      amount_received: 0,
-      change_amount: 0,
-      due_date: dueDate ? new Date(dueDate) : null,
-      note: opts.shipping
-        ? `Termasuk pengiriman ke ${opts.shipping.recipient_address}`
-        : undefined,
-      created_at: now,
-      updated_at: now,
-    };
-    const details: (SaleDetail & { product?: Product })[] = [
-      ...items.map((item, idx) => ({
-        id: Date.now() + idx,
+    const invoiceNumber = `INV-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(Date.now()).slice(-3)}`;
+    
+    try {
+      // Prepare sale items
+      const saleItems = [
+        ...items.map(item => ({
+          product_id: item.product.id,
+          product_name: item.product.name,
+          product_code: item.product.code,
+          quantity: item.quantity,
+          price_per_unit: item.price_per_unit,
+          cost_per_unit: item.product.cost_price,
+          total_price: item.price_per_unit * item.quantity,
+          price_mode: item.price_mode,
+          is_service: false,
+        })),
+        ...serviceItems.map(svc => ({
+          product_id: null,
+          product_name: `🔧 ${svc.description}`,
+          product_code: null,
+          quantity: 1,
+          price_per_unit: svc.price,
+          cost_per_unit: 0,
+          total_price: svc.price,
+          price_mode: 'retail' as const,
+          is_service: true,
+        })),
+      ];
+
+      // Create sale in Supabase
+      const sale = await createSale({
+        store_id: activeStoreId,
+        customer_id: selectedCustomer?.id || null,
+        invoice_number: invoiceNumber,
+        sale_date: now,
+        sub_total: grandTotal,
+        discount: 0,
+        tax: 0,
+        grand_total: grandTotal,
+        payment_method: 'cash',
+        payment_status: 'debt',
+        amount_received: 0,
+        change_amount: 0,
+        due_date: new Date(opts.dueDate),
+        note: opts.shipping
+          ? `Termasuk pengiriman ke ${opts.shipping.recipient_address}`
+          : null,
+        cashier_name: user?.name || 'Kasir',
+        items: saleItems,
+      });
+
+      // If shipping requested, create linked shipment record
+      if (opts.shipping && selectedCustomer) {
+        const itemsDesc = items
+          .map((i) => `${i.product.name} x${i.quantity}`)
+          .join(", ");
+        
+        await createShipment({
+          store_id: activeStoreId,
+          sale_id: sale.id,
+          invoice_number: invoiceNumber,
+          customer_id: selectedCustomer.id,
+          recipient_name: opts.shipping.recipient_name,
+          recipient_phone: opts.shipping.recipient_phone,
+          recipient_address: opts.shipping.recipient_address,
+          items_description: itemsDesc,
+          shipping_cost: opts.shipping.shipping_cost,
+        });
+      }
+
+      // Convert to local Sale format for receipt
+      const localSale: Sale = {
+        id: sale.id,
+        store_id: sale.store_id,
+        user_id: 1,
+        customer_id: sale.customer_id,
+        invoice_number: sale.invoice_number,
+        date: new Date(sale.sale_date),
+        sub_total: sale.sub_total,
+        discount: sale.discount,
+        tax: sale.tax,
+        grand_total: sale.grand_total,
+        payment_method: sale.payment_method,
+        payment_status: sale.payment_status,
+        amount_received: sale.amount_received,
+        change_amount: sale.change_amount,
+        due_date: sale.due_date ? new Date(sale.due_date) : null,
+        note: sale.note,
+        created_at: new Date(sale.created_at),
+        updated_at: new Date(sale.updated_at),
+      };
+
+      const localDetails: (SaleDetail & { product?: Product })[] = items.map(item => ({
+        id: Date.now(),
         sale_id: sale.id,
         product_id: item.product.id,
         quantity: item.quantity,
@@ -490,90 +670,42 @@ export default function POS() {
         product: item.product,
         created_at: now,
         updated_at: now,
-      })),
-      ...serviceItems.map((svc, idx) => ({
-        id: Date.now() + items.length + idx,
-        sale_id: sale.id,
-        product_id: 0,
-        quantity: 1,
-        price_at_sale: svc.price,
-        cost_at_sale: 0,
-        total_price: svc.price,
-        price_mode: "retail" as const,
-        product: {
-          name: `🔧 ${svc.description}`,
-          id: 0,
-          store_id: activeStoreId,
-          code: "",
-          quantity: 999,
-          min_stock_alert: 0,
-          cost_price: 0,
-          selling_price: svc.price,
-          selling_price_retail: svc.price,
-          selling_price_wholesale: svc.price,
-          selling_price_special: svc.price,
-          wholesale_min_qty: 1,
-          special_min_qty: 1,
-          is_active: true,
-          created_at: now,
-          updated_at: now,
-          created_by: null,
-          updated_by: null,
-          category_id: null,
-          brand_id: null,
-          unit_id: null,
-        } as Product,
-        created_at: now,
-        updated_at: now,
-      })),
-    ];
+      }));
 
-    // Persist sale into shared store so it appears in Back Office Transactions/Debts
-    addSale(sale, details);
-
-    // If shipping requested, create linked shipment record (links sale_id + invoice)
-    if (opts.shipping && selectedCustomer) {
-      const itemsDesc = items
-        .map((i) => `${i.product.name} x${i.quantity}`)
-        .join(", ");
-      addShipment({
-        id: Date.now() + 1,
-        store_id: activeStoreId,
-        sale_id: sale.id,
-        invoice_number: invoice,
-        customer_id: selectedCustomer.id,
-        recipient_name: opts.shipping.recipient_name,
-        recipient_phone: opts.shipping.recipient_phone,
-        recipient_address: opts.shipping.recipient_address,
-        items_description: itemsDesc,
-        note: opts.shipping.note,
-        shipping_cost: opts.shipping.shipping_cost,
-        status: "pending",
-        created_at: now,
-        updated_at: now,
-      });
+      setCurrentSale(localSale);
+      setCurrentSaleDetails(localDetails);
+      setShowReceipt(true);
+      clearCart();
+      setServiceItems([]);
+      setSelectedCustomer(null);
+      setIsDebt(false);
+      setShowDebtModal(false);
+      closeBill(activeBillId);
+      
+      // Reload products to update stock
+      loadStoreData();
+      
+      toast.success(
+        opts.shipping
+          ? "Utang & pengiriman tercatat!"
+          : "Penjualan (Utang) berhasil dicatat!",
+      );
+    } catch (error) {
+      console.error('Error saving debt sale:', error);
+      toast.error('Gagal menyimpan transaksi utang');
     }
-
-    setCurrentSale(sale);
-    setCurrentSaleDetails(details);
-    setShowReceipt(true);
-    clearCart();
-    setServiceItems([]);
-    setSelectedCustomer(null);
-    setIsDebt(false);
-    setDueDate("");
-    setShowDebtModal(false);
-    closeBill(activeBillId);
-    toast.success(
-      opts.shipping
-        ? "Utang & pengiriman tercatat!"
-        : "Penjualan (Utang) berhasil dicatat!",
-    );
   };
 
-  const handleRefund = (sale: Sale, reason: string) => {
-    processRefund(sale, reason, user?.name || "Kasir");
-    toast.success(`Refund ${sale.invoice_number} berhasil! Stok dikembalikan.`);
+  const handleRefund = async (sale: Sale, reason: string) => {
+    try {
+      await processRefundService(sale.id, reason);
+      // Reload products to update stock
+      loadStoreData();
+      toast.success(`Refund ${sale.invoice_number} berhasil! Stok dikembalikan.`);
+    } catch (error) {
+      console.error('Error processing refund:', error);
+      toast.error('Gagal memproses refund');
+    }
   };
 
   const activeBillCount = bills.filter(
@@ -689,11 +821,12 @@ export default function POS() {
 
       {/* Bill Tabs */}
       <div className="flex items-center gap-0 px-4 bg-white border-b border-border overflow-x-auto">
-        {bills.map((bill) => {
+        {bills.map((bill, index) => {
           const isActive = bill.id === activeBillId;
           const billItems = isActive ? items : bill.items;
           const billSvc = isActive ? serviceItems : bill.serviceItems;
           const hasItems = billItems.length > 0 || billSvc.length > 0;
+          const billNumber = index + 1; // Dynamic bill number based on index
           return (
             <div
               key={bill.id}
@@ -709,7 +842,7 @@ export default function POS() {
                 className="flex items-center gap-1.5"
               >
                 <FileText className="w-3 h-3" />
-                {bill.label}
+                Bill {billNumber}
                 {hasItems && (
                   <span
                     className={cn(
@@ -1042,14 +1175,6 @@ export default function POS() {
                     Utang
                   </span>
                 </label>
-                {isDebt && (
-                  <input
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                    className="px-2 py-1 rounded-lg border border-border text-[11px] font-medium bg-surface"
-                  />
-                )}
               </div>
 
               <div className="flex items-center gap-1.5">

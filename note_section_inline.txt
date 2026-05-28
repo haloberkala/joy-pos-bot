@@ -1,0 +1,46 @@
+                {/* Note Section with Inline Edit */}
+                <div className="border-t pt-4">
+                  <p className="font-semibold text-sm mb-2">Catatan</p>
+                  <div className="bg-slate-50 dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-800">
+                    {isEditingNote ? (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={editedNote}
+                          onChange={(e) => setEditedNote(e.target.value)}
+                          placeholder="Tambahkan catatan..."
+                          className="h-8 text-sm flex-1"
+                          autoFocus
+                        />
+                        <Button 
+                          size="sm" 
+                          className="h-8 px-3 gap-1" 
+                          onClick={handleUpdateNote}
+                        >
+                          <Check className="w-3 h-3" /> Simpan
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="ghost" 
+                          className="h-8 px-2" 
+                          onClick={cancelEditNote}
+                        >
+                          ✕
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between group">
+                        <p className="text-sm text-muted-foreground flex-1">
+                          {viewPurchase.note || <span className="italic">Tidak ada catatan</span>}
+                        </p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={startEditNote}
+                        >
+                          <Edit2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
