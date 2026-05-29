@@ -2,19 +2,19 @@ import { useMemo, useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Sale } from '@/types/pos';
 import { getSaleItemsBySaleIds } from '@/services/salesService';
-import { getAllCategories } from '@/services/categoriesService';
+import { getAllBrands } from '@/services/brandsService';
 import { getProductsByStore } from '@/services/productsService';
 import { formatCurrency } from '@/lib/format';
 
-interface CategorySalesChartProps {
+interface BrandSalesChartProps {
   sales: Sale[];
   storeId: number;
 }
 
 const BAR_COLORS = [
-  'hsl(160,64%,45%)',
   'hsl(245,100%,67%)',
   'hsl(200,70%,50%)',
+  'hsl(160,64%,45%)',
   'hsl(35,90%,55%)',
   'hsl(340,70%,55%)',
   'hsl(280,60%,55%)',
@@ -22,9 +22,9 @@ const BAR_COLORS = [
   'hsl(15,80%,55%)',
 ];
 
-export function CategorySalesChart({ sales, storeId }: CategorySalesChartProps) {
+export function BrandSalesChart({ sales, storeId }: BrandSalesChartProps) {
   const [saleItems, setSaleItems] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
+  const [brands, setBrands] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -35,21 +35,20 @@ export function CategorySalesChart({ sales, storeId }: CategorySalesChartProps) 
   const loadData = async () => {
     try {
       setIsLoading(true);
-      // Fix: pass storeId to getAllCategories
-      const [categoriesData, productsData] = await Promise.all([
-        getAllCategories(storeId),
+      const [brandsData, productsData] = await Promise.all([
+        getAllBrands(storeId),
         getProductsByStore(storeId),
       ]);
-      setCategories(categoriesData);
+      setBrands(brandsData);
       setProducts(productsData);
 
       const saleIds = sales.map((s) => s.id);
       if (saleIds.length === 0) { setSaleItems([]); return; }
       const items = await getSaleItemsBySaleIds(saleIds);
       setSaleItems(items);
-    } catch (error) {
-      console.error('Error loading category sales:', error);
-      setSaleItems([]); setCategories([]); setProducts([]);
+    } catch (err) {
+      console.error('Error loading brand sales:', err);
+      setSaleItems([]);
     } finally {
       setIsLoading(false);
     }
@@ -57,25 +56,29 @@ export function CategorySalesChart({ sales, storeId }: CategorySalesChartProps) 
 
   const chartData = useMemo(() => {
     if (saleItems.length === 0 || products.length === 0) return [];
-    const byCategory: Record<number | string, { name: string; value: number }> = {};
+    const byBrand: Record<number | string, { name: string; value: number }> = {};
 
     saleItems.forEach((item) => {
       const product = products.find((p) => p.code === item.product_code || p.name === item.product_name);
-      const catId = product?.category_id ?? 0;
-      const category = categories.find((c) => c.id === catId);
-      const key = catId || 'none';
-      if (!byCategory[key]) byCategory[key] = { name: category?.name || 'Tanpa Kategori', value: 0 };
-      byCategory[key].value += item.total_price;
+      const brandId = product?.brand_id ?? 0;
+      const brand = brands.find((b) => b.id === brandId);
+      const key = brandId || 'none';
+      if (!byBrand[key]) byBrand[key] = { name: brand?.name || 'Tanpa Brand', value: 0 };
+      byBrand[key].value += item.total_price;
     });
 
-    return Object.values(byCategory).sort((a, b) => b.value - a.value).slice(0, 8);
-  }, [saleItems, products, categories]);
+    return Object.values(byBrand).sort((a, b) => b.value - a.value).slice(0, 8);
+  }, [saleItems, products, brands]);
 
   if (isLoading) {
     return (
-      <div className="h-full flex flex-col items-center justify-center gap-2">
-        <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
-        <p className="text-xs text-muted-foreground">Memuat data...</p>
+      <div className="h-full flex flex-col">
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center space-y-2">
+            <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin mx-auto" />
+            <p className="text-xs text-muted-foreground">Memuat data...</p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -83,12 +86,13 @@ export function CategorySalesChart({ sales, storeId }: CategorySalesChartProps) 
   if (chartData.length === 0) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-3">
+        {/* Elegant placeholder bar chart skeleton */}
         <div className="flex items-end gap-2 h-24 opacity-20">
-          {[50, 80, 65, 90, 40, 70, 55].map((h, i) => (
-            <div key={i} className="w-6 rounded-t" style={{ height: `${h}%`, backgroundColor: BAR_COLORS[i % BAR_COLORS.length] }} />
+          {[60, 90, 45, 75, 55, 80].map((h, i) => (
+            <div key={i} className="w-6 rounded-t bg-primary" style={{ height: `${h}%` }} />
           ))}
         </div>
-        <p className="text-xs text-muted-foreground">Belum ada data penjualan per kategori</p>
+        <p className="text-xs text-muted-foreground">Belum ada data penjualan per brand</p>
       </div>
     );
   }
@@ -107,7 +111,7 @@ export function CategorySalesChart({ sales, storeId }: CategorySalesChartProps) 
           <YAxis
             type="category" dataKey="name"
             tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-            axisLine={false} tickLine={false} width={90}
+            axisLine={false} tickLine={false} width={80}
           />
           <Tooltip
             contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: 12 }}

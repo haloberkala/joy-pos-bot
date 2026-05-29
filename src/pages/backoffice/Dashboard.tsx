@@ -4,6 +4,7 @@ import { StatCard } from '@/components/backoffice/StatCard';
 import { DateFilter, DateFilterType, DateRange, getDateRangeFromFilter } from '@/components/backoffice/DateFilter';
 import { RevenueChart } from '@/components/backoffice/charts/RevenueChart';
 import { CategorySalesChart } from '@/components/backoffice/charts/CategorySalesChart';
+import { BrandSalesChart } from '@/components/backoffice/charts/BrandSalesChart';
 import { PaymentMethodChart } from '@/components/backoffice/charts/PaymentMethodChart';
 import { TopProductsTable } from '@/components/backoffice/tables/TopProductsTable';
 import { TransactionsTable } from '@/components/backoffice/tables/TransactionsTable';
@@ -12,7 +13,7 @@ import { getProductsByStore, Product } from '@/services/productsService';
 import { getCustomersByStore } from '@/services/customersService';
 import { Sale } from '@/types/pos';
 import { formatCurrency } from '@/lib/format';
-import { TrendingUp, ShoppingCart, Package, Users } from 'lucide-react';
+import { TrendingUp, ShoppingCart, Package, Users, AlertTriangle } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 
@@ -30,7 +31,6 @@ export default function Dashboard() {
     setDateRange(range);
   };
 
-  // Load data from Supabase
   useEffect(() => {
     loadDashboardData();
   }, [activeStoreId]);
@@ -43,9 +43,8 @@ export default function Dashboard() {
         getProductsByStore(activeStoreId),
         getCustomersByStore(activeStoreId),
       ]);
-      
-      // Convert DBSale to Sale format
-      const convertedSales: Sale[] = salesData.map(s => ({
+
+      const convertedSales: Sale[] = salesData.map((s) => ({
         id: s.id,
         store_id: s.store_id,
         user_id: 1,
@@ -65,7 +64,7 @@ export default function Dashboard() {
         created_at: new Date(s.created_at),
         updated_at: new Date(s.updated_at),
       }));
-      
+
       setSales(convertedSales);
       setProducts(productsData);
       setTotalCustomers(customersData.length);
@@ -81,8 +80,8 @@ export default function Dashboard() {
 
   const filteredSales = useMemo(() => {
     let filtered = sales;
-    if (dateRange.from) filtered = filtered.filter(s => s.date >= dateRange.from!);
-    if (dateRange.to) filtered = filtered.filter(s => s.date <= dateRange.to!);
+    if (dateRange.from) filtered = filtered.filter((s) => s.date >= dateRange.from!);
+    if (dateRange.to) filtered = filtered.filter((s) => s.date <= dateRange.to!);
     return filtered;
   }, [sales, dateRange]);
 
@@ -90,8 +89,10 @@ export default function Dashboard() {
   const totalTransactions = filteredSales.length;
   const totalProducts = storeProducts.length;
   const avgTransactionValue = totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
-  const uniqueCustomersWithTransactions = new Set(filteredSales.filter(s => s.customer_id).map(s => s.customer_id)).size;
-  const lowStockProducts = storeProducts.filter(p => p.quantity < p.min_stock_alert).length;
+  const uniqueCustomersWithTransactions = new Set(filteredSales.filter((s) => s.customer_id).map((s) => s.customer_id)).size;
+  const lowStockProducts = storeProducts.filter((p) => p.quantity < p.min_stock_alert);
+
+  const CHART_HEIGHT = 300;
 
   return (
     <div className="space-y-6">
@@ -105,10 +106,12 @@ export default function Dashboard() {
 
       {isLoading ? (
         <div className="text-center py-12">
-          <p className="text-muted-foreground">Memuat data dashboard...</p>
+          <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-muted-foreground text-sm">Memuat data dashboard...</p>
         </div>
       ) : (
         <>
+          {/* Stat Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard title="Total Pendapatan" value={formatCurrency(totalRevenue)} change={dateFilterType !== 'all' ? `Periode: ${dateFilterType.replace('_', ' ')}` : undefined} changeType="neutral" icon={TrendingUp} iconColor="bg-green-100 text-green-600" />
             <StatCard title="Total Transaksi" value={totalTransactions.toString()} change={`Rata-rata: ${formatCurrency(avgTransactionValue)}`} changeType="neutral" icon={ShoppingCart} iconColor="bg-blue-100 text-blue-600" />
@@ -116,6 +119,7 @@ export default function Dashboard() {
             <StatCard title="Total Produk" value={totalProducts.toString()} icon={Package} iconColor="bg-purple-100 text-purple-600" />
           </div>
 
+          {/* Revenue + Payment */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
               <RevenueChart sales={filteredSales} dateFrom={dateRange.from} dateTo={dateRange.to} />
@@ -125,32 +129,83 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <CategorySalesChart sales={filteredSales} storeId={activeStoreId} />
-            {lowStockProducts > 0 && (
-              <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
-                    <Package className="w-5 h-5 text-orange-600" />
-                  </div>
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-orange-800">Peringatan Stok Menipis</h3>
-                    <p className="text-sm text-orange-700 mt-1">
-                      {lowStockProducts} produk memiliki stok di bawah minimum.
-                    </p>
-                    <div className="flex flex-wrap gap-2 mt-3">
-                      {storeProducts.filter(p => p.quantity < p.min_stock_alert).slice(0, 5).map(p => (
-                        <span key={p.id} className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded-full">
-                          {p.name} ({p.quantity})
-                        </span>
-                      ))}
-                    </div>
-                  </div>
+          {/* Category/Brand Charts + Low Stock */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+            {/* Tabbed charts — takes 2 cols */}
+            <div className="lg:col-span-2 bg-card border border-border rounded-xl overflow-hidden">
+              <Tabs defaultValue="category">
+                <div className="flex items-center justify-between px-4 pt-4 pb-0">
+                  <h3 className="font-semibold text-sm text-foreground">Analisis Penjualan</h3>
+                  <TabsList className="h-8">
+                    <TabsTrigger value="category" className="text-xs h-7 px-3">Per Kategori</TabsTrigger>
+                    <TabsTrigger value="brand" className="text-xs h-7 px-3">Per Brand</TabsTrigger>
+                  </TabsList>
                 </div>
+                <TabsContent value="category" className="mt-0 p-4" style={{ height: CHART_HEIGHT }}>
+                  <CategorySalesChart sales={filteredSales} storeId={activeStoreId} />
+                </TabsContent>
+                <TabsContent value="brand" className="mt-0 p-4" style={{ height: CHART_HEIGHT }}>
+                  <BrandSalesChart sales={filteredSales} storeId={activeStoreId} />
+                </TabsContent>
+              </Tabs>
+            </div>
+
+            {/* Low Stock Card — compact, scrollable */}
+            <div
+              className="bg-orange-50 border border-orange-200 rounded-xl overflow-hidden flex flex-col"
+              style={{ height: CHART_HEIGHT + 56 /* header padding */ }}
+            >
+              {/* Header */}
+              <div className="flex items-center gap-2.5 px-4 py-3 border-b border-orange-200 flex-shrink-0">
+                <div className="w-7 h-7 rounded-lg bg-orange-100 flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle className="w-3.5 h-3.5 text-orange-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-semibold text-sm text-orange-900">Stok Menipis</h3>
+                  <p className="text-xs text-orange-600">
+                    {lowStockProducts.length > 0 ? `${lowStockProducts.length} produk perlu restock` : 'Semua stok aman'}
+                  </p>
+                </div>
+                {lowStockProducts.length > 0 && (
+                  <span className="flex-shrink-0 bg-orange-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    {lowStockProducts.length > 99 ? '99+' : lowStockProducts.length}
+                  </span>
+                )}
               </div>
-            )}
+
+              {/* Scrollable list */}
+              <div className="flex-1 overflow-y-auto">
+                {lowStockProducts.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center gap-2 px-4">
+                    <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                      <Package className="w-5 h-5 text-green-600" />
+                    </div>
+                    <p className="text-xs text-center text-muted-foreground">Semua produk memiliki stok yang cukup</p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-orange-100">
+                    {lowStockProducts.map((p) => (
+                      <div key={p.id} className="flex items-center gap-2.5 px-4 py-2.5 hover:bg-orange-100/60 transition-colors">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-medium text-orange-900 truncate">{p.name}</p>
+                          <p className="text-[10px] text-orange-500">Sisa: {p.quantity} / Min: {p.min_stock_alert}</p>
+                        </div>
+                        <span className={`flex-shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                          p.quantity === 0
+                            ? 'bg-red-100 text-red-700'
+                            : 'bg-orange-100 text-orange-700'
+                        }`}>
+                          {p.quantity === 0 ? 'Habis' : 'Menipis'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
+          {/* Bottom Tables */}
           <Tabs defaultValue="products" className="space-y-4">
             <TabsList>
               <TabsTrigger value="products">Produk Terlaris</TabsTrigger>

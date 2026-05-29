@@ -1,15 +1,13 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { 
   getProductsByStore, 
-  deleteProduct, 
-  bulkCreateProducts,
-  Product,
-  CreateProductInput 
+  deleteProduct,
+  Product
 } from "@/services/productsService";
-import { getAllCategories, getOrCreateCategory } from "@/services/categoriesService";
-import { getAllBrands, getOrCreateBrand } from "@/services/brandsService";
-import { getAllUnits, getOrCreateUnit, Unit } from "@/services/unitsService";
+import { getAllCategories } from "@/services/categoriesService";
+import { getAllBrands } from "@/services/brandsService";
+import { getAllUnits, Unit } from "@/services/unitsService";
 import { getStockOpnamesByStore } from "@/services/stockOpnameService";
 import { formatCurrency } from "@/lib/format";
 import { formatDate } from "@/lib/format";
@@ -32,16 +30,13 @@ import {
   Trash2,
   Barcode,
   Download,
-  Upload,
-  FileSpreadsheet,
-  AlertCircle,
-  CheckCircle,
   Package,
   ClipboardCheck,
   TrendingUp,
   TrendingDown,
   AlertTriangle,
   Eye,
+  LayoutGrid,
 } from "lucide-react";
 import {
   Select,
@@ -55,16 +50,13 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Product } from "@/types/pos";
 import { toast } from "sonner";
-import * as XLSX from "xlsx";
 import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
 import { StockOpnameDetail } from "@/components/backoffice/StockOpnameDetail";
 import { BarcodeGenerator } from "@/components/backoffice/BarcodeGenerator";
 import { AddProductModal } from "@/components/backoffice/AddProductModal";
+import { BulkProductModal } from "@/components/backoffice/BulkProductModal";
 import JsBarcode from "jsbarcode";
 
 export default function Products() {
@@ -76,17 +68,12 @@ export default function Products() {
   const [activeStockFilter, setActiveStockFilter] = useState<"all" | "low" | "out">("all");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [showImportDialog, setShowImportDialog] = useState(false);
-  const [importResults, setImportResults] = useState<{
-    success: number;
-    errors: string[];
-  } | null>(null);
+  const [showBulkModal, setShowBulkModal] = useState(false);
   const [showOpnameDetail, setShowOpnameDetail] = useState(false);
   const [activeTab, setActiveTab] = useState("products");
   const [qrProduct, setQrProduct] = useState<Product | null>(null);
   const [showBulkQr, setShowBulkQr] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Supabase integration
   const [storeProducts, setStoreProducts] = useState<Product[]>([]);
@@ -268,7 +255,7 @@ export default function Products() {
         toast.error(`Produk dengan barcode ${barcode} tidak ditemukan`);
       }
     },
-    enabled: !showOpnameDetail && !isAddModalOpen && !showImportDialog,
+    enabled: !showOpnameDetail && !isAddModalOpen && !showBulkModal,
   });
 
   // Open edit modal when editing product is set
@@ -350,172 +337,7 @@ export default function Products() {
     0,
   );
 
-  // ======== EXCEL TEMPLATE DOWNLOAD ========
-  const handleDownloadTemplate = () => {
-    const templateData = [
-      {
-        Kategori: "",
-        Brand: "",
-        "Nama Produk *": "",
-        "Barcode/SKU *": "",
-        Satuan: "",
-        "Stok Awal": "",
-        "Stok Minimum": "",
-        "Harga Modal *": "",
-        "Harga Jual Spesial": "",
-        "Harga Jual Grosir": "",
-        "Harga Jual Eceran *": "",
-      },
-    ];
-
-    const exampleData = [
-      {
-        Kategori: "Makanan",
-        Brand: "Indofood",
-        "Nama Produk *": "Mie Instan Merah",
-        "Barcode/SKU *": "MIE001",
-        Satuan: "Pcs",
-        "Stok Awal": "50",
-        "Stok Minimum": "10",
-        "Harga Modal *": "2500",
-        "Harga Jual Spesial": "3000",
-        "Harga Jual Grosir": "3200",
-        "Harga Jual Eceran *": "3500",
-      },
-    ];
-
-    const ws = XLSX.utils.json_to_sheet(templateData);
-    const wsExample = XLSX.utils.json_to_sheet(exampleData);
-
-    ws["!cols"] = [
-      { wch: 15 },
-      { wch: 15 },
-      { wch: 25 },
-      { wch: 15 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 15 },
-      { wch: 18 },
-      { wch: 18 },
-      { wch: 18 },
-    ];
-    wsExample["!cols"] = ws["!cols"];
-
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Template");
-    XLSX.utils.book_append_sheet(wb, wsExample, "Contoh");
-    XLSX.writeFile(wb, `template-produk-${activeStoreId}.xlsx`);
-    toast.success("Template Excel berhasil di-download");
-  };
-
-  // ======== EXCEL IMPORT ========
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = async (ev) => {
-      try {
-        const data = ev.target?.result;
-        const workbook = XLSX.read(data, { type: "array" });
-        const sheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[sheetName];
-        const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet);
-
-        if (jsonData.length === 0) {
-          toast.error("File Excel kosong");
-          return;
-        }
-
-        toast.info(`Memproses ${jsonData.length} produk...`);
-
-        const productsToImport: CreateProductInput[] = [];
-
-        for (const row of jsonData) {
-          try {
-            // Validate required fields
-            const name = row["Nama Produk *"]?.toString().trim();
-            const code = row["Barcode/SKU *"]?.toString().trim();
-            const costPrice = parseFloat(row["Harga Modal *"]);
-            const retailPrice = parseFloat(row["Harga Jual Eceran *"]);
-
-            if (!name || !code || isNaN(costPrice) || isNaN(retailPrice)) {
-              continue; // Skip invalid rows
-            }
-
-            // Get or create category
-            let categoryId: number | undefined;
-            const categoryName = row["Kategori"]?.toString().trim();
-            if (categoryName) {
-              const category = await getOrCreateCategory(categoryName);
-              categoryId = category.id;
-            }
-
-            // Get or create brand
-            let brandId: number | undefined;
-            const brandName = row["Brand"]?.toString().trim();
-            if (brandName) {
-              const brand = await getOrCreateBrand(brandName);
-              brandId = brand.id;
-            }
-
-            // Parse optional fields
-            const wholesalePrice = parseFloat(row["Harga Jual Grosir"]) || retailPrice;
-            const specialPrice = parseFloat(row["Harga Jual Spesial"]) || retailPrice;
-            const quantity = parseInt(row["Stok Awal"]) || 0;
-            const minStockAlert = parseInt(row["Stok Minimum"]) || 5;
-
-            productsToImport.push({
-              store_id: activeStoreId,
-              code,
-              name,
-              category_id: categoryId,
-              brand_id: brandId,
-              unit: row["Satuan"]?.toString().trim() || null,
-              unit_abbr: null,
-              cost_price: costPrice,
-              selling_price_retail: retailPrice,
-              selling_price_wholesale: wholesalePrice,
-              selling_price_special: specialPrice,
-              wholesale_min_qty: 10,
-              special_min_qty: 20,
-              quantity,
-              min_stock_alert: minStockAlert,
-              expiry_date: undefined,
-            });
-          } catch (error) {
-            console.error('Error processing row:', error);
-          }
-        }
-
-        if (productsToImport.length === 0) {
-          toast.error("Tidak ada produk valid untuk diimport");
-          setImportResults({ success: 0, errors: ["Tidak ada data valid"] });
-          return;
-        }
-
-        // Bulk import
-        const result = await bulkCreateProducts(productsToImport);
-        setImportResults(result);
-
-        if (result.success > 0) {
-          setRefreshKey((k) => k + 1);
-          toast.success(`${result.success} produk berhasil diimport`);
-        }
-
-        if (result.errors.length > 0) {
-          toast.error(`${result.errors.length} produk gagal diimport`);
-        }
-      } catch (error) {
-        console.error('Error importing Excel:', error);
-        toast.error("Gagal memproses file Excel");
-      }
-    };
-
-    reader.readAsArrayBuffer(file);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
+  // ======== (Excel import removed — replaced by BulkProductModal) ========
 
   if (showOpnameDetail) {
     return (
@@ -546,9 +368,9 @@ export default function Products() {
           <Button
             variant="outline"
             className="gap-2"
-            onClick={() => setShowImportDialog(true)}
+            onClick={() => setShowBulkModal(true)}
           >
-            <Upload className="w-4 h-4" /> Import Excel
+            <LayoutGrid className="w-4 h-4" /> Tambah Massal
           </Button>
           <Button className="gap-2" onClick={() => setIsAddModalOpen(true)}>
             <Plus className="w-4 h-4" />
@@ -567,6 +389,12 @@ export default function Products() {
               setRefreshKey((k) => k + 1);
               setEditingProduct(null);
             }}
+          />
+          <BulkProductModal
+            isOpen={showBulkModal}
+            onClose={() => setShowBulkModal(false)}
+            storeId={activeStoreId}
+            onProductsAdded={() => setRefreshKey((k) => k + 1)}
           />
         </div>
       </div>
@@ -886,88 +714,6 @@ export default function Products() {
           </div>
         </TabsContent>
       </Tabs>
-
-      {/* Import Dialog */}
-      <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <FileSpreadsheet className="w-5 h-5" /> Import Produk dari Excel
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="bg-muted/50 rounded-xl p-4 space-y-3">
-              <h4 className="font-semibold text-sm">Langkah-langkah:</h4>
-              <ol className="text-sm text-muted-foreground space-y-1.5 list-decimal list-inside">
-                <li>Download template Excel di bawah</li>
-                <li>Isi data produk sesuai kolom</li>
-                <li>Upload file yang sudah diisi</li>
-                <li>
-                  Kategori, brand, dan satuan otomatis dibuat jika belum ada
-                </li>
-              </ol>
-            </div>
-
-            <Button
-              variant="outline"
-              className="w-full gap-2"
-              onClick={handleDownloadTemplate}
-            >
-              <Download className="w-4 h-4" /> Download Template Excel
-            </Button>
-
-            <div className="border-2 border-dashed border-border rounded-xl p-6 text-center">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xlsx,.xls"
-                className="hidden"
-                onChange={handleFileUpload}
-              />
-              <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-              <p className="text-sm text-muted-foreground mb-2">
-                Klik untuk upload file Excel
-              </p>
-              <Button
-                onClick={() => fileInputRef.current?.click()}
-                className="gap-2"
-              >
-                <Upload className="w-4 h-4" /> Pilih File
-              </Button>
-            </div>
-
-            {importResults && (
-              <div className="space-y-2">
-                {importResults.success > 0 && (
-                  <div className="flex items-center gap-2 text-green-700 bg-green-50 rounded-lg px-3 py-2">
-                    <CheckCircle className="w-4 h-4" />
-                    <span className="text-sm font-medium">
-                      {importResults.success} produk berhasil diimport
-                    </span>
-                  </div>
-                )}
-                {importResults.errors.length > 0 && (
-                  <div className="bg-red-50 rounded-lg px-3 py-2 space-y-1">
-                    <div className="flex items-center gap-2 text-red-700">
-                      <AlertCircle className="w-4 h-4" />
-                      <span className="text-sm font-medium">
-                        {importResults.errors.length} baris gagal
-                      </span>
-                    </div>
-                    <div className="max-h-32 overflow-y-auto space-y-0.5">
-                      {importResults.errors.map((err, i) => (
-                        <p key={i} className="text-xs text-red-600">
-                          {err}
-                        </p>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Barcode Dialog */}
       <Dialog open={!!qrProduct} onOpenChange={() => setQrProduct(null)}>
