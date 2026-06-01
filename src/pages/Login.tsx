@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Store, Eye, EyeOff, Loader2, RefreshCw } from 'lucide-react';
+import { Eye, EyeOff, Loader2, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 
@@ -71,46 +71,30 @@ export default function Login() {
     }
   };
 
-  const handleQuickLogin = async (user: string, pass: string, roleName: string) => {
-    setUsername(user);
-    setPassword(pass);
-    setIsLoading(true);
-    
-    try {
-      const result = await login(user, pass);
-      if (result.success && result.user) {
-        toast.success(`Login sebagai ${roleName} berhasil!`);
-        navigate(result.user.role === 'owner' ? '/owner' : '/');
-      }
-    } finally { 
-      setIsLoading(false); 
-    }
-  };
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-surface p-4">
-      <div className="w-full max-w-[400px] space-y-6">
+    <div className="min-h-screen flex items-center justify-center bg-surface p-6">
+      <div className="w-full max-w-[480px] space-y-8">
         {/* Logo & Title */}
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-primary mb-2">
-            <Store className="w-6 h-6 text-primary-foreground" />
+        <div className="text-center space-y-3">
+          <div className="inline-flex items-center justify-center w-24 h-24 rounded-3xl overflow-hidden mb-1 shadow-lg">
+            <img src="/logo.png" alt="MiniPOS" className="w-full h-full object-cover" />
           </div>
-          <h1 className="text-page-title">MiniPOS</h1>
-          <p className="text-[13px] text-muted-foreground">Sistem Kasir & Back Office</p>
+          <h1 className="text-2xl font-bold text-foreground">MiniPOS</h1>
+          <p className="text-sm text-muted-foreground">Sistem Kasir & Back Office</p>
         </div>
 
         {/* Login Card */}
-        <Card className="border border-border">
-          <CardHeader className="space-y-1 pb-4">
-            <CardTitle className="text-center">Masuk ke Akun</CardTitle>
-            <CardDescription className="text-center">
+        <Card className="border border-border shadow-sm">
+          <CardHeader className="space-y-1 pb-6 pt-8 px-8">
+            <CardTitle className="text-center text-xl">Masuk ke Akun</CardTitle>
+            <CardDescription className="text-center text-sm">
               Masukkan username dan password Anda
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
+          <CardContent className="px-8 pb-8">
+            <form onSubmit={handleSubmit} className="space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="username" className="text-[13px]">Username</Label>
+                <Label htmlFor="username" className="text-sm font-medium">Username</Label>
                 <Input 
                   id="username" 
                   type="text" 
@@ -118,12 +102,12 @@ export default function Login() {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)} 
                   disabled={isLoading} 
-                  className="h-9 rounded-lg"
+                  className="h-11 rounded-lg text-base"
                   autoComplete="username"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-[13px]">Password</Label>
+                <Label htmlFor="password" className="text-sm font-medium">Password</Label>
                 <div className="relative">
                   <Input 
                     id="password" 
@@ -132,22 +116,22 @@ export default function Login() {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)} 
                     disabled={isLoading} 
-                    className="h-9 pr-10 rounded-lg"
+                    className="h-11 pr-12 rounded-lg text-base"
                     autoComplete="current-password"
                   />
                   <button 
                     type="button" 
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors p-1"
                   >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
                 </div>
               </div>
-              <Button type="submit" className="w-full h-9" disabled={isLoading}>
+              <Button type="submit" className="w-full h-11 text-base" disabled={isLoading}>
                 {isLoading ? (
                   <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    <Loader2 className="w-5 h-5 mr-2 animate-spin" />
                     Memproses...
                   </>
                 ) : (
@@ -162,59 +146,18 @@ export default function Login() {
                 <Button 
                   type="button"
                   variant="outline"
-                  className="w-full h-9 text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
+                  className="w-full h-11 text-base text-destructive border-destructive hover:bg-destructive hover:text-destructive-foreground"
                   onClick={handleClearSession}
                 >
-                  <RefreshCw className="w-4 h-4 mr-2" />
+                  <RefreshCw className="w-5 h-5 mr-2" />
                   Bersihkan Session & Coba Lagi
                 </Button>
-                <p className="text-[11px] text-center text-muted-foreground mt-2">
+                <p className="text-xs text-center text-muted-foreground mt-2">
                   Klik tombol ini jika mengalami error login
                 </p>
               </div>
             )}
 
-            {/* Demo Mode */}
-            <div className="mt-6 pt-5 border-t border-border">
-              <p className="text-[11px] text-center text-muted-foreground mb-3 uppercase tracking-wider font-medium">
-                Mode Demo — Klik untuk login cepat
-              </p>
-              <div className="space-y-1.5">
-                <button 
-                  onClick={() => handleQuickLogin('owner', 'owner123', 'Owner')} 
-                  disabled={isLoading}
-                  className="flex items-center gap-3 w-full p-2.5 rounded-lg border border-border hover:bg-primary-light transition-colors text-left"
-                >
-                  <div className="w-2 h-2 rounded-full bg-primary" />
-                  <div className="flex-1">
-                    <p className="text-[13px] font-medium text-foreground">Owner</p>
-                    <p className="text-[11px] text-muted-foreground">Username: owner</p>
-                  </div>
-                </button>
-                <button 
-                  onClick={() => handleQuickLogin('admin1', 'admin123', 'Admin Toko 1')} 
-                  disabled={isLoading}
-                  className="flex items-center gap-3 w-full p-2.5 rounded-lg border border-border hover:bg-primary-light transition-colors text-left"
-                >
-                  <div className="w-2 h-2 rounded-full bg-[hsl(40,72%,42%)]" />
-                  <div className="flex-1">
-                    <p className="text-[13px] font-medium text-foreground">Admin Toko 1</p>
-                    <p className="text-[11px] text-muted-foreground">Username: admin1</p>
-                  </div>
-                </button>
-                <button 
-                  onClick={() => handleQuickLogin('kasir1', 'kasir123', 'Kasir Toko 1')} 
-                  disabled={isLoading}
-                  className="flex items-center gap-3 w-full p-2.5 rounded-lg border border-border hover:bg-primary-light transition-colors text-left"
-                >
-                  <div className="w-2 h-2 rounded-full bg-[hsl(160,72%,27%)]" />
-                  <div className="flex-1">
-                    <p className="text-[13px] font-medium text-foreground">Kasir Toko 1</p>
-                    <p className="text-[11px] text-muted-foreground">Username: kasir1</p>
-                  </div>
-                </button>
-              </div>
-            </div>
           </CardContent>
         </Card>
 

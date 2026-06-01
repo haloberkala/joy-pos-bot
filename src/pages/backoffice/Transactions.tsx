@@ -564,8 +564,9 @@ export default function Transactions() {
                   if (currentStore) {
                     printInvoice({ 
                       sale: selectedSale, 
-                      saleDetails: selectedSaleItems, 
-                      store: currentStore 
+                      items: selectedSaleItems, 
+                      store: currentStore,
+                      customerName: getCustomerName(selectedSale.customer_id),
                     });
                   }
                 }}>

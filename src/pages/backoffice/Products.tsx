@@ -8,7 +8,7 @@ import {
 import { getAllCategories } from "@/services/categoriesService";
 import { getAllBrands } from "@/services/brandsService";
 import { getAllUnits, Unit } from "@/services/unitsService";
-import { getStockOpnamesByStore } from "@/services/stockOpnameService";
+import { getStockOpnamesByStore, StockOpname } from "@/services/stockOpnameService";
 import { formatCurrency } from "@/lib/format";
 import { formatDate } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -54,6 +54,7 @@ import {
 import { toast } from "sonner";
 import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
 import { StockOpnameDetail } from "@/components/backoffice/StockOpnameDetail";
+import { StockOpnameViewModal } from "@/components/backoffice/StockOpnameViewModal";
 import { BarcodeGenerator } from "@/components/backoffice/BarcodeGenerator";
 import { AddProductModal } from "@/components/backoffice/AddProductModal";
 import { BulkProductModal } from "@/components/backoffice/BulkProductModal";
@@ -70,6 +71,7 @@ export default function Products() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [showOpnameDetail, setShowOpnameDetail] = useState(false);
+  const [selectedOpname, setSelectedOpname] = useState<StockOpname | null>(null);
   const [activeTab, setActiveTab] = useState("products");
   const [qrProduct, setQrProduct] = useState<Product | null>(null);
   const [showBulkQr, setShowBulkQr] = useState(false);
@@ -696,7 +698,13 @@ export default function Products() {
                       {opname.note || "-"}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        title="Lihat Detail"
+                        onClick={() => setSelectedOpname(opname)}
+                      >
                         <Eye className="w-4 h-4" />
                       </Button>
                     </TableCell>
@@ -714,6 +722,13 @@ export default function Products() {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Stock Opname Detail Modal */}
+      <StockOpnameViewModal
+        opname={selectedOpname}
+        storeId={activeStoreId}
+        onClose={() => setSelectedOpname(null)}
+      />
 
       {/* Barcode Dialog */}
       <Dialog open={!!qrProduct} onOpenChange={() => setQrProduct(null)}>

@@ -1,10 +1,12 @@
-export function formatCurrency(amount: number): string {
+export function formatCurrency(amount: number | null | undefined): string {
+  const safe = Number(amount);
+  if (isNaN(safe) || amount == null) return 'Rp0';
   return new Intl.NumberFormat("id-ID", {
     style: "currency",
     currency: "IDR",
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(amount);
+  }).format(safe);
 }
 
 export const formatRupiah = formatCurrency;

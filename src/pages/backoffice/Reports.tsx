@@ -1,459 +1,317 @@
-import { useState, useMemo, useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { getSalesByStore } from '@/services/salesService';
-import { getExpensesByStore, getExpenseCategories } from '@/services/expensesService';
-import { getSalesReport, getStockReport, getRefundReport, getTotalCOGS } from '@/services/reportsService';
+import { useState, useMemo } from 'react';
+import { DateFilter, DateFilterType, DateRange, getDateRangeFromFilter } from '@/components/backoffice/DateFilter';
+import { useReportData } from '@/hooks/useReportData';
 import { formatCurrency, formatDate } from '@/lib/format';
-import { exportToPDF, exportToExcel } from '@/lib/exportUtils';
+import { exportToPDF } from '@/lib/exportUtils';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { DateFilter, DateFilterType, DateRange, getDateRangeFromFilter } from '@/components/backoffice/DateFilter';
+import { useAuth } from '@/contexts/AuthContext';
 import {
-  FileDown, FileSpreadsheet, TrendingUp, TrendingDown,
-  DollarSign, Package, ShoppingCart, Receipt, RotateCcw,
+  FileDown, TrendingUp, TrendingDown, DollarSign, Package,
+  ShoppingCart, Receipt, RotateCcw, Search, Loader2, RefreshCw,
 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { toast } from 'sonner';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+
+function StatCard({ label, value, icon: Icon, color, sub }: { label: string; value: string; icon: any; color: string; sub?: string }) {
+  return (
+    <div className="bg-card rounded-xl border border-border p-5">
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-sm text-muted-foreground">{label}</p>
+          <p className="text-xl font-bold text-foreground mt-1">{value}</p>
+          {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+        </div>
+        <div className={`p-2.5 rounded-lg ${color}`}><Icon className="w-4 h-4" /></div>
+      </div>
+    </div>
+  );
+}
+
+function EmptyRow({ cols, text }: { cols: number; text: string }) {
+  return (
+    <tr>
+      <td colSpan={cols} className="text-center py-10 text-muted-foreground text-sm">{text}</td>
+    </tr>
+  );
+}
 
 export default function Reports() {
   const { activeStoreId } = useAuth();
   const [dateFilterType, setDateFilterType] = useState<DateFilterType>('all');
   const [dateRange, setDateRange] = useState<DateRange>(getDateRangeFromFilter('all'));
-  const [isLoading, setIsLoading] = useState(true);
+  const [search, setSearch] = useState('');
 
-  // Data from Supabase
-  const [sales, setSales] = useState<any[]>([]);
-  const [expenses, setExpenses] = useState<any[]>([]);
-  const [expenseCategories, setExpenseCategories] = useState<any[]>([]);
-  const [salesByProduct, setSalesByProduct] = useState<any[]>([]);
-  const [stockReport, setStockReport] = useState<any[]>([]);
-  const [refundReport, setRefundReport] = useState<any[]>([]);
-  const [totalCOGS, setTotalCOGS] = useState(0);
+  const {
+    sales, expenses, expenseCategories, salesByProduct, stockReport, refundReport,
+    totalCOGS, isLoading, error, reload,
+    totalRevenue, grossProfit, totalExpenses, netProfit,
+  } = useReportData(dateRange, dateFilterType);
 
-  // Load data from Supabase
-  useEffect(() => {
-    loadData();
-  }, [activeStoreId, dateRange]);
-
-  const loadData = async () => {
-    try {
-      setIsLoading(true);
-      
-      const dateFrom = dateRange.from || undefined;
-      const dateTo = dateRange.to || undefined;
-
-      const [
-        salesData,
-        expensesData,
-        categoriesData,
-        salesReportData,
-        stockReportData,
-        refundReportData,
-        cogsData,
-      ] = await Promise.all([
-        getSalesByStore(activeStoreId),
-        getExpensesByStore(activeStoreId),
-        getExpenseCategories(),
-        getSalesReport(activeStoreId, dateFrom, dateTo),
-        getStockReport(activeStoreId),
-        getRefundReport(activeStoreId, dateFrom, dateTo),
-        getTotalCOGS(activeStoreId, dateFrom, dateTo),
-      ]);
-
-      // Filter sales by date
-      let filteredSales = salesData.filter(s => s.payment_status !== 'refunded');
-      if (dateFrom) {
-        filteredSales = filteredSales.filter(s => new Date(s.sale_date) >= dateFrom);
-      }
-      if (dateTo) {
-        filteredSales = filteredSales.filter(s => new Date(s.sale_date) <= dateTo);
-      }
-
-      // Filter expenses by date
-      let filteredExpenses = expensesData;
-      if (dateFrom) {
-        filteredExpenses = filteredExpenses.filter(e => new Date(e.expense_date) >= dateFrom);
-      }
-      if (dateTo) {
-        filteredExpenses = filteredExpenses.filter(e => new Date(e.expense_date) <= dateTo);
-      }
-
-      setSales(filteredSales);
-      setExpenses(filteredExpenses);
-      setExpenseCategories(categoriesData);
-      setSalesByProduct(salesReportData);
-      setStockReport(stockReportData);
-      setRefundReport(refundReportData);
-      setTotalCOGS(cogsData);
-    } catch (error) {
-      console.error('Error loading reports data:', error);
-      toast.error('Gagal memuat data laporan');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleDateFilterChange = (type: DateFilterType, range: DateRange) => {
+  const handleDateChange = (type: DateFilterType, range: DateRange) => {
     setDateFilterType(type);
     setDateRange(range);
+    setSearch('');
   };
 
-  const totalRevenue = sales.reduce((sum, s) => sum + s.grand_total, 0);
-  const grossProfit = totalRevenue - totalCOGS;
-  const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
-  const netProfit = grossProfit - totalExpenses;
-
+  // Derived
   const expenseBreakdown = useMemo(() => {
     const map = new Map<number, number>();
-    expenses.forEach(e => map.set(e.category_id, (map.get(e.category_id) || 0) + e.amount));
+    expenses.forEach((e) => map.set(e.category_id, (map.get(e.category_id) || 0) + e.amount));
     return expenseCategories
-      .map(cat => ({ name: cat.name, amount: map.get(cat.id) || 0 }))
-      .filter(c => c.amount > 0)
+      .map((cat) => ({ name: cat.name, amount: map.get(cat.id) || 0 }))
+      .filter((c) => c.amount > 0)
       .sort((a, b) => b.amount - a.amount);
   }, [expenses, expenseCategories]);
 
-  const profitLossData = useMemo(() => [
-    { name: 'Pendapatan', value: totalRevenue },
-    { name: 'HPP', value: totalCOGS },
-    { name: 'Laba Kotor', value: grossProfit },
-    { name: 'Pengeluaran', value: totalExpenses },
-    { name: 'Laba Bersih', value: netProfit },
-  ], [totalRevenue, totalCOGS, grossProfit, totalExpenses, netProfit]);
+  const profitLossChartData = [
+    { name: 'Pendapatan', value: totalRevenue, color: 'hsl(160,64%,45%)' },
+    { name: 'HPP', value: totalCOGS, color: 'hsl(200,70%,50%)' },
+    { name: 'Laba Kotor', value: grossProfit, color: 'hsl(245,100%,67%)' },
+    { name: 'Pengeluaran', value: totalExpenses, color: 'hsl(0,72%,55%)' },
+    { name: 'Laba Bersih', value: netProfit, color: netProfit >= 0 ? 'hsl(145,70%,40%)' : 'hsl(0,72%,55%)' },
+  ];
 
-  const handleExportSalesPDF = () => {
-    exportToPDF({
-      title: 'Laporan Penjualan',
-      subtitle: `Toko ID: ${activeStoreId}`,
-      filename: `laporan-penjualan-${Date.now()}`,
-      columns: [
-        { header: 'Produk', key: 'name', width: 25 },
-        { header: 'Qty', key: 'qty', width: 12 },
-        { header: 'Pendapatan', key: 'revenue', width: 18 },
-        { header: 'HPP', key: 'cost', width: 18 },
-        { header: 'Laba Kotor', key: 'profit', width: 18 },
-      ],
-      data: salesByProduct.map(p => ({ 
-        name: p.product_name, 
-        qty: p.quantity, 
-        revenue: formatCurrency(p.revenue), 
-        cost: formatCurrency(p.cost), 
-        profit: formatCurrency(p.profit) 
-      })),
-      summaryRows: [
-        { label: 'Total Pendapatan:', value: formatCurrency(totalRevenue) },
-        { label: 'Total HPP:', value: formatCurrency(totalCOGS) },
-        { label: 'Laba Kotor:', value: formatCurrency(grossProfit) },
-      ],
-    });
-  };
+  const q = search.toLowerCase();
+  const filteredSales = useMemo(() => salesByProduct.filter((p) => p.product_name?.toLowerCase().includes(q)), [salesByProduct, q]);
+  const filteredStock = useMemo(() => stockReport.filter((p) => p.name?.toLowerCase().includes(q) || p.code?.toLowerCase().includes(q) || p.category?.toLowerCase().includes(q)), [stockReport, q]);
+  const filteredRefunds = useMemo(() => refundReport.filter((r) => r.invoice_number?.toLowerCase().includes(q) || r.customer_name?.toLowerCase().includes(q)), [refundReport, q]);
 
-  const handleExportSalesExcel = () => {
-    exportToExcel({
-      title: 'Laporan Penjualan',
-      filename: `laporan-penjualan-${Date.now()}`,
-      columns: [
-        { header: 'Produk', key: 'name', width: 30 },
-        { header: 'Qty', key: 'qty', width: 12 },
-        { header: 'Pendapatan', key: 'revenue', width: 18 },
-        { header: 'HPP', key: 'cost', width: 18 },
-        { header: 'Laba Kotor', key: 'profit', width: 18 },
-      ],
-      data: salesByProduct.map(p => ({ 
-        name: p.product_name, 
-        qty: p.quantity, 
-        revenue: p.revenue, 
-        cost: p.cost, 
-        profit: p.profit 
-      })),
-    });
-  };
+  // PDF Exports
+  const exportSalesPDF = () => exportToPDF({
+    title: 'Laporan Penjualan', subtitle: `Periode: ${dateFilterType}`, filename: `laporan-penjualan-${Date.now()}`,
+    columns: [{ header: 'Produk', key: 'name', width: 28 }, { header: 'Qty', key: 'qty', width: 10 }, { header: 'Pendapatan', key: 'revenue', width: 20 }, { header: 'HPP', key: 'cost', width: 18 }, { header: 'Laba Kotor', key: 'profit', width: 18 }],
+    data: filteredSales.map((p) => ({ name: p.product_name, qty: p.quantity, revenue: formatCurrency(p.revenue), cost: formatCurrency(p.cost), profit: formatCurrency(p.profit) })),
+    summaryRows: [{ label: 'Total Pendapatan:', value: formatCurrency(totalRevenue) }, { label: 'Laba Kotor:', value: formatCurrency(grossProfit) }],
+  });
 
-  const handleExportStockPDF = () => {
-    exportToPDF({
-      title: 'Laporan Stok',
-      subtitle: `Toko ID: ${activeStoreId}`,
-      filename: `laporan-stok-${Date.now()}`,
-      columns: [
-        { header: 'Produk', key: 'name', width: 25 }, { header: 'Kode', key: 'code', width: 15 },
-        { header: 'Kategori', key: 'category', width: 15 }, { header: 'Stok', key: 'stock', width: 10 },
-        { header: 'Min', key: 'minStock', width: 10 }, { header: 'Nilai Stok', key: 'stockValue', width: 15 },
-        { header: 'Status', key: 'status', width: 12 },
-      ],
-      data: stockReport.map(p => ({ 
-        name: p.name, 
-        code: p.code, 
-        category: p.category, 
-        stock: p.stock, 
-        minStock: p.min_stock, 
-        stockValue: formatCurrency(p.stock_value), 
-        status: p.status 
-      })),
-      summaryRows: [{ label: 'Total Nilai Stok:', value: formatCurrency(stockReport.reduce((s, p) => s + p.stock_value, 0)) }],
-    });
-  };
+  const exportStockPDF = () => exportToPDF({
+    title: 'Laporan Stok', subtitle: `Toko ID: ${activeStoreId}`, filename: `laporan-stok-${Date.now()}`,
+    columns: [{ header: 'Produk', key: 'name', width: 25 }, { header: 'Kode', key: 'code', width: 14 }, { header: 'Kategori', key: 'category', width: 14 }, { header: 'Brand', key: 'brand', width: 14 }, { header: 'Stok', key: 'stock', width: 10 }, { header: 'Min', key: 'min', width: 8 }, { header: 'Nilai Stok', key: 'value', width: 16 }, { header: 'Status', key: 'status', width: 10 }],
+    data: filteredStock.map((p) => ({ name: p.name, code: p.code, category: p.category, brand: p.brand, stock: p.stock, min: p.min_stock, value: formatCurrency(p.stock_value), status: p.status })),
+    summaryRows: [{ label: 'Total Nilai Stok:', value: formatCurrency(filteredStock.reduce((s, p) => s + p.stock_value, 0)) }],
+  });
 
-  const handleExportStockExcel = () => {
-    exportToExcel({
-      title: 'Laporan Stok',
-      filename: `laporan-stok-${Date.now()}`,
-      columns: [
-        { header: 'Produk', key: 'name', width: 30 }, { header: 'Kode', key: 'code', width: 15 },
-        { header: 'Kategori', key: 'category', width: 15 }, { header: 'Stok', key: 'stock', width: 10 },
-        { header: 'Min Stok', key: 'minStock', width: 10 }, { header: 'Nilai Stok', key: 'stockValue', width: 15 },
-        { header: 'Status', key: 'status', width: 12 },
-      ],
-      data: stockReport.map(p => ({ 
-        name: p.name, 
-        code: p.code, 
-        category: p.category, 
-        stock: p.stock, 
-        minStock: p.min_stock, 
-        stockValue: p.stock_value, 
-        status: p.status 
-      })),
-    });
-  };
+  const exportProfitLossPDF = () => exportToPDF({
+    title: 'Laporan Laba Rugi', subtitle: `Periode: ${dateFilterType}`, filename: `laporan-laba-rugi-${Date.now()}`,
+    columns: [{ header: 'Keterangan', key: 'label', width: 35 }, { header: 'Jumlah', key: 'amount', width: 25 }],
+    data: [
+      { label: 'Total Pendapatan', amount: formatCurrency(totalRevenue) },
+      { label: 'Harga Pokok Penjualan (HPP)', amount: formatCurrency(totalCOGS) },
+      { label: 'Laba Kotor', amount: formatCurrency(grossProfit) },
+      { label: '─── Rincian Pengeluaran ───', amount: '' },
+      ...expenseBreakdown.map((e) => ({ label: `  ${e.name}`, amount: formatCurrency(e.amount) })),
+      { label: 'Total Pengeluaran', amount: formatCurrency(totalExpenses) },
+      { label: 'LABA BERSIH', amount: formatCurrency(netProfit) },
+    ],
+  });
 
-  const handleExportProfitLossPDF = () => {
-    exportToPDF({
-      title: 'Laporan Laba Rugi',
-      subtitle: `Toko ID: ${activeStoreId}`,
-      filename: `laporan-laba-rugi-${Date.now()}`,
-      columns: [
-        { header: 'Keterangan', key: 'label', width: 30 },
-        { header: 'Jumlah', key: 'amount', width: 25 },
-      ],
-      data: [
-        { label: 'Total Pendapatan', amount: formatCurrency(totalRevenue) },
-        { label: 'Harga Pokok Penjualan (HPP)', amount: formatCurrency(totalCOGS) },
-        { label: 'Laba Kotor', amount: formatCurrency(grossProfit) },
-        { label: '', amount: '' },
-        { label: '--- Rincian Pengeluaran ---', amount: '' },
-        ...expenseBreakdown.map(e => ({ label: `  ${e.name}`, amount: formatCurrency(e.amount) })),
-        { label: 'Total Pengeluaran Operasional', amount: formatCurrency(totalExpenses) },
-        { label: '', amount: '' },
-        { label: 'LABA BERSIH (Net Profit)', amount: formatCurrency(netProfit) },
-      ],
-    });
-  };
-
-  const handleExportProfitLossExcel = () => {
-    exportToExcel({
-      title: 'Laporan Laba Rugi',
-      filename: `laporan-laba-rugi-${Date.now()}`,
-      columns: [
-        { header: 'Keterangan', key: 'label', width: 35 },
-        { header: 'Jumlah (Rp)', key: 'amount', width: 20 },
-      ],
-      data: [
-        { label: 'Total Pendapatan', amount: totalRevenue },
-        { label: 'HPP', amount: totalCOGS },
-        { label: 'Laba Kotor', amount: grossProfit },
-        { label: '', amount: '' },
-        ...expenseBreakdown.map(e => ({ label: e.name, amount: e.amount })),
-        { label: 'Total Pengeluaran', amount: totalExpenses },
-        { label: '', amount: '' },
-        { label: 'LABA BERSIH', amount: netProfit },
-      ],
-    });
-  };
+  const exportRefundPDF = () => exportToPDF({
+    title: 'Laporan Refund', subtitle: `Periode: ${dateFilterType}`, filename: `laporan-refund-${Date.now()}`,
+    columns: [{ header: 'Invoice', key: 'invoice', width: 20 }, { header: 'Pelanggan', key: 'customer', width: 20 }, { header: 'Alasan', key: 'reason', width: 30 }, { header: 'Jumlah', key: 'amount', width: 18 }, { header: 'Tanggal', key: 'date', width: 16 }],
+    data: filteredRefunds.map((r) => ({ invoice: r.invoice_number, customer: r.customer_name, reason: r.reason, amount: formatCurrency(r.refund_amount), date: formatDate(new Date(r.refunded_at)) })),
+    summaryRows: [{ label: 'Total Refund:', value: formatCurrency(filteredRefunds.reduce((s, r) => s + r.refund_amount, 0)) }],
+  });
 
   if (isLoading) {
     return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Laporan</h1>
-          <p className="text-muted-foreground">Memuat data...</p>
-        </div>
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <p className="text-muted-foreground text-sm">Memuat data laporan...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
+        <p className="text-destructive">{error}</p>
+        <Button onClick={reload} variant="outline" className="gap-2"><RefreshCw className="w-4 h-4" />Coba Lagi</Button>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Laporan</h1>
-          <p className="text-muted-foreground">Unduh laporan penjualan, stok, dan laba rugi</p>
+          <p className="text-muted-foreground text-sm">Analisis penjualan, stok, laba rugi, dan refund</p>
         </div>
-        <DateFilter value={dateFilterType} dateRange={dateRange} onChange={handleDateFilterChange} />
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" onClick={reload} title="Refresh data"><RefreshCw className="w-4 h-4" /></Button>
+          <DateFilter value={dateFilterType} dateRange={dateRange} onChange={handleDateChange} />
+        </div>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <div className="bg-card rounded-xl border border-border p-5">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <StatCard label="Pendapatan" value={formatCurrency(totalRevenue)} icon={ShoppingCart} color="bg-green-100 text-green-600" sub={`${sales.length} transaksi`} />
+        <StatCard label="HPP" value={formatCurrency(totalCOGS)} icon={Package} color="bg-blue-100 text-blue-600" />
+        <StatCard label="Laba Kotor" value={formatCurrency(grossProfit)} icon={TrendingUp} color="bg-emerald-100 text-emerald-600" />
+        <StatCard label="Pengeluaran" value={formatCurrency(totalExpenses)} icon={TrendingDown} color="bg-red-100 text-red-600" />
+        <div className={`rounded-xl border p-5 col-span-2 lg:col-span-1 ${netProfit >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
           <div className="flex items-start justify-between">
-            <div><p className="text-sm text-muted-foreground">Pendapatan</p><p className="text-xl font-bold text-foreground mt-1">{formatCurrency(totalRevenue)}</p></div>
-            <div className="p-2.5 rounded-lg bg-green-100 text-green-600"><ShoppingCart className="w-4 h-4" /></div>
-          </div>
-        </div>
-        <div className="bg-card rounded-xl border border-border p-5">
-          <div className="flex items-start justify-between">
-            <div><p className="text-sm text-muted-foreground">HPP</p><p className="text-xl font-bold text-foreground mt-1">{formatCurrency(totalCOGS)}</p></div>
-            <div className="p-2.5 rounded-lg bg-blue-100 text-blue-600"><Package className="w-4 h-4" /></div>
-          </div>
-        </div>
-        <div className="bg-card rounded-xl border border-border p-5">
-          <div className="flex items-start justify-between">
-            <div><p className="text-sm text-muted-foreground">Laba Kotor</p><p className="text-xl font-bold text-foreground mt-1">{formatCurrency(grossProfit)}</p></div>
-            <div className="p-2.5 rounded-lg bg-emerald-100 text-emerald-600"><TrendingUp className="w-4 h-4" /></div>
-          </div>
-        </div>
-        <div className="bg-card rounded-xl border border-border p-5">
-          <div className="flex items-start justify-between">
-            <div><p className="text-sm text-muted-foreground">Pengeluaran</p><p className="text-xl font-bold text-foreground mt-1">{formatCurrency(totalExpenses)}</p></div>
-            <div className="p-2.5 rounded-lg bg-red-100 text-red-600"><TrendingDown className="w-4 h-4" /></div>
-          </div>
-        </div>
-        <div className={`rounded-xl border p-5 ${netProfit >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'}`}>
-          <div className="flex items-start justify-between">
-            <div><p className="text-sm text-muted-foreground">Laba Bersih</p><p className={`text-xl font-bold mt-1 ${netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatCurrency(netProfit)}</p></div>
+            <div>
+              <p className="text-sm text-muted-foreground">Laba Bersih</p>
+              <p className={`text-xl font-bold mt-1 ${netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatCurrency(netProfit)}</p>
+            </div>
             <div className={`p-2.5 rounded-lg ${netProfit >= 0 ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600'}`}><DollarSign className="w-4 h-4" /></div>
           </div>
         </div>
       </div>
 
-      {/* Profit/Loss Bar Chart */}
+      {/* Profit/Loss Chart */}
       <div className="bg-card rounded-xl border border-border p-5">
-        <h3 className="font-semibold text-foreground mb-4">Ringkasan Laba Rugi</h3>
-        <ResponsiveContainer width="100%" height={300}>
-          <BarChart data={profitLossData}>
-            <CartesianGrid strokeDasharray="3 3" />
-            <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-            <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${(v / 1000000).toFixed(1)}jt`} />
-            <Tooltip formatter={(value: number) => formatCurrency(value)} />
-            <Bar dataKey="value" fill="hsl(173, 58%, 39%)" radius={[4, 4, 0, 0]} />
+        <h3 className="font-semibold text-foreground mb-4 text-sm">Ringkasan Laba Rugi</h3>
+        <ResponsiveContainer width="100%" height={260}>
+          <BarChart data={profitLossChartData} margin={{ top: 4, right: 16, left: 8, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+            <XAxis dataKey="name" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `${(v / 1000000).toFixed(1)}jt`} axisLine={false} tickLine={false} />
+            <Tooltip
+              contentStyle={{ backgroundColor: 'hsl(var(--card))', border: '1px solid hsl(var(--border))', borderRadius: '8px', fontSize: 12 }}
+              formatter={(value: number) => [formatCurrency(value), '']}
+            />
+            <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={50}>
+              {profitLossChartData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
+      </div>
+
+      {/* Global search */}
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input placeholder="Cari di semua tab..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 text-sm" />
       </div>
 
       {/* Report Tabs */}
       <Tabs defaultValue="sales" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="sales" className="gap-2"><ShoppingCart className="w-4 h-4" />Penjualan</TabsTrigger>
-          <TabsTrigger value="stock" className="gap-2"><Package className="w-4 h-4" />Stok</TabsTrigger>
-          <TabsTrigger value="profitloss" className="gap-2"><Receipt className="w-4 h-4" />Laba Rugi</TabsTrigger>
-          <TabsTrigger value="refunds" className="gap-2"><RotateCcw className="w-4 h-4" />Refund</TabsTrigger>
+          <TabsTrigger value="sales" className="gap-2 text-xs"><ShoppingCart className="w-3.5 h-3.5" />Penjualan</TabsTrigger>
+          <TabsTrigger value="stock" className="gap-2 text-xs"><Package className="w-3.5 h-3.5" />Stok</TabsTrigger>
+          <TabsTrigger value="profitloss" className="gap-2 text-xs"><Receipt className="w-3.5 h-3.5" />Laba Rugi</TabsTrigger>
+          <TabsTrigger value="refunds" className="gap-2 text-xs"><RotateCcw className="w-3.5 h-3.5" />Refund</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="sales" className="space-y-4">
-          <div className="flex justify-between items-center">
-            <p className="text-muted-foreground">Laporan penjualan per produk</p>
-            <div className="flex gap-2">
-              <Button variant="outline" className="gap-2" onClick={handleExportSalesPDF}><FileDown className="w-4 h-4" />PDF</Button>
-              <Button variant="outline" className="gap-2" onClick={handleExportSalesExcel}><FileSpreadsheet className="w-4 h-4" />Excel</Button>
-            </div>
+        {/* ── Sales Tab ── */}
+        <TabsContent value="sales" className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">{filteredSales.length} produk terjual</p>
+            <Button variant="outline" size="sm" className="gap-2 text-xs" onClick={exportSalesPDF}><FileDown className="w-3.5 h-3.5" />Export PDF</Button>
           </div>
           <div className="bg-card rounded-xl border border-border overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Produk</TableHead><TableHead className="text-right">Qty</TableHead>
-                  <TableHead className="text-right">Pendapatan</TableHead><TableHead className="text-right">HPP</TableHead>
+                  <TableHead>Produk</TableHead>
+                  <TableHead className="text-right">Qty</TableHead>
+                  <TableHead className="text-right">Pendapatan</TableHead>
+                  <TableHead className="text-right">HPP</TableHead>
                   <TableHead className="text-right">Laba Kotor</TableHead>
+                  <TableHead className="text-right">Margin</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {salesByProduct.map((p, i) => (
+                {filteredSales.length === 0 ? <EmptyRow cols={6} text="Tidak ada data penjualan pada periode ini" /> : filteredSales.map((p, i) => (
                   <TableRow key={i}>
                     <TableCell className="font-medium">{p.product_name}</TableCell>
                     <TableCell className="text-right">{p.quantity}</TableCell>
                     <TableCell className="text-right">{formatCurrency(p.revenue)}</TableCell>
                     <TableCell className="text-right text-muted-foreground">{formatCurrency(p.cost)}</TableCell>
                     <TableCell className="text-right font-semibold text-green-600">{formatCurrency(p.profit)}</TableCell>
+                    <TableCell className="text-right text-xs text-muted-foreground">
+                      {p.revenue > 0 ? `${((p.profit / p.revenue) * 100).toFixed(1)}%` : '-'}
+                    </TableCell>
                   </TableRow>
                 ))}
-                {salesByProduct.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Tidak ada data penjualan</TableCell>
-                  </TableRow>
-                )}
               </TableBody>
             </Table>
           </div>
         </TabsContent>
 
-        <TabsContent value="stock" className="space-y-4">
-          <div className="flex justify-between items-center">
-            <p className="text-muted-foreground">Laporan stok per produk</p>
-            <div className="flex gap-2">
-              <Button variant="outline" className="gap-2" onClick={handleExportStockPDF}><FileDown className="w-4 h-4" />PDF</Button>
-              <Button variant="outline" className="gap-2" onClick={handleExportStockExcel}><FileSpreadsheet className="w-4 h-4" />Excel</Button>
-            </div>
+        {/* ── Stock Tab ── */}
+        <TabsContent value="stock" className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              Total nilai stok: <span className="font-semibold text-foreground">{formatCurrency(filteredStock.reduce((s, p) => s + p.stock_value, 0))}</span>
+            </p>
+            <Button variant="outline" size="sm" className="gap-2 text-xs" onClick={exportStockPDF}><FileDown className="w-3.5 h-3.5" />Export PDF</Button>
           </div>
           <div className="bg-card rounded-xl border border-border overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Produk</TableHead><TableHead>Kode</TableHead><TableHead>Kategori</TableHead>
-                  <TableHead className="text-right">Stok</TableHead><TableHead className="text-right">Min</TableHead>
-                  <TableHead className="text-right">Nilai Stok</TableHead><TableHead>Status</TableHead>
+                  <TableHead>Produk</TableHead>
+                  <TableHead>Kode</TableHead>
+                  <TableHead>Kategori</TableHead>
+                  <TableHead>Brand</TableHead>
+                  <TableHead className="text-right">Stok</TableHead>
+                  <TableHead className="text-right">Min</TableHead>
+                  <TableHead className="text-right">Nilai Stok</TableHead>
+                  <TableHead>Status</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {stockReport.map(p => (
+                {filteredStock.length === 0 ? <EmptyRow cols={8} text="Tidak ada data stok" /> : filteredStock.map((p) => (
                   <TableRow key={p.id}>
                     <TableCell className="font-medium">{p.name}</TableCell>
-                    <TableCell className="font-mono text-muted-foreground">{p.code}</TableCell>
-                    <TableCell className="text-muted-foreground">{p.category}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{p.code}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{p.category}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{p.brand}</TableCell>
                     <TableCell className="text-right font-bold">{p.stock}</TableCell>
                     <TableCell className="text-right text-muted-foreground">{p.min_stock}</TableCell>
                     <TableCell className="text-right">{formatCurrency(p.stock_value)}</TableCell>
                     <TableCell>
-                      <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                        p.status === 'Habis' ? 'bg-red-100 text-red-700' :
-                        p.status === 'Menipis' ? 'bg-orange-100 text-orange-700' :
-                        'bg-green-100 text-green-700'
-                      }`}>{p.status}</span>
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${p.status === 'Habis' ? 'bg-red-100 text-red-700' : p.status === 'Menipis' ? 'bg-orange-100 text-orange-700' : 'bg-green-100 text-green-700'}`}>{p.status}</span>
                     </TableCell>
                   </TableRow>
                 ))}
-                {stockReport.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Tidak ada data stok</TableCell>
-                  </TableRow>
-                )}
               </TableBody>
             </Table>
           </div>
         </TabsContent>
 
-        <TabsContent value="profitloss" className="space-y-4">
-          <div className="flex justify-between items-center">
-            <p className="text-muted-foreground">Laporan laba rugi lengkap</p>
-            <div className="flex gap-2">
-              <Button variant="outline" className="gap-2" onClick={handleExportProfitLossPDF}><FileDown className="w-4 h-4" />PDF</Button>
-              <Button variant="outline" className="gap-2" onClick={handleExportProfitLossExcel}><FileSpreadsheet className="w-4 h-4" />Excel</Button>
-            </div>
+        {/* ── Profit/Loss Tab ── */}
+        <TabsContent value="profitloss" className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">Laporan laba rugi lengkap</p>
+            <Button variant="outline" size="sm" className="gap-2 text-xs" onClick={exportProfitLossPDF}><FileDown className="w-3.5 h-3.5" />Export PDF</Button>
           </div>
           <div className="bg-card rounded-xl border border-border overflow-hidden">
             <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Keterangan</TableHead>
-                  <TableHead className="text-right">Jumlah</TableHead>
-                </TableRow>
-              </TableHeader>
+              <TableHeader><TableRow><TableHead>Keterangan</TableHead><TableHead className="text-right">Jumlah</TableHead></TableRow></TableHeader>
               <TableBody>
-                <TableRow><TableCell className="font-medium">Total Pendapatan</TableCell><TableCell className="text-right font-semibold">{formatCurrency(totalRevenue)}</TableCell></TableRow>
-                <TableRow><TableCell className="text-muted-foreground">Harga Pokok Penjualan (HPP)</TableCell><TableCell className="text-right text-muted-foreground">{formatCurrency(totalCOGS)}</TableCell></TableRow>
-                <TableRow className="bg-muted/50"><TableCell className="font-semibold">Laba Kotor</TableCell><TableCell className="text-right font-bold text-green-600">{formatCurrency(grossProfit)}</TableCell></TableRow>
-                {expenseBreakdown.map(e => (
-                  <TableRow key={e.name}><TableCell className="text-muted-foreground pl-8">{e.name}</TableCell><TableCell className="text-right text-red-600">-{formatCurrency(e.amount)}</TableCell></TableRow>
-                ))}
+                <TableRow><TableCell className="font-medium">Total Pendapatan</TableCell><TableCell className="text-right font-semibold text-green-600">{formatCurrency(totalRevenue)}</TableCell></TableRow>
+                <TableRow><TableCell className="text-muted-foreground pl-6">Harga Pokok Penjualan (HPP)</TableCell><TableCell className="text-right text-muted-foreground">-{formatCurrency(totalCOGS)}</TableCell></TableRow>
+                <TableRow className="bg-emerald-50/50"><TableCell className="font-semibold">Laba Kotor</TableCell><TableCell className="text-right font-bold text-emerald-600">{formatCurrency(grossProfit)}</TableCell></TableRow>
+                <TableRow><TableCell className="text-xs text-muted-foreground pt-3 pb-1 font-medium uppercase tracking-wide" colSpan={2}>Pengeluaran Operasional</TableCell></TableRow>
+                {expenseBreakdown.length === 0
+                  ? <TableRow><TableCell colSpan={2} className="text-center text-muted-foreground text-sm py-4">Tidak ada pengeluaran tercatat</TableCell></TableRow>
+                  : expenseBreakdown.map((e) => (
+                    <TableRow key={e.name}><TableCell className="text-muted-foreground pl-6">{e.name}</TableCell><TableCell className="text-right text-red-600">-{formatCurrency(e.amount)}</TableCell></TableRow>
+                  ))}
                 <TableRow><TableCell className="font-medium">Total Pengeluaran</TableCell><TableCell className="text-right font-semibold text-red-600">-{formatCurrency(totalExpenses)}</TableCell></TableRow>
                 <TableRow className={netProfit >= 0 ? 'bg-emerald-50' : 'bg-red-50'}>
-                  <TableCell className="font-bold text-lg">LABA BERSIH</TableCell>
-                  <TableCell className={`text-right font-bold text-lg ${netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatCurrency(netProfit)}</TableCell>
+                  <TableCell className="font-bold text-base">LABA BERSIH</TableCell>
+                  <TableCell className={`text-right font-bold text-base ${netProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>{formatCurrency(netProfit)}</TableCell>
                 </TableRow>
               </TableBody>
             </Table>
           </div>
         </TabsContent>
 
-        <TabsContent value="refunds" className="space-y-4">
-          <p className="text-muted-foreground">Riwayat refund transaksi</p>
+        {/* ── Refund Tab ── */}
+        <TabsContent value="refunds" className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-muted-foreground">
+              {filteredRefunds.length} refund &nbsp;·&nbsp; Total: <span className="font-semibold text-destructive">{formatCurrency(filteredRefunds.reduce((s, r) => s + r.refund_amount, 0))}</span>
+            </p>
+            <Button variant="outline" size="sm" className="gap-2 text-xs" onClick={exportRefundPDF}><FileDown className="w-3.5 h-3.5" />Export PDF</Button>
+          </div>
           <div className="bg-card rounded-xl border border-border overflow-hidden">
             <Table>
               <TableHeader>
@@ -462,27 +320,19 @@ export default function Reports() {
                   <TableHead>Pelanggan</TableHead>
                   <TableHead>Alasan</TableHead>
                   <TableHead className="text-right">Jumlah Refund</TableHead>
-                  <TableHead>Diproses Oleh</TableHead>
                   <TableHead>Tanggal</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {refundReport.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">Belum ada riwayat refund</TableCell>
+                {filteredRefunds.length === 0 ? <EmptyRow cols={5} text="Belum ada riwayat refund" /> : filteredRefunds.map((r) => (
+                  <TableRow key={r.id}>
+                    <TableCell className="font-mono text-xs font-medium">{r.invoice_number}</TableCell>
+                    <TableCell>{r.customer_name}</TableCell>
+                    <TableCell className="max-w-[220px] truncate text-muted-foreground text-sm">{r.reason}</TableCell>
+                    <TableCell className="text-right font-semibold text-destructive">{formatCurrency(r.refund_amount)}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{formatDate(new Date(r.refunded_at))}</TableCell>
                   </TableRow>
-                ) : (
-                  refundReport.map(r => (
-                    <TableRow key={r.id}>
-                      <TableCell className="font-mono font-medium text-xs">{r.invoice_number}</TableCell>
-                      <TableCell>{r.customer_name}</TableCell>
-                      <TableCell className="max-w-[200px] truncate">{r.reason}</TableCell>
-                      <TableCell className="text-right font-semibold text-destructive">{formatCurrency(r.refund_amount)}</TableCell>
-                      <TableCell>-</TableCell>
-                      <TableCell className="text-muted-foreground">{formatDate(new Date(r.refunded_at))}</TableCell>
-                    </TableRow>
-                  ))
-                )}
+                ))}
               </TableBody>
             </Table>
           </div>
