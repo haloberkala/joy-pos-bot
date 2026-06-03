@@ -721,10 +721,10 @@ export default function POS() {
       <header className="flex items-center justify-between px-4 py-2 border-b border-border bg-white">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg bg-primary flex items-center justify-center">
-              <FileText className="w-3.5 h-3.5 text-primary-foreground" />
+            <div className="w-7 h-7 rounded-lg overflow-hidden flex-shrink-0">
+              <img src="/logo.png" alt="Nadi" className="w-full h-full object-cover" />
             </div>
-            <h1 className="text-[15px] font-medium text-foreground">MiniPOS</h1>
+            <h1 className="text-[15px] font-bold text-foreground tracking-tight">Nadi</h1>
           </div>
           {activeBillCount > 0 && (
             <span className="px-2 py-0.5 rounded-full bg-primary text-primary-foreground text-[10px] font-medium">

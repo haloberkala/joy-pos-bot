@@ -77,10 +77,10 @@ export default function Login() {
         {/* Logo & Title */}
         <div className="text-center space-y-3">
           <div className="inline-flex items-center justify-center w-24 h-24 rounded-3xl overflow-hidden mb-1 shadow-lg">
-            <img src="/logo.png" alt="MiniPOS" className="w-full h-full object-cover" />
+            <img src="/logo.png" alt="Nadi" className="w-full h-full object-cover" />
           </div>
-          <h1 className="text-2xl font-bold text-foreground">MiniPOS</h1>
-          <p className="text-sm text-muted-foreground">Sistem Kasir & Back Office</p>
+          <h1 className="text-2xl font-bold text-foreground">Nadi</h1>
+          <p className="text-sm text-muted-foreground">Pusat Kendali Bisnismu</p>
         </div>
 
         {/* Login Card */}
@@ -162,7 +162,7 @@ export default function Login() {
         </Card>
 
         <p className="text-center text-[11px] text-muted-foreground">
-          © 2024 MiniPOS. Sistem Kasir Terpadu.
+          © 2026 Nadi. Pusat Kendali Bisnismu.
         </p>
       </div>
     </div>
