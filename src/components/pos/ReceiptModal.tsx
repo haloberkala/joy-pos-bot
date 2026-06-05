@@ -125,11 +125,14 @@ export function ReceiptModal({
         sale_id: sale.id,
         product_id: d.product_id,
         product_name: d.product?.name ?? `Produk #${d.product_id}`,
-        product_code: undefined,
+        product_code: null,
         quantity: d.quantity,
         price_per_unit: d.price_at_sale,
-        price_mode: d.price_mode as 'retail' | 'wholesale' | 'special',
+        cost_per_unit: 0,
         total_price: d.total_price,
+        price_mode: (d.price_mode ?? 'retail') as 'retail' | 'wholesale' | 'special',
+        is_service: false,
+        created_at: '',
       }));
 
       const saleForInvoice = {
