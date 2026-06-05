@@ -61,9 +61,9 @@ export function printInvoice({ sale, items, store, customerName, targetWindow }:
     const qty       = item.quantity       ?? 0;
     const total     = item.total_price    ?? (unitPrice * qty);
     const modeTag   = item.price_mode === 'wholesale'
-      ? '<span style="font-size:8px;border:1px solid #1d4ed8;color:#1d4ed8;border-radius:2px;padding:0 3px;margin-left:3px">GROSIR</span>'
+      ? '<span style="font-size:8px;border:1px solid #374151;color:#374151;border-radius:2px;padding:0 3px;margin-left:3px">GROSIR</span>'
       : item.price_mode === 'special'
-        ? '<span style="font-size:8px;border:1px solid #7e22ce;color:#7e22ce;border-radius:2px;padding:0 3px;margin-left:3px">SPESIAL</span>'
+        ? '<span style="font-size:8px;border:1px solid #374151;color:#374151;border-radius:2px;padding:0 3px;margin-left:3px">SPESIAL</span>'
         : '';
     const isEven = i % 2 === 1;
     return `
@@ -121,7 +121,7 @@ export function printInvoice({ sale, items, store, customerName, targetWindow }:
     .company-name {
       font-size: 20px;
       font-weight: 800;
-      color: #1e3a5f;
+      color: #000;
       letter-spacing: -0.3px;
       margin-bottom: 3px;
     }
@@ -140,7 +140,7 @@ export function printInvoice({ sale, items, store, customerName, targetWindow }:
     .faktur-label {
       font-size: 26px;
       font-weight: 900;
-      color: #1e3a5f;
+      color: #000;
       letter-spacing: 3px;
       text-transform: uppercase;
     }
@@ -165,7 +165,7 @@ export function printInvoice({ sale, items, store, customerName, targetWindow }:
     /* ── SEPARATOR ── */
     .separator {
       border: none;
-      border-top: 2.5px solid #1e3a5f;
+      border-top: 2.5px solid #000;
       margin: 10px 0 12px 0;
     }
     .separator-thin {
@@ -206,8 +206,8 @@ export function printInvoice({ sale, items, store, customerName, targetWindow }:
 
     /* ── BILL TO BOX ── */
     .bill-to-box {
-      background: #f1f5f9;
-      border-left: 3px solid #1e3a5f;
+      background: #f3f4f6;
+      border-left: 3px solid #000;
       border-radius: 0 6px 6px 0;
       padding: 7px 12px;
     }
@@ -222,7 +222,7 @@ export function printInvoice({ sale, items, store, customerName, targetWindow }:
     .bill-to-name {
       font-size: 13px;
       font-weight: 700;
-      color: #1e3a5f;
+      color: #000;
     }
 
     /* ── ITEMS TABLE ── */
@@ -233,7 +233,7 @@ export function printInvoice({ sale, items, store, customerName, targetWindow }:
       margin-bottom: 0;
     }
     table.items-table thead tr {
-      background: #1e3a5f;
+      background: #111827;
       color: #fff;
     }
     table.items-table thead th {
@@ -322,7 +322,7 @@ export function printInvoice({ sale, items, store, customerName, targetWindow }:
     .totals-table .label-col { color: #6b7280; }
 
     .totals-table tr.grand-total {
-      background: #1e3a5f;
+      background: #111827;
       color: #fff;
       font-size: 13px;
       font-weight: 800;
@@ -331,10 +331,10 @@ export function printInvoice({ sale, items, store, customerName, targetWindow }:
       padding: 8px 10px;
       border-radius: 0;
     }
-    .totals-table tr.paid-row td:last-child { color: #15803d; font-weight: 700; }
-    .totals-table tr.change-row td:last-child { color: #1d4ed8; font-weight: 700; }
-    .totals-table tr.debt-row { background:#fef2f2; }
-    .totals-table tr.debt-row td { color: #b91c1c; font-weight: 700; }
+    .totals-table tr.paid-row td:last-child { color: #000; font-weight: 700; }
+    .totals-table tr.change-row td:last-child { color: #374151; font-weight: 700; }
+    .totals-table tr.debt-row { background:#f3f4f6; }
+    .totals-table tr.debt-row td { color: #000; font-weight: 700; }
 
     .totals-wrapper {
       border: 1px solid #e5e7eb;
@@ -382,12 +382,8 @@ export function printInvoice({ sale, items, store, customerName, targetWindow }:
       <div class="faktur-label">Faktur</div>
       <div class="inv-no">No. ${sale.invoice_number}</div>
       <div>
-        <span class="status-stamp" style="
-          ${status === 'paid'     ? 'border:2px solid #15803d;color:#15803d;background:#f0fdf4'   : ''}
-          ${status === 'debt'     ? 'border:2px solid #b91c1c;color:#b91c1c;background:#fef2f2'   : ''}
-          ${status === 'refunded' ? 'border:2px solid #6b7280;color:#6b7280;background:#f9fafb'   : ''}
-          ${status === 'partial'  ? 'border:2px solid #b45309;color:#b45309;background:#fffbeb'   : ''}
-        ">${statusLabel[status] ?? status.toUpperCase()}</span>
+        <span class="status-stamp" style="border:2px solid #000;color:#000;background:#f3f4f6"
+        >${statusLabel[status] ?? status.toUpperCase()}</span>
       </div>
     </div>
   </div>
@@ -477,7 +473,7 @@ export function printInvoice({ sale, items, store, customerName, targetWindow }:
             ${discount > 0 ? `
             <tr>
               <td class="label-col">Diskon</td>
-              <td style="color:#dc2626;font-weight:600">− ${formatCurrency(discount)}</td>
+              <td style="font-weight:600">− ${formatCurrency(discount)}</td>
             </tr>` : ''}
             ${tax > 0 ? `
             <tr>
