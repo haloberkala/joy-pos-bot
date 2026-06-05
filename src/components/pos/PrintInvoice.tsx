@@ -12,378 +12,521 @@ interface PrintInvoiceProps {
   items: SaleItem[];
   store: Store;
   customerName?: string;
+  /** Pre-opened window (untuk menghindari popup blocking saat dipanggil dari setTimeout) */
+  targetWindow?: Window | null;
 }
 
 /**
- * Cetak Faktur A4 — kompatibel dengan SaleItem dari Supabase.
- * Field yang digunakan: price_per_unit, total_price, product_name, quantity
+ * Faktur Industri — Landscape A4, dua kolom header, tabel profesional,
+ * blok tanda tangan, kompatibel dengan printer laser/inkjet toko.
  */
-export function printInvoice({ sale, items, store, customerName }: PrintInvoiceProps) {
+export function printInvoice({ sale, items, store, customerName, targetWindow }: PrintInvoiceProps) {
   const safeDate = (v: string | null | undefined) => {
     try {
       return new Intl.DateTimeFormat('id-ID', {
         day: '2-digit', month: 'long', year: 'numeric',
-        hour: '2-digit', minute: '2-digit',
       }).format(new Date(v ?? Date.now()));
-    } catch {
-      return '-';
-    }
+    } catch { return '-'; }
+  };
+
+  const safeDateShort = (v: string | null | undefined) => {
+    try {
+      return new Intl.DateTimeFormat('id-ID', {
+        day: '2-digit', month: '2-digit', year: 'numeric',
+      }).format(new Date(v ?? Date.now()));
+    } catch { return '-'; }
   };
 
   const paymentLabel: Record<string, string> = {
-    cash: 'Tunai', transfer: 'Transfer Bank', qris: 'QRIS', debt: 'Kredit/Hutang',
+    cash: 'Tunai', transfer: 'Transfer Bank', qris: 'QRIS', debt: 'Kredit / Cicilan',
   };
 
   const statusLabel: Record<string, string> = {
-    paid: 'LUNAS', debt: 'KREDIT', partial: 'SEBAGIAN', refunded: 'REFUND',
-  };
-
-  const statusColor: Record<string, string> = {
-    paid: '#15803d', debt: '#b91c1c', partial: '#b45309', refunded: '#6b7280',
+    paid: 'LUNAS', debt: 'BELUM LUNAS', partial: 'SEBAGIAN LUNAS', refunded: 'REFUND',
   };
 
   const customer = customerName || 'Umum';
   const status = sale.payment_status ?? 'paid';
   const payMethod = sale.payment_method ?? 'cash';
 
+  const subTotal   = sale.sub_total    ?? 0;
+  const discount   = sale.discount     ?? 0;
+  const tax        = sale.tax          ?? 0;
+  const grandTotal = sale.grand_total  ?? 0;
+  const amountReceived = sale.amount_received ?? 0;
+  const changeAmount   = sale.change_amount   ?? 0;
+
   const rowsHtml = items.map((item, i) => {
     const unitPrice = item.price_per_unit ?? 0;
-    const qty = item.quantity ?? 0;
-    const total = item.total_price ?? (unitPrice * qty);
-    const modeTag = item.price_mode === 'wholesale'
-      ? `<span style="font-size:9px;background:#dbeafe;color:#1d4ed8;border-radius:3px;padding:1px 4px;margin-left:4px">Grosir</span>`
+    const qty       = item.quantity       ?? 0;
+    const total     = item.total_price    ?? (unitPrice * qty);
+    const modeTag   = item.price_mode === 'wholesale'
+      ? '<span style="font-size:8px;border:1px solid #1d4ed8;color:#1d4ed8;border-radius:2px;padding:0 3px;margin-left:3px">GROSIR</span>'
       : item.price_mode === 'special'
-        ? `<span style="font-size:9px;background:#f3e8ff;color:#7e22ce;border-radius:3px;padding:1px 4px;margin-left:4px">Spesial</span>`
+        ? '<span style="font-size:8px;border:1px solid #7e22ce;color:#7e22ce;border-radius:2px;padding:0 3px;margin-left:3px">SPESIAL</span>'
         : '';
+    const isEven = i % 2 === 1;
     return `
-      <tr>
-        <td style="text-align:center;color:#6b7280">${i + 1}</td>
-        <td>${item.product_name}${modeTag}${item.product_code ? `<div style="font-size:10px;color:#9ca3af;margin-top:2px">${item.product_code}</div>` : ''}</td>
-        <td style="text-align:right">${formatCurrency(unitPrice)}</td>
+      <tr style="${isEven ? 'background:#f8f9fc;' : ''}">
+        <td style="text-align:center;color:#6b7280;font-size:10px">${i + 1}</td>
+        <td>
+          <div style="font-weight:500">${item.product_name ?? '-'}${modeTag}</div>
+          ${item.product_code ? `<div style="font-size:9px;color:#9ca3af;margin-top:1px">${item.product_code}</div>` : ''}
+        </td>
         <td style="text-align:center">${qty}</td>
+        <td style="text-align:center;color:#6b7280;font-size:10px">${item.price_mode === 'wholesale' ? 'GRS' : item.price_mode === 'special' ? 'SPL' : 'ECR'}</td>
+        <td style="text-align:right">${formatCurrency(unitPrice)}</td>
         <td style="text-align:right;font-weight:600">${formatCurrency(total)}</td>
       </tr>`;
   }).join('');
 
-  const subTotal = sale.sub_total ?? 0;
-  const discount = sale.discount ?? 0;
-  const tax = sale.tax ?? 0;
-  const grandTotal = sale.grand_total ?? 0;
-  const amountReceived = sale.amount_received ?? 0;
-  const changeAmount = sale.change_amount ?? 0;
+  // Blank padding rows so table has at least 8 rows
+  const MIN_ROWS = 8;
+  const blankRows = Math.max(0, MIN_ROWS - items.length);
+  const blankHtml = Array.from({ length: blankRows }).map((_, i) => {
+    const isEven = (items.length + i) % 2 === 1;
+    return `<tr style="height:26px;${isEven ? 'background:#f8f9fc;' : ''}">
+      <td></td><td></td><td></td><td></td><td></td><td></td>
+    </tr>`;
+  }).join('');
 
   const printContent = `<!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8"/>
   <title>Faktur ${sale.invoice_number}</title>
   <style>
-    /* ===== RESET & BASE ===== */
-    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body { width: 210mm; }
-    body {
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+    html, body {
+      width: 297mm;
       font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
-      font-size: 12px;
+      font-size: 11px;
       color: #111827;
       background: #fff;
-      padding: 14mm 16mm 12mm 16mm;
-      line-height: 1.5;
     }
 
-    /* ===== HEADER ===== */
-    .doc-header {
+    body { padding: 10mm 12mm 10mm 12mm; }
+
+    /* ── TOP HEADER ── */
+    .top-header {
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      border-bottom: 3px solid #4f46e5;
-      padding-bottom: 12px;
-      margin-bottom: 18px;
+      margin-bottom: 14px;
+      gap: 20px;
     }
-    .store-info h1 {
-      font-size: 22px;
-      font-weight: 800;
-      color: #4f46e5;
-      letter-spacing: -0.5px;
-      margin-bottom: 3px;
-    }
-    .store-info p { font-size: 11px; color: #6b7280; }
-    .doc-title-block { text-align: right; }
-    .doc-title-block .doc-label {
+
+    .company-block { flex: 1; }
+    .company-name {
       font-size: 20px;
       font-weight: 800;
-      color: #111827;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-    }
-    .doc-title-block .inv-number {
-      font-size: 13px;
-      font-weight: 600;
-      color: #4f46e5;
-      margin-top: 4px;
-    }
-    .doc-title-block .status-badge {
-      display: inline-block;
-      margin-top: 6px;
-      padding: 3px 10px;
-      border-radius: 99px;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.5px;
-    }
-
-    /* ===== INFO GRID ===== */
-    .info-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      margin-bottom: 20px;
-    }
-    .info-box {
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      padding: 10px 14px;
-    }
-    .info-box .label {
-      font-size: 9px;
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-      color: #9ca3af;
-      font-weight: 600;
+      color: #1e3a5f;
+      letter-spacing: -0.3px;
       margin-bottom: 3px;
     }
-    .info-box .value {
+    .company-detail {
+      font-size: 10px;
+      color: #6b7280;
+      line-height: 1.6;
+    }
+    .company-detail strong { color: #374151; }
+
+    /* ── FAKTUR TITLE BLOCK (kanan atas) ── */
+    .title-block {
+      text-align: right;
+      min-width: 210px;
+    }
+    .faktur-label {
+      font-size: 26px;
+      font-weight: 900;
+      color: #1e3a5f;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+    }
+    .inv-no {
+      font-size: 12px;
+      font-weight: 700;
+      color: #374151;
+      margin-top: 4px;
+      letter-spacing: 0.3px;
+    }
+    .status-stamp {
+      display: inline-block;
+      margin-top: 6px;
+      padding: 3px 14px;
+      border-radius: 3px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+
+    /* ── SEPARATOR ── */
+    .separator {
+      border: none;
+      border-top: 2.5px solid #1e3a5f;
+      margin: 10px 0 12px 0;
+    }
+    .separator-thin {
+      border: none;
+      border-top: 1px solid #e5e7eb;
+      margin: 8px 0;
+    }
+
+    /* ── INFO ROW (tanggal, pembeli, kasir, dll) ── */
+    .info-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .info-cell {}
+    .info-cell .info-label {
+      font-size: 8.5px;
+      text-transform: uppercase;
+      letter-spacing: 0.7px;
+      color: #9ca3af;
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+    .info-cell .info-value {
+      font-size: 11.5px;
+      font-weight: 600;
+      color: #111827;
+    }
+    .info-cell .info-value.big {
       font-size: 13px;
+    }
+    .info-cell .info-sub {
+      font-size: 9.5px;
+      color: #6b7280;
+      margin-top: 1px;
+    }
+
+    /* ── BILL TO BOX ── */
+    .bill-to-box {
+      background: #f1f5f9;
+      border-left: 3px solid #1e3a5f;
+      border-radius: 0 6px 6px 0;
+      padding: 7px 12px;
+    }
+    .bill-to-label {
+      font-size: 8px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #64748b;
+      margin-bottom: 3px;
+    }
+    .bill-to-name {
+      font-size: 13px;
+      font-weight: 700;
+      color: #1e3a5f;
+    }
+
+    /* ── ITEMS TABLE ── */
+    table.items-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 11px;
+      margin-bottom: 0;
+    }
+    table.items-table thead tr {
+      background: #1e3a5f;
+      color: #fff;
+    }
+    table.items-table thead th {
+      padding: 7px 10px;
+      font-size: 9.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    table.items-table thead th:first-child { width: 30px; text-align: center; }
+    table.items-table thead th:nth-child(3) { width: 46px; text-align: center; }
+    table.items-table thead th:nth-child(4) { width: 44px; text-align: center; }
+    table.items-table thead th:nth-child(5) { width: 110px; text-align: right; }
+    table.items-table thead th:nth-child(6) { width: 110px; text-align: right; }
+
+    table.items-table tbody td {
+      padding: 6px 10px;
+      vertical-align: middle;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    /* ── BOTTOM SECTION ── */
+    .bottom-section {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      margin-top: 14px;
+    }
+
+    /* Catatan & TTD kiri */
+    .left-bottom { flex: 1; }
+    .note-label {
+      font-size: 9px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: #9ca3af;
+      margin-bottom: 4px;
+    }
+    .note-box {
+      border: 1px dashed #d1d5db;
+      border-radius: 4px;
+      padding: 6px 10px;
+      min-height: 44px;
+      font-size: 10.5px;
+      color: #374151;
+    }
+
+    /* Signature section */
+    .sig-row {
+      display: flex;
+      gap: 20px;
+      margin-top: 12px;
+    }
+    .sig-block {
+      flex: 1;
+      text-align: center;
+    }
+    .sig-title {
+      font-size: 9.5px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 44px;
+    }
+    .sig-line {
+      border-top: 1px solid #374151;
+      padding-top: 4px;
+      font-size: 10px;
       font-weight: 600;
       color: #111827;
     }
 
-    /* ===== TABLE ===== */
-    table {
+    /* Totals kanan */
+    .totals-block {
+      min-width: 240px;
+    }
+    .totals-table {
       width: 100%;
       border-collapse: collapse;
-      margin-bottom: 20px;
-      font-size: 12px;
-    }
-    thead tr {
-      background: #4f46e5;
-      color: #fff;
-    }
-    thead th {
-      padding: 9px 12px;
       font-size: 11px;
-      font-weight: 600;
-      text-align: left;
-      letter-spacing: 0.3px;
     }
-    thead th:nth-child(3),
-    thead th:nth-child(4),
-    thead th:nth-child(5) { text-align: right; }
-    thead th:nth-child(4) { text-align: center; }
-    thead th:first-child { text-align: center; width: 32px; border-radius: 6px 0 0 0; }
-    thead th:last-child { border-radius: 0 6px 0 0; }
-
-    tbody tr { border-bottom: 1px solid #f3f4f6; }
-    tbody tr:nth-child(even) { background: #fafafa; }
-    tbody tr:last-child { border-bottom: 2px solid #e5e7eb; }
-    tbody td { padding: 9px 12px; vertical-align: top; }
-    tbody td:nth-child(3),
-    tbody td:nth-child(4),
-    tbody td:nth-child(5) { text-align: right; }
-    tbody td:nth-child(4) { text-align: center; }
-    tbody td:first-child { text-align: center; color: #9ca3af; font-size: 11px; }
-
-    /* ===== SUMMARY ===== */
-    .summary-wrap {
-      display: flex;
-      justify-content: flex-end;
-      margin-bottom: 24px;
+    .totals-table td {
+      padding: 4px 10px;
     }
-    .summary {
-      width: 280px;
+    .totals-table td:last-child { text-align: right; font-weight: 500; }
+    .totals-table .label-col { color: #6b7280; }
+
+    .totals-table tr.grand-total {
+      background: #1e3a5f;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .totals-table tr.grand-total td {
+      padding: 8px 10px;
+      border-radius: 0;
+    }
+    .totals-table tr.paid-row td:last-child { color: #15803d; font-weight: 700; }
+    .totals-table tr.change-row td:last-child { color: #1d4ed8; font-weight: 700; }
+    .totals-table tr.debt-row { background:#fef2f2; }
+    .totals-table tr.debt-row td { color: #b91c1c; font-weight: 700; }
+
+    .totals-wrapper {
       border: 1px solid #e5e7eb;
-      border-radius: 10px;
+      border-radius: 6px;
       overflow: hidden;
     }
-    .summary-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 16px;
-      font-size: 12px;
-      border-bottom: 1px solid #f3f4f6;
-    }
-    .summary-row:last-child { border-bottom: none; }
-    .summary-row.discount span:last-child { color: #dc2626; font-weight: 600; }
-    .summary-row.tax span:last-child { color: #d97706; }
-    .summary-row.total {
-      background: #4f46e5;
-      color: #fff;
-      font-size: 14px;
-      font-weight: 700;
-      padding: 11px 16px;
-    }
-    .summary-row.paid span:last-child { font-weight: 600; color: #15803d; }
-    .summary-row.change span:last-child { font-weight: 600; color: #1d4ed8; }
-    .summary-label { color: #6b7280; }
-
-    /* ===== NOTE BOX ===== */
-    .note-box {
-      border: 1px dashed #d1d5db;
-      border-radius: 8px;
-      padding: 10px 14px;
-      margin-bottom: 20px;
-      background: #fefce8;
-      font-size: 11px;
-      color: #78350f;
-    }
-    .note-box strong { color: #92400e; }
-
-    /* ===== FOOTER ===== */
-    .doc-footer {
-      border-top: 1px solid #e5e7eb;
-      padding-top: 14px;
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-end;
-      margin-top: 8px;
-    }
-    .doc-footer .thanks {
-      font-size: 12px;
-      color: #6b7280;
-    }
-    .doc-footer .thanks strong { color: #4f46e5; font-size: 13px; }
-    .signature-block { text-align: center; min-width: 140px; }
-    .signature-block .sig-label {
-      font-size: 11px;
-      color: #6b7280;
-      margin-bottom: 46px;
-    }
-    .signature-block .sig-line {
-      border-top: 1px solid #374151;
-      padding-top: 4px;
-      font-size: 11px;
-      font-weight: 600;
+    .totals-header {
+      background: #f8fafc;
+      padding: 5px 10px;
+      font-size: 9px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #64748b;
+      border-bottom: 1px solid #e5e7eb;
     }
 
-    /* ===== PRINT MEDIA ===== */
+    /* ── PRINT ── */
     @media print {
-      html, body { width: 210mm; }
-      body { padding: 10mm 14mm 10mm 14mm; }
+      html, body { width: 297mm; }
+      body { padding: 8mm 10mm 8mm 10mm; }
       @page {
-        size: A4 portrait;
+        size: A4 landscape;
         margin: 0;
       }
-      thead { display: table-header-group; }
-      tfoot { display: table-footer-group; }
       tr { page-break-inside: avoid; }
     }
   </style>
 </head>
 <body>
 
-  <!-- HEADER -->
-  <div class="doc-header">
-    <div class="store-info">
-      <h1>${store.name}</h1>
-      ${store.address ? `<p>${store.address}</p>` : ''}
-      ${store.phone ? `<p>Telp: ${store.phone}</p>` : ''}
+  <!-- ══ TOP HEADER ══ -->
+  <div class="top-header">
+    <!-- Kiri: Info Perusahaan -->
+    <div class="company-block">
+      <div class="company-name">${store.name}</div>
+      <div class="company-detail">
+        ${store.address ? `<div><strong>Alamat:</strong> ${store.address}</div>` : ''}
+        ${store.phone   ? `<div><strong>Telp:</strong> ${store.phone}</div>` : ''}
+      </div>
     </div>
-    <div class="doc-title-block">
-      <div class="doc-label">Faktur / Invoice</div>
-      <div class="inv-number">${sale.invoice_number}</div>
+
+    <!-- Kanan: Label Faktur -->
+    <div class="title-block">
+      <div class="faktur-label">Faktur</div>
+      <div class="inv-no">No. ${sale.invoice_number}</div>
       <div>
-        <span class="status-badge" style="background:${statusColor[status]}20;color:${statusColor[status]};border:1px solid ${statusColor[status]}40">
-          ${statusLabel[status] ?? status.toUpperCase()}
-        </span>
+        <span class="status-stamp" style="
+          ${status === 'paid'     ? 'border:2px solid #15803d;color:#15803d;background:#f0fdf4'   : ''}
+          ${status === 'debt'     ? 'border:2px solid #b91c1c;color:#b91c1c;background:#fef2f2'   : ''}
+          ${status === 'refunded' ? 'border:2px solid #6b7280;color:#6b7280;background:#f9fafb'   : ''}
+          ${status === 'partial'  ? 'border:2px solid #b45309;color:#b45309;background:#fffbeb'   : ''}
+        ">${statusLabel[status] ?? status.toUpperCase()}</span>
       </div>
     </div>
   </div>
 
-  <!-- INFO GRID -->
-  <div class="info-grid">
-    <div class="info-box">
-      <div class="label">Tanggal</div>
-      <div class="value">${safeDate(sale.sale_date)}</div>
+  <hr class="separator" />
+
+  <!-- ══ INFO ROW ══ -->
+  <div class="info-row">
+    <!-- Bill To -->
+    <div class="info-cell">
+      <div class="bill-to-box">
+        <div class="bill-to-label">Kepada / Bill To</div>
+        <div class="bill-to-name">${customer}</div>
+      </div>
     </div>
-    <div class="info-box">
-      <div class="label">Pelanggan</div>
-      <div class="value">${customer}</div>
+
+    <!-- Tanggal -->
+    <div class="info-cell">
+      <div class="info-label">Tanggal Faktur</div>
+      <div class="info-value big">${safeDate(sale.sale_date)}</div>
     </div>
-    <div class="info-box">
-      <div class="label">Metode Pembayaran</div>
-      <div class="value">${paymentLabel[payMethod] ?? payMethod}</div>
+
+    <!-- Pembayaran -->
+    <div class="info-cell">
+      <div class="info-label">Metode Pembayaran</div>
+      <div class="info-value">${paymentLabel[payMethod] ?? payMethod}</div>
+      ${status === 'debt' && sale.due_date ? `<div class="info-sub">Jatuh Tempo: <strong>${safeDateShort(sale.due_date)}</strong></div>` : ''}
     </div>
-    <div class="info-box">
-      <div class="label">Kasir</div>
-      <div class="value">${sale.cashier_name ?? '-'}</div>
+
+    <!-- Kasir -->
+    <div class="info-cell">
+      <div class="info-label">Kasir / Dibuat Oleh</div>
+      <div class="info-value">${sale.cashier_name ?? '-'}</div>
     </div>
   </div>
 
-  <!-- ITEM TABLE -->
-  <table>
+  <!-- ══ ITEMS TABLE ══ -->
+  <table class="items-table">
     <thead>
       <tr>
-        <th>No</th>
-        <th>Nama Barang</th>
-        <th>Harga Satuan</th>
-        <th>Qty</th>
-        <th>Subtotal</th>
+        <th style="text-align:center">No</th>
+        <th style="text-align:left">Nama Barang / Deskripsi</th>
+        <th style="text-align:center">Qty</th>
+        <th style="text-align:center">Tipe</th>
+        <th style="text-align:right">Harga Satuan</th>
+        <th style="text-align:right">Jumlah</th>
       </tr>
     </thead>
     <tbody>
-      ${rowsHtml || `<tr><td colspan="5" style="text-align:center;padding:20px;color:#9ca3af">Tidak ada item</td></tr>`}
+      ${rowsHtml || `<tr><td colspan="6" style="text-align:center;padding:20px;color:#9ca3af">— Tidak ada item —</td></tr>`}
+      ${blankHtml}
     </tbody>
   </table>
 
-  <!-- SUMMARY -->
-  <div class="summary-wrap">
-    <div class="summary">
-      <div class="summary-row">
-        <span class="summary-label">Subtotal</span>
-        <span>${formatCurrency(subTotal)}</span>
-      </div>
-      ${discount > 0 ? `<div class="summary-row discount"><span class="summary-label">Diskon</span><span>- ${formatCurrency(discount)}</span></div>` : ''}
-      ${tax > 0 ? `<div class="summary-row tax"><span class="summary-label">Pajak</span><span>${formatCurrency(tax)}</span></div>` : ''}
-      <div class="summary-row total">
-        <span>TOTAL</span>
-        <span>${formatCurrency(grandTotal)}</span>
-      </div>
-      ${status !== 'debt' ? `
-      <div class="summary-row paid">
-        <span class="summary-label">Dibayar</span>
-        <span>${formatCurrency(amountReceived)}</span>
-      </div>
-      ${changeAmount > 0 ? `<div class="summary-row change"><span class="summary-label">Kembalian</span><span>${formatCurrency(changeAmount)}</span></div>` : ''}
-      ` : `
-      <div class="summary-row" style="background:#fef2f2">
-        <span class="summary-label" style="color:#dc2626;font-weight:600">⚠ Status Kredit</span>
-        <span style="color:#dc2626;font-weight:700">Belum Lunas</span>
-      </div>
-      ${sale.due_date ? `<div class="summary-row"><span class="summary-label">Jatuh Tempo</span><span style="font-weight:600;color:#dc2626">${safeDate(sale.due_date)}</span></div>` : ''}
-      `}
-    </div>
-  </div>
+  <hr class="separator" style="margin-top:0;margin-bottom:14px"/>
 
-  <!-- NOTE -->
-  ${sale.note ? `<div class="note-box"><strong>Catatan:</strong> ${sale.note}</div>` : ''}
+  <!-- ══ BOTTOM SECTION ══ -->
+  <div class="bottom-section">
 
-  <!-- FOOTER -->
-  <div class="doc-footer">
-    <div class="thanks">
-      <div>Terima kasih atas kepercayaan Anda.</div>
-      <strong>${store.name}</strong>
+    <!-- Kiri: Catatan + TTD -->
+    <div class="left-bottom">
+      <div class="note-label">Catatan / Keterangan</div>
+      <div class="note-box">${sale.note ?? ''}</div>
+
+      <div class="sig-row" style="margin-top:16px">
+        <div class="sig-block">
+          <div class="sig-title">Penerima,</div>
+          <div class="sig-line">( _____________________ )</div>
+        </div>
+        <div class="sig-block">
+          <div class="sig-title">Hormat Kami,</div>
+          <div class="sig-line">( _____________________ )</div>
+        </div>
+      </div>
     </div>
-    <div class="signature-block">
-      <div class="sig-label">Hormat Kami,</div>
-      <div class="sig-line">( _____________________ )</div>
+
+    <!-- Kanan: Ringkasan Total -->
+    <div class="totals-block">
+      <div class="totals-wrapper">
+        <div class="totals-header">Ringkasan Pembayaran</div>
+        <table class="totals-table">
+          <tbody>
+            <tr>
+              <td class="label-col">Subtotal</td>
+              <td>${formatCurrency(subTotal)}</td>
+            </tr>
+            ${discount > 0 ? `
+            <tr>
+              <td class="label-col">Diskon</td>
+              <td style="color:#dc2626;font-weight:600">− ${formatCurrency(discount)}</td>
+            </tr>` : ''}
+            ${tax > 0 ? `
+            <tr>
+              <td class="label-col">Pajak / Tax</td>
+              <td>${formatCurrency(tax)}</td>
+            </tr>` : ''}
+            <tr class="grand-total">
+              <td>TOTAL</td>
+              <td>${formatCurrency(grandTotal)}</td>
+            </tr>
+            ${status !== 'debt' ? `
+            <tr class="paid-row">
+              <td class="label-col">Dibayar</td>
+              <td>${formatCurrency(amountReceived)}</td>
+            </tr>
+            ${changeAmount > 0 ? `
+            <tr class="change-row">
+              <td class="label-col">Kembalian</td>
+              <td>${formatCurrency(changeAmount)}</td>
+            </tr>` : ''}
+            ` : `
+            <tr class="debt-row">
+              <td>Sisa Piutang</td>
+              <td>${formatCurrency(grandTotal - amountReceived)}</td>
+            </tr>
+            ${sale.due_date ? `
+            <tr class="debt-row">
+              <td>Jatuh Tempo</td>
+              <td style="font-size:10px">${safeDateShort(sale.due_date)}</td>
+            </tr>` : ''}
+            `}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Footer note -->
+      <div style="margin-top:10px;font-size:9.5px;color:#9ca3af;text-align:center;line-height:1.6">
+        Terima kasih atas kepercayaan Anda.<br/>
+        Dokumen ini adalah faktur resmi dari <strong>${store.name}</strong>.
+      </div>
     </div>
+
   </div>
 
 </body>
 </html>`;
 
-  const w = window.open('', '_blank');
+  // Gunakan targetWindow (pre-opened) jika tersedia, hindari popup blocking
+  const w = targetWindow ?? window.open('', '_blank');
   if (w) {
     w.document.write(printContent);
     w.document.close();

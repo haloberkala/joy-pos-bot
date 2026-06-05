@@ -9,6 +9,7 @@ import { getCustomersByStore, Customer } from "@/services/customersService";
 import { getAllStores, Store } from "@/services/storesService";
 import { createSale, processRefund as processRefundService, Sale as DBSale, SaleItem as DBSaleItem } from "@/services/salesService";
 import { createShipment } from "@/services/shipmentsService";
+import { openCashDrawerIfEnabled } from "@/services/cashDrawerService";
 import {
   PaymentMethod,
   Sale,
@@ -540,6 +541,11 @@ export default function POS() {
       setSelectedCustomer(null);
       setIsDebt(false);
       closeBill(activeBillId);
+
+      // Buka laci kasir otomatis untuk pembayaran tunai/QRIS (bukan utang)
+      if (!isDebt && (paymentMethod === 'cash' || paymentMethod === 'qris')) {
+        openCashDrawerIfEnabled(); // fire-and-forget, tidak memblokir receipt
+      }
       
       // Reload products to update stock
       loadStoreData();

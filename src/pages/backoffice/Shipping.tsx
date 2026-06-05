@@ -10,10 +10,9 @@ import { formatCurrency, formatDate } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Search, Eye, MapPin, Phone, User, Package, Printer } from 'lucide-react';
+import { Search, Eye, MapPin, User, Package } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { printSuratJalan } from '@/components/pos/PrintSuratJalan';
 
 export default function Shipping() {
   const { activeStoreId } = useAuth();
@@ -259,16 +258,12 @@ export default function Shipping() {
                 </div>
 
                 {/* Actions */}
-                <div className="border-t pt-4 flex gap-3">
-                  <Button variant="outline" className="flex-1 gap-2" onClick={() => setViewShipment(null)}>
+                <div className="border-t pt-4">
+                  <Button
+                    className="w-full h-10 rounded-lg font-medium"
+                    onClick={() => setViewShipment(null)}
+                  >
                     Tutup
-                  </Button>
-                  <Button className="flex-1 gap-2" onClick={() => {
-                    if (currentStore) {
-                      printSuratJalan({ shipment: viewShipment, store: currentStore });
-                    }
-                  }}>
-                    <Printer className="w-4 h-4" /> Cetak Surat Jalan
                   </Button>
                 </div>
               </div>

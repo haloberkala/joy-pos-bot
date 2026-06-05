@@ -1,8 +1,11 @@
+import { useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Sale, SaleDetail, Product } from '@/types/pos';
 import { formatCurrency, formatDate } from '@/lib/format';
-import { Printer, X, AlertTriangle } from 'lucide-react';
+import { Printer, X, AlertTriangle, FileText } from 'lucide-react';
+import { printInvoice } from '@/components/pos/PrintInvoice';
+import { SaleItem } from '@/services/salesService';
 
 interface ReceiptModalProps {
   isOpen: boolean;
@@ -11,14 +14,26 @@ interface ReceiptModalProps {
   saleDetails: (SaleDetail & { product?: Product })[];
   cashierName: string;
   customerName?: string;
+  /** Data toko untuk faktur A4 */
+  store?: { name: string; address?: string | null; phone?: string | null } | null;
 }
 
-export function ReceiptModal({ isOpen, onClose, sale, saleDetails, cashierName, customerName }: ReceiptModalProps) {
+export function ReceiptModal({
+  isOpen,
+  onClose,
+  sale,
+  saleDetails,
+  cashierName,
+  customerName,
+  store,
+}: ReceiptModalProps) {
   if (!sale) return null;
+
   const paymentLabel = { cash: 'Tunai', transfer: 'Transfer', qris: 'QRIS' } as Record<string, string>;
   const isDebt = sale.payment_status === 'debt';
 
-  const handlePrint = () => {
+  // ─── Handler: Cetak Struk Thermal 80mm ───────────────────────────────────
+  const handlePrintStruk = () => {
     const receiptContent = document.getElementById('receipt-print-area');
     if (!receiptContent) return;
 
@@ -91,19 +106,96 @@ export function ReceiptModal({ isOpen, onClose, sale, saleDetails, cashierName, 
     printWindow.onload = () => { printWindow.print(); };
   };
 
+
+  // ─── Handler: Cetak Struk + Faktur (berurutan) ────────────────────────────
+  const handlePrintBoth = () => {
+    // ⚠️ Pre-open jendela faktur SEKARANG (sinkron, saat masih dalam user gesture)
+    // agar browser tidak memblokir popup saat dipanggil dari dalam setTimeout.
+    const preopenedFakturWin = store ? window.open('', '_blank') : null;
+
+    // Cetak struk thermal terlebih dahulu
+    handlePrintStruk();
+
+    // Tulis konten faktur ke jendela yang sudah dibuka, setelah delay
+    setTimeout(() => {
+      if (!store || !preopenedFakturWin) return;
+
+      const items: SaleItem[] = saleDetails.map(d => ({
+        id: d.id,
+        sale_id: sale.id,
+        product_id: d.product_id,
+        product_name: d.product?.name ?? `Produk #${d.product_id}`,
+        product_code: undefined,
+        quantity: d.quantity,
+        price_per_unit: d.price_at_sale,
+        price_mode: d.price_mode as 'retail' | 'wholesale' | 'special',
+        total_price: d.total_price,
+      }));
+
+      const saleForInvoice = {
+        id: sale.id,
+        invoice_number: sale.invoice_number,
+        sale_date: sale.date,
+        grand_total: sale.grand_total,
+        sub_total: sale.grand_total,
+        discount: 0,
+        tax: 0,
+        amount_received: sale.amount_received,
+        change_amount: sale.change_amount,
+        payment_method: sale.payment_method,
+        payment_status: sale.payment_status ?? 'paid',
+        cashier_name: cashierName,
+        note: null,
+        due_date: sale.due_date ?? null,
+      };
+
+      printInvoice({
+        sale: saleForInvoice as any,
+        items,
+        store,
+        customerName,
+        targetWindow: preopenedFakturWin, // gunakan window yang sudah dibuka
+      });
+    }, 800);
+  };
+
+  // ─── Keyboard Shortcuts ───────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Abaikan jika user sedang mengetik di input/textarea
+      if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
+
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      } else if (e.key === 'Enter' && e.ctrlKey) {
+        e.preventDefault();
+        handlePrintBoth();
+      } else if (e.key === 'Enter' && !e.ctrlKey) {
+        e.preventDefault();
+        handlePrintStruk();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
+  }, [isOpen, sale]);
+
   return (
     <Dialog open={isOpen} onOpenChange={(open) => {
-      // Only allow closing via buttons, not backdrop or ESC
-      // onOpenChange will be called with false when user tries to close
-      // We ignore it - only explicit onClose() calls from buttons will work
+      // Hanya izinkan tutup via tombol/keyboard shortcut yang kita kelola sendiri
     }}>
-      <DialogContent 
-        className="sm:max-w-sm" 
+      <DialogContent
+        className="sm:max-w-sm"
         hideCloseButton
-        onPointerDownOutside={(e) => e.preventDefault()} // Disable backdrop click
-        onEscapeKeyDown={(e) => e.preventDefault()}      // Disable ESC key
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => e.preventDefault()}
       >
         <DialogHeader><DialogTitle className="text-center">Struk Pembayaran</DialogTitle></DialogHeader>
+
+        {/* ── Area Struk (hanya untuk referensi visual) ── */}
         <div id="receipt-print-area" className="space-y-4 font-mono text-[12px]">
           <div className="text-center border-b border-dashed border-border pb-3">
             <h3 className="font-medium text-[15px] text-foreground">TOKO BERKAH</h3>
@@ -141,11 +233,50 @@ export function ReceiptModal({ isOpen, onClose, sale, saleDetails, cashierName, 
               </div>
             )}
           </div>
-          <div className="text-center text-muted-foreground pt-3 border-t border-dashed border-border"><p>Terima kasih atas kunjungan Anda!</p></div>
-          <div className="flex gap-2 pt-2">
-            <Button variant="ghost" onClick={onClose} className="flex-1"><X className="w-4 h-4 mr-1" />Tutup</Button>
-            <Button onClick={handlePrint} className="flex-1"><Printer className="w-4 h-4 mr-1" />Cetak</Button>
+          <div className="text-center text-muted-foreground pt-3 border-t border-dashed border-border">
+            <p>Terima kasih atas kunjungan Anda!</p>
           </div>
+        </div>
+
+        {/* ── Keyboard hints ── */}
+        <div className="flex items-center justify-center gap-3 pt-1 text-[10px] text-muted-foreground">
+          <span><kbd className="px-1 py-0.5 rounded border border-border bg-muted font-mono text-[9px]">Esc</kbd> Tutup</span>
+          <span><kbd className="px-1 py-0.5 rounded border border-border bg-muted font-mono text-[9px]">Enter</kbd> Cetak Struk</span>
+          <span><kbd className="px-1 py-0.5 rounded border border-border bg-muted font-mono text-[9px]">Ctrl Enter</kbd> +Faktur</span>
+        </div>
+
+        {/* ── Footer: Tiga Tombol ── */}
+        <div className="flex items-center gap-2 pt-1">
+          {/* Tombol 1: Tutup (secondary/outline) */}
+          <Button
+            variant="outline"
+            className="flex-none px-3 h-9 border-slate-300 text-slate-700 hover:bg-slate-50"
+            onClick={onClose}
+            title="Tutup (Esc)"
+          >
+            <X className="w-4 h-4 mr-1.5" />
+            Tutup
+          </Button>
+
+          {/* Tombol 2: Cetak Struk (primary solid ungu) */}
+          <Button
+            className="flex-1 h-9 bg-indigo-600 hover:bg-indigo-700 text-white font-medium transition-colors"
+            onClick={handlePrintStruk}
+            title="Cetak Struk Thermal (Enter)"
+          >
+            <Printer className="w-4 h-4 mr-1.5" />
+            Cetak Struk
+          </Button>
+
+          {/* Tombol 3: Cetak Struk + Faktur (emerald) */}
+          <Button
+            className="flex-1 h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-medium transition-colors"
+            onClick={handlePrintBoth}
+            title="Cetak Struk + Faktur A4 (Shift+Enter)"
+          >
+            <FileText className="w-4 h-4 mr-1.5" />
+            +Faktur
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
