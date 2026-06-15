@@ -258,6 +258,21 @@ export default function POS() {
   useEffect(() => {
     searchRef.current?.focus();
   }, []);
+
+  // Touchscreen fix: --vh variable agar layout tidak geser saat virtual keyboard muncul
+  useEffect(() => {
+    const updateVh = () => {
+      const vh = (window.visualViewport?.height ?? window.innerHeight) * 0.01;
+      document.documentElement.style.setProperty('--vh', `${vh}px`);
+    };
+    updateVh();
+    window.visualViewport?.addEventListener('resize', updateVh);
+    window.addEventListener('resize', updateVh);
+    return () => {
+      window.visualViewport?.removeEventListener('resize', updateVh);
+      window.removeEventListener('resize', updateVh);
+    };
+  }, []);
   // Note: Debt flow now handled via DebtModal — no auto-trigger.
 
   useBarcodeScanner({
@@ -492,7 +507,7 @@ export default function POS() {
         payment_status: isDebt ? 'debt' : 'paid',
         amount_received: isDebt ? 0 : amountPaid,
         change_amount: isDebt ? 0 : Math.max(0, amountPaid - grandTotal),
-        due_date: isDebt && dueDate ? new Date(dueDate) : null,
+        due_date: null, // dueDate dihandle via DebtModal, bukan handleConfirmPayment
         cashier_name: user?.name || 'Kasir',
         items: saleItems,
       });
@@ -722,7 +737,7 @@ export default function POS() {
   ).length;
 
   return (
-    <div className="h-screen flex flex-col bg-surface">
+    <div className="flex flex-col bg-surface" style={{ height: 'calc(var(--vh, 1vh) * 100)' }}>
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-2 border-b border-border bg-white">
         <div className="flex items-center gap-3">
@@ -776,7 +791,7 @@ export default function POS() {
           {canAccessMenu(user?.role, "pos") && (
             <button
               onClick={() => setShowRefund(true)}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent text-[12px] font-medium transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent active:bg-accent active:text-foreground text-[12px] font-medium transition-colors touch-manipulation"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Refund</span>
@@ -876,7 +891,7 @@ export default function POS() {
         })}
         <button
           onClick={addNewBill}
-          className="flex items-center gap-1 px-3 py-2.5 text-[12px] font-medium text-muted-foreground hover:text-foreground transition-colors shrink-0"
+          className="flex items-center gap-1 px-3 py-2.5 text-[12px] font-medium text-muted-foreground hover:text-foreground active:text-foreground transition-colors shrink-0 touch-manipulation"
         >
           <Plus className="w-3 h-3" /> Baru
         </button>
@@ -1224,7 +1239,7 @@ export default function POS() {
                       setShowDebtModal(true);
                     }}
                     disabled={items.length === 0 && serviceItems.length === 0}
-                    className="px-4 py-2 rounded-lg bg-[hsl(40,72%,42%)] hover:bg-[hsl(40,72%,36%)] text-white text-[12px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="px-4 py-2 min-h-[44px] rounded-lg bg-[hsl(40,72%,42%)] hover:bg-[hsl(40,72%,36%)] active:bg-[hsl(40,72%,30%)] active:scale-[0.97] text-white text-[12px] font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
                   >
                     SIMPAN UTANG
                   </button>
@@ -1233,21 +1248,21 @@ export default function POS() {
                     <button
                       onClick={() => handleCheckout("cash")}
                       disabled={items.length === 0 && serviceItems.length === 0}
-                      className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-[12px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-4 py-2 min-h-[44px] rounded-lg bg-primary hover:bg-primary/90 active:bg-primary/80 active:scale-[0.97] text-primary-foreground text-[12px] font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
                     >
                       TUNAI
                     </button>
                     <button
                       onClick={() => handleCheckout("transfer")}
                       disabled={items.length === 0 && serviceItems.length === 0}
-                      className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-[12px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-4 py-2 min-h-[44px] rounded-lg bg-primary hover:bg-primary/90 active:bg-primary/80 active:scale-[0.97] text-primary-foreground text-[12px] font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
                     >
                       TRANSFER
                     </button>
                     <button
                       onClick={() => handleCheckout("qris")}
                       disabled={items.length === 0 && serviceItems.length === 0}
-                      className="px-4 py-2 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground text-[12px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-4 py-2 min-h-[44px] rounded-lg bg-primary hover:bg-primary/90 active:bg-primary/80 active:scale-[0.97] text-primary-foreground text-[12px] font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
                     >
                       QRIS
                     </button>

@@ -1,6 +1,10 @@
-import { supabase } from '@/lib/supabase';
+import { supabaseAny as db } from '@/lib/supabase';
+import type { Product } from '@/types/pos';
 
-export interface Product {
+export type { Product };
+
+// ── DB Row type (raw Supabase response) ──────────────────────────────────────
+type ProductRow = {
   id: number;
   store_id: number;
   code: string;
@@ -17,6 +21,21 @@ export interface Product {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+};
+
+/** Bridge raw DB row → types/pos.ts Product */
+function mapProduct(row: ProductRow): Product {
+  return {
+    ...row,
+    // Fields in types/pos.ts not present in DB — provide sensible defaults
+    selling_price: row.selling_price_retail,
+    wholesale_min_qty: 0,
+    special_min_qty: 0,
+    created_by: null,
+    updated_by: null,
+    created_at: new Date(row.created_at),
+    updated_at: new Date(row.updated_at),
+  };
 }
 
 export interface CreateProductInput {
@@ -53,7 +72,7 @@ export interface UpdateProductInput {
  */
 export async function getProductsByStore(storeId: number): Promise<Product[]> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('products')
       .select('*')
       .eq('store_id', storeId)
@@ -61,7 +80,7 @@ export async function getProductsByStore(storeId: number): Promise<Product[]> {
       .order('name', { ascending: true });
 
     if (error) throw error;
-    return data || [];
+    return (data || []).map(mapProduct);
   } catch (error) {
     console.error('Error fetching products:', error);
     throw error;
@@ -73,7 +92,7 @@ export async function getProductsByStore(storeId: number): Promise<Product[]> {
  */
 export async function getProductByCode(storeId: number, code: string): Promise<Product | null> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('products')
       .select('*')
       .eq('store_id', storeId)
@@ -85,7 +104,7 @@ export async function getProductByCode(storeId: number, code: string): Promise<P
       if (error.code === 'PGRST116') return null; // Not found
       throw error;
     }
-    return data;
+    return mapProduct(data);
   } catch (error) {
     console.error('Error fetching product by code:', error);
     throw error;
@@ -100,8 +119,7 @@ export async function updateProductQuantity(
   quantityChange: number
 ): Promise<void> {
   try {
-    // Get current quantity
-    const { data: product, error: fetchError } = await supabase
+    const { data: product, error: fetchError } = await db
       .from('products')
       .select('quantity')
       .eq('id', productId)
@@ -109,10 +127,9 @@ export async function updateProductQuantity(
 
     if (fetchError) throw fetchError;
 
-    // Update quantity
     const newQuantity = product.quantity + quantityChange;
-    
-    const { error: updateError } = await supabase
+
+    const { error: updateError } = await db
       .from('products')
       .update({ quantity: newQuantity })
       .eq('id', productId);
@@ -129,7 +146,7 @@ export async function updateProductQuantity(
  */
 export async function deleteProduct(productId: number): Promise<void> {
   try {
-    const { error } = await supabase
+    const { error } = await db
       .from('products')
       .update({ is_active: false })
       .eq('id', productId);
@@ -146,7 +163,7 @@ export async function deleteProduct(productId: number): Promise<void> {
  */
 export async function createProduct(input: CreateProductInput): Promise<Product> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('products')
       .insert({
         store_id: input.store_id,
@@ -166,7 +183,6 @@ export async function createProduct(input: CreateProductInput): Promise<Product>
       .single();
 
     if (error) {
-      // Handle duplicate barcode/SKU error
       if (error.code === '23505') {
         if (error.message.includes('products_store_id_code_key')) {
           throw new Error(`Barcode/SKU "${input.code}" sudah digunakan di toko ini. Gunakan kode yang berbeda.`);
@@ -176,10 +192,9 @@ export async function createProduct(input: CreateProductInput): Promise<Product>
       }
       throw error;
     }
-    return data;
+    return mapProduct(data);
   } catch (error: any) {
     console.error('Error creating product:', error);
-    // Re-throw with user-friendly message if available
     if (error.message && !error.message.includes('duplicate key')) {
       throw error;
     }
@@ -192,8 +207,8 @@ export async function createProduct(input: CreateProductInput): Promise<Product>
  */
 export async function updateProduct(productId: number, input: UpdateProductInput): Promise<Product> {
   try {
-    const updateData: any = {};
-    
+    const updateData: Record<string, any> = {};
+
     if (input.name !== undefined) updateData.name = input.name;
     if (input.code !== undefined) updateData.code = input.code;
     if (input.category_id !== undefined) updateData.category_id = input.category_id;
@@ -206,7 +221,7 @@ export async function updateProduct(productId: number, input: UpdateProductInput
     if (input.selling_price_wholesale !== undefined) updateData.selling_price_wholesale = input.selling_price_wholesale;
     if (input.selling_price_special !== undefined) updateData.selling_price_special = input.selling_price_special;
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('products')
       .update(updateData)
       .eq('id', productId)
@@ -214,7 +229,7 @@ export async function updateProduct(productId: number, input: UpdateProductInput
       .single();
 
     if (error) throw error;
-    return data;
+    return mapProduct(data);
   } catch (error) {
     console.error('Error updating product:', error);
     throw error;
@@ -236,14 +251,10 @@ export async function bulkCreateProducts(products: CreateProductInput[]): Promis
       await createProduct(products[i]);
       successCount++;
     } catch (error: any) {
-      const rowNum = i + 2; // +2 because Excel starts at 1 and has header row
+      const rowNum = i + 2;
       const productCode = products[i].code;
       const productName = products[i].name;
-      
-      // Extract user-friendly error message
-      let errorMsg = error.message || 'Gagal menambahkan produk';
-      
-      // Format error message with product details
+      const errorMsg = error.message || 'Gagal menambahkan produk';
       errors.push(`Baris ${rowNum} (${productCode} - ${productName}): ${errorMsg}`);
     }
   }

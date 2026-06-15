@@ -1,83 +1,93 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 
 interface BarcodeScannerOptions {
   onScan: (barcode: string) => void;
   minLength?: number;
-  maxDelay?: number; // max ms between keystrokes to be considered scanner input
+  maxKeystrokeGap?: number; // ms antar karakter scanner (default 50ms)
   enabled?: boolean;
 }
 
+/**
+ * useBarcodeScanner — Global keyboard-wedge barcode listener
+ *
+ * Cara kerja:
+ * - Scanner mengirim karakter sangat cepat (<50ms/karakter)
+ * - Manusia mengetik lebih lambat (>80ms/karakter)
+ * - Hook membedakan keduanya berdasarkan gap antar keystroke
+ *
+ * Perbaikan v2:
+ * - Capture phase: intercept event sebelum sampai ke form field
+ * - onScan disimpan di ref: tidak re-register listener tiap render
+ * - Form field logic: hanya block jika gap besar (ketukan manusia)
+ */
 export function useBarcodeScanner({
   onScan,
   minLength = 6,
-  maxDelay = 50,
+  maxKeystrokeGap = 50,
   enabled = true,
 }: BarcodeScannerOptions) {
-  const [lastScanned, setLastScanned] = useState<string | null>(null);
   const bufferRef = useRef('');
-  const lastKeystrokeRef = useRef(0);
+  const lastKeyTimeRef = useRef(0);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const processBuffer = useCallback(() => {
-    const barcode = bufferRef.current.trim();
-    if (barcode.length >= minLength) {
-      setLastScanned(barcode);
-      onScan(barcode);
-    }
+  // Simpan onScan di ref agar tidak trigger re-register listener tiap render parent
+  const onScanRef = useRef(onScan);
+  useEffect(() => { onScanRef.current = onScan; }, [onScan]);
+
+  const flush = useCallback(() => {
+    const code = bufferRef.current.trim();
     bufferRef.current = '';
-  }, [onScan, minLength]);
+    if (code.length >= minLength) {
+      onScanRef.current(code);
+    }
+  }, [minLength]);
 
   useEffect(() => {
     if (!enabled) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if user is typing in an input/textarea (unless it's a barcode field)
       const target = e.target as HTMLElement;
-      const isInBarcodeField = target.getAttribute('data-barcode-input') === 'true';
-      const isInFormField = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT';
-      
-      if (isInFormField && !isInBarcodeField) return;
+      const tag = target.tagName;
+      const isFormField = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
 
       const now = Date.now();
-      const timeSinceLastKeystroke = now - lastKeystrokeRef.current;
+      const gap = now - lastKeyTimeRef.current;
 
-      // If too much time passed, reset buffer
-      if (timeSinceLastKeystroke > maxDelay && bufferRef.current.length > 0) {
+      // Reset buffer jika gap terlalu lama (bukan input scanner)
+      if (gap > maxKeystrokeGap && bufferRef.current.length > 0) {
         bufferRef.current = '';
       }
 
-      lastKeystrokeRef.current = now;
-
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        processBuffer();
+      // Jika user mengetik manual di form (gap besar = human typing)
+      // dan buffer masih kosong → ini bukan scanner, biarkan form menerimanya
+      if (isFormField && gap > maxKeystrokeGap && bufferRef.current.length === 0) {
+        lastKeyTimeRef.current = now;
         return;
       }
 
-      // Only accept printable characters
+      lastKeyTimeRef.current = now;
+
+      if (e.key === 'Enter') {
+        if (bufferRef.current.length >= minLength) {
+          e.preventDefault(); // Cegah submit form saat scan di dalam form field
+          flush();
+        }
+        return;
+      }
+
       if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
         bufferRef.current += e.key;
-        
-        // Clear existing timeout
         if (timeoutRef.current) clearTimeout(timeoutRef.current);
-        
-        // Set timeout to process after delay (in case Enter is not sent)
-        timeoutRef.current = setTimeout(() => {
-          processBuffer();
-        }, maxDelay * 3);
+        // Auto-flush untuk scanner mode continuous (tanpa Enter)
+        timeoutRef.current = setTimeout(flush, maxKeystrokeGap * 4);
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
+    // capture: true = intercept sebelum event sampai ke elemen form
+    window.addEventListener('keydown', handleKeyDown, true);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keydown', handleKeyDown, true);
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-  }, [enabled, maxDelay, processBuffer]);
-
-  const clearLastScanned = useCallback(() => {
-    setLastScanned(null);
-  }, []);
-
-  return { lastScanned, clearLastScanned };
+  }, [enabled, maxKeystrokeGap, flush]);
 }

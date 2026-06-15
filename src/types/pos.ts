@@ -132,13 +132,15 @@ export interface Customer {
   store_id: number;
   name: string;
   phone: string;
-  address?: string;
-  created_at: Date;
-  updated_at: Date;
+  address: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
-export type PaymentMethod = 'cash' | 'qris' | 'transfer';
-export type PaymentStatus = 'paid' | 'debt' | 'refunded';
+// Sesuai DB constraint: payment_method = ANY (ARRAY['cash','transfer','qris','debt'])
+export type PaymentMethod = 'cash' | 'qris' | 'transfer' | 'debt';
+// Sesuai DB constraint: payment_status = ANY (ARRAY['paid','debt','partial','refunded'])
+export type PaymentStatus = 'paid' | 'debt' | 'partial' | 'refunded';
 
 export interface Refund {
   id: number;
