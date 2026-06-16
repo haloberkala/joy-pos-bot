@@ -6,6 +6,7 @@ import { formatCurrency, formatDate } from '@/lib/format';
 import { Printer, X, AlertTriangle, FileText } from 'lucide-react';
 import { printInvoice } from '@/components/pos/PrintInvoice';
 import { SaleItem } from '@/services/salesService';
+import { printReceiptAndOpenDrawer, isThermalPrinterSupported } from '@/services/thermalPrinterService';
 
 interface ReceiptModalProps {
   isOpen: boolean;
@@ -33,7 +34,37 @@ export function ReceiptModal({
   const isDebt = sale.payment_status === 'debt';
 
   // ─── Handler: Cetak Struk Thermal 80mm ───────────────────────────────────
-  const handlePrintStruk = () => {
+  const handlePrintStruk = async () => {
+    // 1. Coba cetak langsung via Web Serial API tanpa pop-up
+    if (isThermalPrinterSupported()) {
+      try {
+        const receiptData = {
+          storeName: store?.name || 'TOKO BERKAH',
+          storeAddress: store?.address || 'Banjarmasin',
+          items: saleDetails.map(item => ({
+            name: item.product?.name || 'Produk #' + item.product_id,
+            qty: item.quantity,
+            price: item.price_at_sale,
+          })),
+          total: sale.grand_total,
+          amountReceived: sale.amount_received,
+          change: sale.change_amount,
+          paymentMethod: paymentLabel[sale.payment_method] || sale.payment_method,
+          cashierName: cashierName,
+          transactionId: sale.invoice_number,
+          customerName: customerName,
+        };
+        
+        const success = await printReceiptAndOpenDrawer(receiptData);
+        if (success) {
+          return; // Berhasil cetak langsung ke thermal, batalkan proses browser popup
+        }
+      } catch (err) {
+        console.warn('Gagal cetak via Web Serial:', err);
+      }
+    }
+
+    // 2. Fallback: Cetak via browser pop-up
     const receiptContent = document.getElementById('receipt-print-area');
     if (!receiptContent) return;
 

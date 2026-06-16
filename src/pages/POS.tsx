@@ -10,6 +10,7 @@ import { getAllStores, Store } from "@/services/storesService";
 import { createSale, processRefund as processRefundService, Sale as DBSale, SaleItem as DBSaleItem } from "@/services/salesService";
 import { createShipment } from "@/services/shipmentsService";
 import { openCashDrawerIfEnabled } from "@/services/cashDrawerService";
+import { connectPrinter } from "@/services/thermalPrinterService";
 import {
   PaymentMethod,
   Sale,
@@ -37,6 +38,7 @@ import {
   RotateCcw,
   FileText,
   Info,
+  Printer,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -797,6 +799,17 @@ export default function POS() {
               <span className="hidden sm:inline">Refund</span>
             </button>
           )}
+          <button
+            onClick={async () => {
+              const ok = await connectPrinter();
+              if (ok) toast.success("Printer Thermal Terhubung!");
+              else toast.error("Gagal memilih printer.");
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent active:bg-accent active:text-foreground text-[12px] font-medium transition-colors touch-manipulation"
+            title="Setel Printer Thermal"
+          >
+            <Printer className="w-3.5 h-3.5" />
+          </button>
           <button
             onClick={() => setScannerActive(!scannerActive)}
             className={cn(

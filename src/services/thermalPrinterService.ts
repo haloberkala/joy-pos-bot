@@ -13,6 +13,7 @@
  * - Browser: Chrome / Edge (Web Serial API)
  * - Printer terhubung via USB Serial
  */
+import { toast } from 'sonner';
 
 const ESC = 0x1b;
 const GS  = 0x1d;
@@ -100,6 +101,25 @@ export function isThermalPrinterSupported(): boolean {
   return 'serial' in navigator;
 }
 
+let activePort: SerialPort | null = null;
+
+export async function connectPrinter(): Promise<boolean> {
+
+  if (!isThermalPrinterSupported()) {
+    console.warn('[ThermalPrinter] Web Serial API tidak didukung. Gunakan Chrome/Edge.');
+    return false;
+  }
+
+  try {
+    const port = await (navigator as any).serial.requestPort();
+    activePort = port;
+    return true;
+  } catch (err) {
+    console.info('[ThermalPrinter] Batal pilih printer', err);
+    return false;
+  }
+}
+
 /**
  * Kirim raw bytes ke printer thermal via Web Serial API.
  * Chrome akan menampilkan dialog pemilihan port pada pemanggilan pertama,
@@ -113,12 +133,25 @@ export async function printToThermal(data: Uint8Array): Promise<boolean> {
     return false;
   }
 
-  let port: SerialPort | undefined;
+  let port: SerialPort | undefined = activePort || undefined;
   try {
-    port = await (navigator as any).serial.requestPort();
-    await port.open({ baudRate: 9600 });
+    if (!port) {
+      const ports = await (navigator as any).serial.getPorts();
+      if (ports && ports.length > 0) {
+        port = ports[0];
+        activePort = port; // Simpan port yang terpilih
+      } else {
+        port = await (navigator as any).serial.requestPort();
+        activePort = port;
+      }
+    }
+    
+    // Periksa apakah port sudah terbuka
+    if (!port!.readable && !port!.writable) {
+      await port!.open({ baudRate: 9600 });
+    }
 
-    const writer = port.writable?.getWriter();
+    const writer = port!.writable?.getWriter();
     if (!writer) throw new Error('Port writable tidak tersedia');
 
     await writer.write(data);
@@ -131,12 +164,9 @@ export async function printToThermal(data: Uint8Array): Promise<boolean> {
       console.info('[ThermalPrinter] Pemilihan port dibatalkan.');
     } else {
       console.warn('[ThermalPrinter] Gagal mengirim ke printer:', err);
+      toast.error(`Gagal ngeprint via Web Serial: ${err.message || 'Unknown error'}`);
     }
     return false;
-  } finally {
-    try {
-      if (port?.readable || port?.writable) await port?.close();
-    } catch { /* ignore */ }
   }
 }
 
