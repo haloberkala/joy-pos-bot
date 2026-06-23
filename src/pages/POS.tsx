@@ -10,7 +10,7 @@ import { getAllStores, Store } from "@/services/storesService";
 import { createSale, processRefund as processRefundService, Sale as DBSale, SaleItem as DBSaleItem } from "@/services/salesService";
 import { createShipment } from "@/services/shipmentsService";
 import { openCashDrawerIfEnabled } from "@/services/cashDrawerService";
-import { connectPrinter } from "@/services/thermalPrinterService";
+import { connectPrinterUSB, connectPrinterSerial } from "@/services/thermalPrinterService";
 import {
   PaymentMethod,
   Sale,
@@ -801,14 +801,25 @@ export default function POS() {
           )}
           <button
             onClick={async () => {
-              const ok = await connectPrinter();
-              if (ok) toast.success("Printer Thermal Terhubung!");
-              else toast.error("Gagal memilih printer.");
+              const ok = await connectPrinterUSB();
+              if (ok) toast.success("Printer USB Terhubung!");
+              else toast.error("Gagal memilih printer USB.");
             }}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent active:bg-accent active:text-foreground text-[12px] font-medium transition-colors touch-manipulation"
-            title="Setel Printer Thermal"
+            title="Setel Printer Thermal USB"
           >
-            <Printer className="w-3.5 h-3.5" />
+            <Printer className="w-3.5 h-3.5" /> USB
+          </button>
+          <button
+            onClick={async () => {
+              const ok = await connectPrinterSerial();
+              if (ok) toast.success("Printer Bluetooth/Serial Terhubung!");
+              else toast.error("Gagal memilih printer Serial.");
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent active:bg-accent active:text-foreground text-[12px] font-medium transition-colors touch-manipulation"
+            title="Setel Printer Thermal Bluetooth/Serial"
+          >
+            <Printer className="w-3.5 h-3.5" /> BT/Serial
           </button>
           <button
             onClick={() => setScannerActive(!scannerActive)}
@@ -1331,6 +1342,7 @@ export default function POS() {
             ? customers.find((c) => c.id === currentSale.customer_id)?.name
             : undefined
         }
+        store={activeStore}
       />
       <RefundModal
         isOpen={showRefund}

@@ -1,11 +1,11 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Customer } from '@/types/pos';
-import { getCustomersForStore, addCustomer, updateCustomer, findCustomerByPhone } from '@/data/sampleData';
+import { getCustomersByStore, createCustomer, updateCustomer as updateCustomerApi } from '@/services/customersService';
 import { Search, UserPlus, Edit2, Check, Phone, User, MapPin, X } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -27,8 +27,32 @@ export function CustomerModal({ isOpen, onClose, storeId, onSelectCustomer, sele
   const [formPhone, setFormPhone] = useState('');
   const [formAddress, setFormAddress] = useState('');
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [storeCustomers, setStoreCustomers] = useState<Customer[]>([]);
+  const [isLoadingCustomers, setIsLoadingCustomers] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const storeCustomers = useMemo(() => getCustomersForStore(storeId), [storeId]);
+  // Fetch customers from Supabase when modal opens or storeId changes
+  useEffect(() => {
+    if (!isOpen) return;
+    loadCustomers();
+  }, [isOpen, storeId]);
+
+  const loadCustomers = async () => {
+    try {
+      setIsLoadingCustomers(true);
+      const data = await getCustomersByStore(storeId);
+      setStoreCustomers(data.map(c => ({
+        ...c,
+        address: c.address ?? undefined,
+      })) as Customer[]);
+    } catch (error) {
+      console.error('Error loading customers:', error);
+      toast.error('Gagal memuat data pelanggan');
+    } finally {
+      setIsLoadingCustomers(false);
+    }
+  };
+
   const filteredCustomers = useMemo(() => {
     if (!searchPhone) return storeCustomers;
     return storeCustomers.filter(c => c.phone.includes(searchPhone) || c.name.toLowerCase().includes(searchPhone.toLowerCase()));
@@ -36,21 +60,71 @@ export function CustomerModal({ isOpen, onClose, storeId, onSelectCustomer, sele
 
   const resetForm = () => { setFormName(''); setFormPhone(''); setFormAddress(''); setEditingCustomer(null); };
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     if (!formName.trim() || !formPhone.trim()) { toast.error('Nama dan nomor telepon wajib diisi'); return; }
-    const existing = findCustomerByPhone(formPhone, storeId);
+    // Check duplicate phone locally first
+    const existing = storeCustomers.find(c => c.phone === formPhone.trim());
     if (existing) { toast.error('Nomor telepon sudah terdaftar'); return; }
-    const newCustomer: Customer = { id: Date.now(), store_id: storeId, name: formName.trim(), phone: formPhone.trim(), address: formAddress.trim() || undefined, created_at: new Date(), updated_at: new Date() };
-    addCustomer(newCustomer); onSelectCustomer(newCustomer);
-    toast.success(`Pelanggan ${newCustomer.name} berhasil ditambahkan`); resetForm(); setView('search');
+
+    try {
+      setIsSaving(true);
+      const newCustomer = await createCustomer({
+        store_id: storeId,
+        name: formName.trim(),
+        phone: formPhone.trim(),
+        address: formAddress.trim() || undefined,
+      });
+      // Map to pos Customer type
+      const mapped: Customer = {
+        id: newCustomer.id,
+        store_id: newCustomer.store_id,
+        name: newCustomer.name,
+        phone: newCustomer.phone,
+        address: newCustomer.address ?? undefined,
+        created_at: newCustomer.created_at,
+        updated_at: newCustomer.updated_at,
+      };
+      setStoreCustomers(prev => [...prev, mapped]);
+      onSelectCustomer(mapped);
+      toast.success(`Pelanggan ${mapped.name} berhasil ditambahkan`);
+      resetForm();
+      setView('search');
+    } catch (error: any) {
+      toast.error(error.message || 'Gagal menambahkan pelanggan');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleEdit = () => {
+  const handleEdit = async () => {
     if (!editingCustomer || !formName.trim() || !formPhone.trim()) { toast.error('Nama dan nomor telepon wajib diisi'); return; }
-    updateCustomer(editingCustomer.id, { name: formName.trim(), phone: formPhone.trim(), address: formAddress.trim() || undefined });
-    const updated = { ...editingCustomer, name: formName.trim(), phone: formPhone.trim(), address: formAddress.trim() || undefined };
-    if (selectedCustomer?.id === editingCustomer.id) onSelectCustomer(updated);
-    toast.success('Data pelanggan berhasil diperbarui'); resetForm(); setView('search');
+
+    try {
+      setIsSaving(true);
+      const updated = await updateCustomerApi(editingCustomer.id, {
+        name: formName.trim(),
+        phone: formPhone.trim(),
+        address: formAddress.trim() || undefined,
+      });
+      const mapped: Customer = {
+        id: updated.id,
+        store_id: updated.store_id,
+        name: updated.name,
+        phone: updated.phone,
+        address: updated.address ?? undefined,
+        created_at: updated.created_at,
+        updated_at: updated.updated_at,
+      };
+      setStoreCustomers(prev => prev.map(c => c.id === mapped.id ? mapped : c));
+      if (selectedCustomer?.id === editingCustomer.id) onSelectCustomer(mapped);
+      toast.success('Data pelanggan berhasil diperbarui');
+      resetForm();
+      setView('search');
+    } catch (error: any) {
+      toast.error(error.message || 'Gagal memperbarui pelanggan');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const startEdit = (customer: Customer) => { setEditingCustomer(customer); setFormName(customer.name); setFormPhone(customer.phone); setFormAddress(customer.address || ''); setView('edit'); };
@@ -83,7 +157,8 @@ export function CustomerModal({ isOpen, onClose, storeId, onSelectCustomer, sele
               <Input placeholder="Cari nama atau nomor telepon..." value={searchPhone} onChange={(e) => setSearchPhone(e.target.value)} className="pl-9 rounded-lg text-[13px] h-9" />
             </div>
             <div className="max-h-48 overflow-y-auto space-y-1">
-              {filteredCustomers.map((customer) => (
+              {isLoadingCustomers && <p className="text-center py-4 text-muted-foreground text-[12px]">Memuat data pelanggan...</p>}
+              {!isLoadingCustomers && filteredCustomers.map((customer) => (
                 <div key={customer.id} className="flex items-center justify-between p-2 rounded-lg hover:bg-surface transition-colors group">
                   <button onClick={() => { onSelectCustomer(customer); onClose(); }} className="flex items-center gap-2.5 flex-1 text-left">
                     <div className="w-7 h-7 rounded-full bg-surface flex items-center justify-center flex-shrink-0"><User className="w-3.5 h-3.5 text-muted-foreground" /></div>
@@ -94,7 +169,7 @@ export function CustomerModal({ isOpen, onClose, storeId, onSelectCustomer, sele
                   </Button>
                 </div>
               ))}
-              {filteredCustomers.length === 0 && searchPhone && (<div className="text-center py-4 text-muted-foreground text-[12px]"><p>Pelanggan tidak ditemukan</p></div>)}
+              {!isLoadingCustomers && filteredCustomers.length === 0 && searchPhone && (<div className="text-center py-4 text-muted-foreground text-[12px]"><p>Pelanggan tidak ditemukan</p></div>)}
             </div>
             <div className="flex gap-2">
               {!requireCustomer && (<Button variant="ghost" onClick={() => { onSelectCustomer(null); onClose(); }} className="flex-1 rounded-lg">Lewati</Button>)}
@@ -122,8 +197,8 @@ export function CustomerModal({ isOpen, onClose, storeId, onSelectCustomer, sele
             </div>
             <div className="flex gap-2 pt-2">
               <Button variant="ghost" onClick={() => { resetForm(); setView('search'); }} className="flex-1 rounded-lg">Kembali</Button>
-              <Button onClick={view === 'add' ? handleAdd : handleEdit} className="flex-1 rounded-lg gap-2">
-                <Check className="w-3.5 h-3.5" /> {view === 'add' ? 'Tambah Pelanggan' : 'Simpan Perubahan'}
+              <Button onClick={view === 'add' ? handleAdd : handleEdit} disabled={isSaving} className="flex-1 rounded-lg gap-2">
+                <Check className="w-3.5 h-3.5" /> {isSaving ? 'Menyimpan...' : (view === 'add' ? 'Tambah Pelanggan' : 'Simpan Perubahan')}
               </Button>
             </div>
           </div>

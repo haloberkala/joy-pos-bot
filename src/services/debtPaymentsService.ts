@@ -28,7 +28,7 @@ export async function createDebtPayment(input: CreateDebtPaymentInput): Promise<
       .insert({
         sale_id: input.sale_id,
         amount: input.amount,
-        payment_date: input.payment_date || new Date(),
+        payment_date: input.payment_date ? input.payment_date.toISOString() : new Date().toISOString(),
         note: input.note || null,
       })
       .select()

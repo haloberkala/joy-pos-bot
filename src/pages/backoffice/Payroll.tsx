@@ -18,7 +18,7 @@ import { Calculator, CheckCircle, FileText } from 'lucide-react';
 
 const MONTHS = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 
-export default function Payroll() {
+export default function PayrollPage() {
   const { activeStoreId } = useAuth();
   const now = new Date();
   const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);

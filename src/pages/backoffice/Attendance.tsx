@@ -26,7 +26,7 @@ function toSimpleStatus(s: string): SimpleStatus {
   return s === 'hadir' ? 'hadir' : 'tidak_hadir';
 }
 
-export default function Attendance() {
+export default function AttendancePage() {
   const { activeStoreId } = useAuth();
   const now = new Date();
   const [filterEmployee, setFilterEmployee] = useState<string>('all');
@@ -71,7 +71,7 @@ export default function Attendance() {
     return attendances.filter(a => {
       const emp = employees.find(e => e.id === a.employee_id);
       if (!emp || emp.store_id !== activeStoreId) return false;
-      if (filterEmployee !== 'all' && a.employee_id !== Number(filterEmployee)) return false;
+      if (filterEmployee !== 'all' && String(a.employee_id) !== String(filterEmployee)) return false;
       if (filterMonth && !a.attendance_date.startsWith(filterMonth)) return false;
       if (filterStatus !== 'all') {
         const simple = toSimpleStatus(a.status);

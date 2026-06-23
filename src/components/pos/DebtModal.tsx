@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { addShipment } from '@/data/shippingStore';
+// Shipping creation is handled by the parent POS component via onConfirm callback
 import { CartItem, Customer, ServiceItem } from '@/types/pos';
 import { formatCurrency } from '@/lib/format';
 import { X, Truck, MapPin, Phone, Check } from 'lucide-react';

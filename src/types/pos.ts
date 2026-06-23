@@ -17,7 +17,6 @@ export interface User {
   id: number;
   store_id: number | null;
   name: string;
-  email: string;
   password_hash: string;
   role: UserRole;
   avatar?: string;
@@ -36,6 +35,7 @@ export interface Category {
   name: string;
   slug: string;
   description?: string;
+  icon?: string;
   created_at: Date;
   updated_at: Date;
 }

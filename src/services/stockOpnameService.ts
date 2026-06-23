@@ -51,7 +51,7 @@ export async function createStockOpname(input: CreateStockOpnameInput): Promise<
       .insert({
         store_id: input.store_id,
         opname_number: input.opname_number,
-        opname_date: input.opname_date || new Date(),
+        opname_date: input.opname_date ? input.opname_date.toISOString() : new Date().toISOString(),
         note: input.note || null,
         status: 'completed',
         created_by: input.created_by || null,

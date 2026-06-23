@@ -78,7 +78,7 @@ export async function createExpense(input: CreateExpenseInput): Promise<Expense>
         category_id: input.category_id,
         title: input.title,
         amount: input.amount,
-        expense_date: input.expense_date || new Date().toISOString().split('T')[0],
+        expense_date: typeof input.expense_date === 'string' ? input.expense_date : (input.expense_date instanceof Date ? input.expense_date.toISOString().split('T')[0] : new Date().toISOString().split('T')[0]),
         note: input.note || null,
       })
       .select()

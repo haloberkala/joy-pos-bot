@@ -52,8 +52,8 @@ export function CustomerSubform({ storeId, selectedCustomer, onCustomerChange, r
         name: c.name,
         phone: c.phone,
         address: c.address || undefined,
-        created_at: new Date(c.created_at),
-        updated_at: new Date(c.updated_at),
+        created_at: new Date(c.created_at).toISOString(),
+        updated_at: new Date(c.updated_at).toISOString(),
       }));
       setCustomers(converted);
     } catch (error) {
@@ -98,8 +98,8 @@ export function CustomerSubform({ storeId, selectedCustomer, onCustomerChange, r
         name: newCustomer.name,
         phone: newCustomer.phone,
         address: newCustomer.address || undefined,
-        created_at: new Date(newCustomer.created_at),
-        updated_at: new Date(newCustomer.updated_at),
+        created_at: new Date(newCustomer.created_at).toISOString(),
+        updated_at: new Date(newCustomer.updated_at).toISOString(),
       };
       
       setCustomers(prev => [...prev, converted]);
@@ -133,8 +133,8 @@ export function CustomerSubform({ storeId, selectedCustomer, onCustomerChange, r
         name: updated.name,
         phone: updated.phone,
         address: updated.address || undefined,
-        created_at: new Date(updated.created_at),
-        updated_at: new Date(updated.updated_at),
+        created_at: new Date(updated.created_at).toISOString(),
+        updated_at: new Date(updated.updated_at).toISOString(),
       };
       
       setCustomers(prev => prev.map(c => c.id === editing.id ? converted : c));

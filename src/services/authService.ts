@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase';
 
 export interface AuthUser {
-  id: number;
+  id: string;
   username: string;
   name: string;
   role: 'owner' | 'admin' | 'cashier';
@@ -29,11 +29,8 @@ export async function login(username: string, password: string): Promise<LoginRe
       .eq('username', username)
       .single();
 
-    if (employeeError || !employee) {
-      return {
-        success: false,
-        message: 'Username atau password salah',
-      };
+    if (employeeError || !employee || !employee.id) {
+      throw new Error('User tidak ditemukan');
     }
 
     // 2. Check if account is active
@@ -54,7 +51,7 @@ export async function login(username: string, password: string): Promise<LoginRe
     console.log('Password verification:', { passwordValid, verifyError });
 
     // Check if password is valid (handle both boolean and object response)
-    const isPasswordValid = passwordValid === true || passwordValid === 't' || passwordValid === 1;
+    const isPasswordValid = passwordValid === true || (passwordValid as any) === 't' || (passwordValid as any) === 1;
     
     if (verifyError || !isPasswordValid) {
       console.log('Password verification failed', { passwordValid, isPasswordValid });
@@ -86,7 +83,7 @@ export async function login(username: string, password: string): Promise<LoginRe
       id: employee.id,
       username: employee.username,
       name: employee.name,
-      role: employee.role,
+      role: employee.role as AuthUser['role'],
       store_id: employee.store_id,
       is_active: employee.is_active,
     };
@@ -94,8 +91,8 @@ export async function login(username: string, password: string): Promise<LoginRe
     return {
       success: true,
       user,
-      session_token: sessionData.session_token,
-      expires_at: sessionData.expires_at,
+      session_token: (sessionData as any).session_token,
+      expires_at: (sessionData as any).expires_at,
     };
   } catch (error) {
     console.error('Login error:', error);
@@ -122,10 +119,10 @@ export async function validateSession(sessionToken: string): Promise<AuthUser | 
     }
 
     return {
-      id: data.employee_id,
-      username: data.username,
+      id: (data as any).employee_id ?? data.id,
+      username: (data as any).username ?? data.name,
       name: data.name,
-      role: data.role,
+      role: data.role as AuthUser['role'],
       store_id: data.store_id,
       is_active: data.is_active,
     };

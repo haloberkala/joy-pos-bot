@@ -5,7 +5,7 @@ import * as authService from '@/services/authService';
 import { supabase } from '@/lib/supabase';
 
 interface User {
-  id: number;
+  id: string;
   username: string;
   name: string;
   role: UserRole;

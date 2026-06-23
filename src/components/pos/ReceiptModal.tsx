@@ -7,6 +7,7 @@ import { Printer, X, AlertTriangle, FileText } from 'lucide-react';
 import { printInvoice } from '@/components/pos/PrintInvoice';
 import { SaleItem } from '@/services/salesService';
 import { printReceiptAndOpenDrawer, isThermalPrinterSupported } from '@/services/thermalPrinterService';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface ReceiptModalProps {
   isOpen: boolean;
@@ -39,8 +40,8 @@ export function ReceiptModal({
     if (isThermalPrinterSupported()) {
       try {
         const receiptData = {
-          storeName: store?.name || 'TOKO BERKAH',
-          storeAddress: store?.address || 'Banjarmasin',
+          storeName: store?.name || 'Toko',
+          storeAddress: store?.address || undefined,
           items: saleDetails.map(item => ({
             name: item.product?.name || 'Produk #' + item.product_id,
             qty: item.quantity,
@@ -230,12 +231,13 @@ export function ReceiptModal({
         <DialogHeader><DialogTitle className="text-center">Struk Pembayaran</DialogTitle></DialogHeader>
 
         {/* ── Area Struk (hanya untuk referensi visual) ── */}
-        <div id="receipt-print-area" className="space-y-4 font-mono text-[12px]">
+        <div id="receipt-print-area" className="space-y-4 font-mono text-[12px] pt-4 pb-4">
           <div className="text-center border-b border-dashed border-border pb-3">
-            <h3 className="font-medium text-[15px] text-foreground">TOKO BERKAH</h3>
-            <p className="text-muted-foreground">Banjarmasin</p>
+            <p className="font-bold text-[14px] uppercase tracking-wide text-foreground mb-4">Struk Pembayaran</p>
+            <h3 className="font-bold text-[15px] text-foreground">{store?.name || 'Toko'}</h3>
+            {store?.address && <p className="text-muted-foreground whitespace-pre-wrap mt-1">{store.address}</p>}
           </div>
-          <div className="space-y-1 border-b border-dashed border-border pb-3">
+          <div className="space-y-1 border-b border-dashed border-border pb-3 pt-1">
             <div className="flex justify-between"><span className="text-muted-foreground">No. Invoice</span><span className="text-foreground">{sale.invoice_number}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Tanggal</span><span className="text-foreground">{formatDate(sale.date)}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Kasir</span><span className="text-foreground">{cashierName}</span></div>
@@ -267,8 +269,21 @@ export function ReceiptModal({
               </div>
             )}
           </div>
-          <div className="text-center text-muted-foreground pt-3 border-t border-dashed border-border">
-            <p>Terima kasih atas kunjungan Anda!</p>
+          <div className="text-center text-muted-foreground pt-3 border-t border-dashed border-border flex flex-col items-center">
+            <p>Terima kasih sudah berbelanja!</p>
+            <p className="mt-3 px-4 text-[11px]">Barang dapat di-refund/tukar</p>
+            <p className="px-4 text-[11px]">Syarat & Ketentuan Berlaku</p>
+            <div className="mt-4 mb-2">
+              <QRCodeSVG 
+                value={sale.invoice_number} 
+                size={80}
+                bgColor={"#ffffff"}
+                fgColor={"#000000"}
+                level={"L"}
+                includeMargin={false}
+              />
+            </div>
+            <p className="mt-1">{sale.invoice_number}</p>
           </div>
         </div>
 

@@ -125,8 +125,8 @@ export async function createEmployee(input: EmployeeInput): Promise<Employee> {
     if (error) throw error;
 
     return {
-      ...data,
-      store_name: data.stores?.name || 'Unknown',
+      ...(data as any),
+      store_name: (data as any).stores?.name || 'Unknown',
       stores: undefined,
     };
   } catch (error) {
@@ -179,8 +179,8 @@ export async function updateEmployee(
     if (error) throw error;
 
     return {
-      ...data,
-      store_name: data.stores?.name || 'Unknown',
+      ...(data as any),
+      store_name: (data as any).stores?.name || 'Unknown',
       stores: undefined,
     };
   } catch (error) {
@@ -227,8 +227,8 @@ export async function toggleEmployeeStatus(
     if (error) throw error;
 
     return {
-      ...data,
-      store_name: data.stores?.name || 'Unknown',
+      ...(data as any),
+      store_name: (data as any).stores?.name || 'Unknown',
       stores: undefined,
     };
   } catch (error) {

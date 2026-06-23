@@ -80,7 +80,7 @@ export async function createSale(input: CreateSaleInput): Promise<Sale> {
         store_id: input.store_id,
         customer_id: input.customer_id || null,
         invoice_number: input.invoice_number,
-        sale_date: input.sale_date || new Date(),
+        sale_date: input.sale_date ? input.sale_date.toISOString() : new Date().toISOString(),
         sub_total: input.sub_total,
         discount: input.discount || 0,
         tax: input.tax || 0,
@@ -89,7 +89,7 @@ export async function createSale(input: CreateSaleInput): Promise<Sale> {
         payment_status: input.payment_status,
         amount_received: input.amount_received,
         change_amount: input.change_amount,
-        due_date: input.due_date || null,
+        due_date: input.due_date ? input.due_date.toISOString() : null,
         note: input.note || null,
         cashier_name: input.cashier_name || null,
       })

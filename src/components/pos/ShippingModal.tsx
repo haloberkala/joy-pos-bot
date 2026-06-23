@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getCustomersForStore } from '@/data/sampleData';
-import { addShipment, handleCustomerSelectForShipping } from '@/data/shippingStore';
+import { getCustomersByStore } from '@/services/customersService';
+import { createShipment } from '@/services/shipmentsService';
 import { CartItem, Customer } from '@/types/pos';
 import { formatCurrency } from '@/lib/format';
 import { X, Truck, User, MapPin, Phone } from 'lucide-react';
@@ -19,7 +19,9 @@ interface ShippingModalProps {
 
 export function ShippingModal({ isOpen, onClose, items, total, invoiceNumber, saleId, customer }: ShippingModalProps) {
   const { activeStoreId } = useAuth();
-  const storeCustomers = useMemo(() => getCustomersForStore(activeStoreId), [activeStoreId]);
+  const [storeCustomers, setStoreCustomers] = useState<Customer[]>([]);
+  const [isLoadingCustomers, setIsLoadingCustomers] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const [customerId, setCustomerId] = useState(customer ? String(customer.id) : '');
   const [recipientName, setRecipientName] = useState(customer?.name || '');
@@ -28,23 +30,63 @@ export function ShippingModal({ isOpen, onClose, items, total, invoiceNumber, sa
   const [shippingCost, setShippingCost] = useState('');
   const [note, setNote] = useState('');
 
-  const handleCustomerChange = (id: string) => {
-    setCustomerId(id);
-    const info = handleCustomerSelectForShipping(Number(id));
-    if (info) { setRecipientName(info.name); setRecipientPhone(info.phone); setRecipientAddress(info.address); }
+  // Fetch customers from Supabase when modal opens
+  useEffect(() => {
+    if (!isOpen) return;
+    loadCustomers();
+  }, [isOpen, activeStoreId]);
+
+  const loadCustomers = async () => {
+    try {
+      setIsLoadingCustomers(true);
+      const data = await getCustomersByStore(activeStoreId);
+      setStoreCustomers(data.map(c => ({
+        ...c,
+        address: c.address ?? undefined,
+      })) as Customer[]);
+    } catch (error) {
+      console.error('Error loading customers:', error);
+      toast.error('Gagal memuat data pelanggan');
+    } finally {
+      setIsLoadingCustomers(false);
+    }
   };
 
-  const handleSubmit = () => {
+  const handleCustomerChange = (id: string) => {
+    setCustomerId(id);
+    const selected = storeCustomers.find(c => String(c.id) === id);
+    if (selected) {
+      setRecipientName(selected.name);
+      setRecipientPhone(selected.phone);
+      setRecipientAddress(selected.address || '');
+    }
+  };
+
+  const handleSubmit = async () => {
     if (!recipientName || !recipientPhone || !recipientAddress) { toast.error('Nama, telepon, dan alamat penerima wajib diisi'); return; }
-    const itemsDesc = items.map(i => `${i.product.name} x${i.quantity}`).join(', ');
-    addShipment({
-      id: Date.now(), store_id: activeStoreId, sale_id: saleId || null,
-      invoice_number: invoiceNumber || `SHP-${Date.now().toString().slice(-6)}`,
-      customer_id: Number(customerId) || 0, recipient_name: recipientName, recipient_phone: recipientPhone,
-      recipient_address: recipientAddress, items_description: itemsDesc, note: note || undefined,
-      shipping_cost: parseFloat(shippingCost) || 0, status: 'pending', created_at: new Date(), updated_at: new Date(),
-    });
-    toast.success('Pengiriman berhasil dibuat!'); onClose();
+
+    try {
+      setIsSaving(true);
+      const itemsDesc = items.map(i => `${i.product.name} x${i.quantity}`).join(', ');
+      await createShipment({
+        store_id: activeStoreId,
+        sale_id: saleId || null,
+        invoice_number: invoiceNumber || `SHP-${Date.now().toString().slice(-6)}`,
+        customer_id: Number(customerId) || null,
+        recipient_name: recipientName,
+        recipient_phone: recipientPhone,
+        recipient_address: recipientAddress,
+        items_description: itemsDesc,
+        shipping_cost: parseFloat(shippingCost) || 0,
+      });
+      toast.success('Pengiriman berhasil dibuat!');
+      onClose();
+    } catch (error: any) {
+      console.error('Error creating shipment:', error);
+      toast.error(error.message || 'Gagal membuat pengiriman');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -81,8 +123,8 @@ export function ShippingModal({ isOpen, onClose, items, total, invoiceNumber, sa
 
           <div>
             <label className={labelCls}><User className="w-3.5 h-3.5 inline mr-1" />Pilih Pelanggan</label>
-            <select value={customerId} onChange={e => handleCustomerChange(e.target.value)} className={inputCls}>
-              <option value="">-- Pilih pelanggan --</option>
+            <select value={customerId} onChange={e => handleCustomerChange(e.target.value)} className={inputCls} disabled={isLoadingCustomers}>
+              <option value="">{isLoadingCustomers ? 'Memuat...' : '-- Pilih pelanggan --'}</option>
               {storeCustomers.map(c => (<option key={c.id} value={c.id}>{c.name} - {c.phone}</option>))}
             </select>
           </div>
@@ -104,8 +146,8 @@ export function ShippingModal({ isOpen, onClose, items, total, invoiceNumber, sa
 
           <div className="flex gap-3 pt-2">
             <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-border text-foreground font-medium text-[13px] hover:bg-accent transition-colors">Batal</button>
-            <button onClick={handleSubmit} className="flex-1 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-[13px] hover:bg-primary/90 transition-colors flex items-center justify-center gap-2">
-              <Truck className="w-3.5 h-3.5" /> Buat Pengiriman
+            <button onClick={handleSubmit} disabled={isSaving} className="flex-1 py-2 rounded-lg bg-primary text-primary-foreground font-medium text-[13px] hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50">
+              <Truck className="w-3.5 h-3.5" /> {isSaving ? 'Menyimpan...' : 'Buat Pengiriman'}
             </button>
           </div>
         </div>

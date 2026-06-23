@@ -8,7 +8,7 @@ export async function getAccessibleStores(userId: string) {
   try {
     // Get user profile
     const { data: user, error: userError } = await supabase
-      .from('users')
+      .from('employees')
       .select('role, store_id')
       .eq('id', userId)
       .single();
@@ -49,7 +49,7 @@ export async function getAccessibleStores(userId: string) {
 export async function canAccessStore(userId: string, storeId: number): Promise<boolean> {
   try {
     const { data: user, error } = await supabase
-      .from('users')
+      .from('employees')
       .select('role, store_id')
       .eq('id', userId)
       .single();
@@ -73,7 +73,7 @@ export async function canAccessStore(userId: string, storeId: number): Promise<b
 export async function getUserProfile(userId: string) {
   try {
     const { data, error } = await supabase
-      .from('users')
+      .from('employees')
       .select(`
         *,
         store:stores(*)
@@ -89,40 +89,6 @@ export async function getUserProfile(userId: string) {
   }
 }
 
-/**
- * Create a new user (admin only)
- */
-export async function createUser(params: {
-  email: string;
-  password: string;
-  name: string;
-  role: UserRole;
-  storeId?: number;
-}) {
-  try {
-    const metadata: Record<string, any> = {
-      name: params.name,
-      role: params.role,
-    };
-
-    if (params.storeId) {
-      metadata.store_id = params.storeId.toString();
-    }
-
-    const { data, error } = await supabase.auth.admin.createUser({
-      email: params.email,
-      password: params.password,
-      email_confirm: true,
-      user_metadata: metadata,
-    });
-
-    if (error) throw error;
-    return data;
-  } catch (error) {
-    console.error('Error creating user:', error);
-    throw error;
-  }
-}
 
 /**
  * Update user profile
@@ -135,7 +101,7 @@ export async function updateUserProfile(userId: string, updates: {
 }) {
   try {
     const { data, error } = await supabase
-      .from('users')
+      .from('employees')
       .update(updates)
       .eq('id', userId)
       .select()
@@ -155,7 +121,7 @@ export async function updateUserProfile(userId: string, updates: {
 export async function getAllUsers(storeId?: number) {
   try {
     let query = supabase
-      .from('users')
+      .from('employees')
       .select(`
         *,
         store:stores(*)
@@ -176,72 +142,3 @@ export async function getAllUsers(storeId?: number) {
   }
 }
 
-/**
- * Sign up a new user (public registration)
- */
-export async function signUp(params: {
-  email: string;
-  password: string;
-  name: string;
-  role: UserRole;
-  storeId?: number;
-}) {
-  try {
-    const metadata: Record<string, any> = {
-      name: params.name,
-      role: params.role,
-    };
-
-    if (params.storeId) {
-      metadata.store_id = params.storeId.toString();
-    }
-
-    const { data, error } = await supabase.auth.signUp({
-      email: params.email,
-      password: params.password,
-      options: {
-        data: metadata,
-      },
-    });
-
-    if (error) throw error;
-    return data;
-  } catch (error) {
-    console.error('Error signing up:', error);
-    throw error;
-  }
-}
-
-/**
- * Reset password
- */
-export async function resetPassword(email: string) {
-  try {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/reset-password`,
-    });
-
-    if (error) throw error;
-    return true;
-  } catch (error) {
-    console.error('Error resetting password:', error);
-    throw error;
-  }
-}
-
-/**
- * Update password
- */
-export async function updatePassword(newPassword: string) {
-  try {
-    const { error } = await supabase.auth.updateUser({
-      password: newPassword,
-    });
-
-    if (error) throw error;
-    return true;
-  } catch (error) {
-    console.error('Error updating password:', error);
-    throw error;
-  }
-}

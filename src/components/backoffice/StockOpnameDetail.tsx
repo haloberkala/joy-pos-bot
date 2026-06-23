@@ -157,7 +157,7 @@ export function StockOpnameDetail({ storeId, onBack }: StockOpnameDetailProps) {
         opname_number: opnameNumber,
         opname_date: now,
         note: `Stock opname ${filledCount} produk, ${discrepancyCount} selisih`,
-        created_by: user?.email || undefined,
+        created_by: user?.username || undefined,
         items,
       });
 

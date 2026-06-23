@@ -60,7 +60,7 @@ export async function createPurchase(input: CreatePurchaseInput): Promise<Purcha
         store_id: input.store_id,
         supplier_id: input.supplier_id || null,
         reference_no: input.reference_no,
-        purchase_date: input.purchase_date || new Date(),
+        purchase_date: input.purchase_date ? input.purchase_date.toISOString() : new Date().toISOString(),
         total_amount: input.total_amount,
         payment_status: input.payment_status || 'paid',
         image_proof: input.image_proof || null,

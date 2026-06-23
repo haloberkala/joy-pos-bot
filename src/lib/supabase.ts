@@ -37,6 +37,6 @@ export type Updates<T extends keyof Database['public']['Tables']> = Database['pu
 
 // Specific table types
 export type Store = Tables<'stores'>;
-export type User = Tables<'users'>;
-export type UserInsert = Inserts<'users'>;
-export type UserUpdate = Updates<'users'>;
+export type User = Tables<'employees'>;
+export type UserInsert = Inserts<'employees'>;
+export type UserUpdate = Updates<'employees'>;
