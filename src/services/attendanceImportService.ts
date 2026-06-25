@@ -1,120 +1,122 @@
-/**
- * Attendance Import Service — ZKTeco LX50 SSR Report
- *
- * Alur kerja:
- * 1. Owner export SSR Report dari mesin ZKTeco LX50 ke USB flashdisk
- * 2. Upload file (.xls/.xlsx/.csv) di halaman Karyawan / Absensi Nadi
- * 3. parseZKTecoFile() → parsing baris data dari spreadsheet
- * 4. importZKTecoAttendances() → upsert ke tabel `attendances` Supabase
- *
- * Format SSR Report ZKTeco (standar):
- * Baris 0-2: header/info mesin (dilewati)
- * Baris 3+:  [Dept, ID, Nama, Tanggal, Masuk, Keluar, ...]
- *
- * Dependency: npm install xlsx
- */
-
 import * as XLSX from 'xlsx';
 import { supabaseAny } from '@/lib/supabase';
 
-// ── Types ────────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
-/** Satu baris absensi yang sudah diparsing dari file ZKTeco */
 export interface ZKTecoRow {
-  /** ID karyawan di mesin absensi (bukan UUID Supabase) */
-  employeeId: string;
-  name: string;
-  /** Format YYYY-MM-DD */
+  machineId: string;
   date: string;
-  /** Format HH:MM atau null jika tidak ada */
   clockIn: string | null;
-  /** Format HH:MM atau null jika tidak ada */
   clockOut: string | null;
+  penaltyMinutes: number;
+  status: 'hadir' | 'alpha';
+}
+
+export interface ParseError {
+  row: number;
+  reason: string;
+}
+
+export interface ParseResult {
+  rows: ZKTecoRow[];
+  parseErrors: ParseError[];
 }
 
 export interface ImportResult {
-  /** Jumlah baris berhasil diupsert */
   inserted: number;
-  /** Jumlah baris dilewati karena ID tidak ditemukan di sistem */
+  updated: number;
   skipped: number;
-  /** Pesan error per baris (maks 20 ditampilkan) */
   errors: string[];
 }
 
-// ── Parser ───────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-/**
- * Parse file SSR Report ZKTeco (.xls/.xlsx/.csv) menjadi array ZKTecoRow.
- * Mendukung file dengan/tanpa header di baris awal.
- */
-export function parseZKTecoFile(file: File): Promise<ZKTecoRow[]> {
+function toDateString(raw: unknown): string | null {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
+  const dmyMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (dmyMatch) return `${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}`;
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+  return null;
+}
+
+function toTimeString(raw: unknown): string | null {
+  if (!raw) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  const match = s.match(/(\d{1,2}):(\d{2})/);
+  if (!match) return null;
+  return `${match[1].padStart(2, '0')}:${match[2]}`;
+}
+
+function normalizeId(raw: unknown): string {
+  const s = String(raw).replace(/['"]/g, '').trim();
+  const n = Number(s);
+  return isNaN(n) ? s : String(n);
+}
+
+// ── Parser ────────────────────────────────────────────────────────────────────
+
+export function parseExceptionStatSheet(file: File): Promise<ParseResult> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
 
     reader.onload = (e) => {
       try {
         const data = new Uint8Array(e.target!.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows: any[] = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false });
+        const workbook = XLSX.read(data, { type: 'array' });
+
+        const sheetName =
+          workbook.SheetNames.find(
+            (name) =>
+              name.toLowerCase().includes('exception') ||
+              name.toLowerCase().includes('statistik')
+          ) ||
+          workbook.SheetNames[3] ||
+          workbook.SheetNames[0];
+
+        if (!sheetName || !workbook.Sheets[sheetName]) {
+          return reject(new Error(`Sheet tidak ditemukan. Sheet tersedia: ${workbook.SheetNames.join(', ')}`));
+        }
+
+        const worksheet = workbook.Sheets[sheetName];
+        const rows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: null });
 
         const result: ZKTecoRow[] = [];
+        const parseErrors: ParseError[] = [];
 
-        // ZKTeco SSR: baris 0-2 biasanya header/info, data mulai baris ke-3
-        // Cari baris pertama yang kolomnya terlihat seperti data absensi
-        let startRow = 3;
-        for (let i = 0; i < Math.min(6, rows.length); i++) {
-          const r = rows[i];
-          // Jika kolom ke-1 berisi angka (ID karyawan) → ini baris data
-          if (r[1] && /^\d+$/.test(String(r[1]).trim())) {
-            startRow = i;
-            break;
-          }
-        }
+        for (let i = 4; i < rows.length; i++) {
+          const row = rows[i] as any[];
+          if (!row || row[0] === null || row[0] === undefined) continue;
 
-        for (let i = startRow; i < rows.length; i++) {
-          const r = rows[i];
-          if (!r[1] || !r[3]) continue; // skip baris kosong
+          const rawIdStr = String(row[0]).replace(/['"]/g, '').trim();
+          if (rawIdStr.toLowerCase() === 'id' || rawIdStr === '') continue;
+          const machineId = normalizeId(row[0]);
 
-          const dateRaw = r[3];
-          let dateStr: string;
+          const dateStr = toDateString(row[3]);
+          if (!dateStr) continue;
 
-          if (dateRaw instanceof Date) {
-            dateStr = dateRaw.toISOString().split('T')[0];
+          const clockIn = toTimeString(row[4]);
+          const clockOut = toTimeString(row[5]);
+          const penaltyMinutes = parseInt(row[11]) || 0;
+
+          let status: 'hadir' | 'alpha';
+          if (clockIn) {
+            status = 'hadir';
+          } else if (penaltyMinutes >= 540) {
+            status = 'alpha';
           } else {
-            // Format tanggal bisa bervariasi: DD/MM/YYYY, YYYY-MM-DD, dll.
-            const s = String(dateRaw).trim();
-            if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
-              dateStr = s.substring(0, 10);
-            } else if (/^\d{2}\/\d{2}\/\d{4}/.test(s)) {
-              const [d, m, y] = s.split('/');
-              dateStr = `${y}-${m}-${d}`;
-            } else {
-              dateStr = s;
-            }
+            continue;
           }
 
-          const cleanTime = (val: any): string | null => {
-            if (!val) return null;
-            const s = String(val).trim();
-            // Ambil hanya HH:MM
-            const match = s.match(/(\d{1,2}):(\d{2})/);
-            if (!match) return null;
-            return `${match[1].padStart(2, '0')}:${match[2]}`;
-          };
-
-          result.push({
-            employeeId: String(r[1]).trim(),
-            name: String(r[2] ?? '').trim(),
-            date: dateStr,
-            clockIn: cleanTime(r[4]),
-            clockOut: cleanTime(r[5]),
-          });
+          result.push({ machineId, date: dateStr, clockIn, clockOut, penaltyMinutes, status });
         }
 
-        resolve(result);
+        resolve({ rows: result, parseErrors });
       } catch (err) {
-        reject(new Error(`Gagal membaca file: ${String(err)}`));
+        reject(new Error(`Gagal membaca file Excel: ${String(err)}`));
       }
     };
 
@@ -123,90 +125,246 @@ export function parseZKTecoFile(file: File): Promise<ZKTecoRow[]> {
   });
 }
 
-// ── Importer ─────────────────────────────────────────────────────────────────
+// ── Employee Map Builder ──────────────────────────────────────────────────────
 
-/**
- * Upsert baris absensi ZKTeco ke tabel `attendances` di Supabase.
- *
- * Menggunakan upsert dengan onConflict: 'employee_id,attendance_date'
- * → aman dijalankan berulang (idempoten), tidak membuat duplikat.
- *
- * @param rows       Hasil parseZKTecoFile()
- * @param storeId    ID toko aktif
- * @param employeeMap  Mapping { zktecoId: employeeUUID } — build dari tabel employees
- */
-export async function importZKTecoAttendances(
+export async function buildEmployeeMap(storeId: number): Promise<Record<string, string>> {
+  const { data, error } = await supabaseAny
+    .from('employees')
+    .select('id, fingerprint_id')
+    .eq('store_id', Number(storeId))
+    .not('fingerprint_id', 'is', null);
+
+  if (error) throw new Error(`Gagal mengambil data karyawan: ${error.message}`);
+
+  const map: Record<string, string> = {};
+  (data ?? []).forEach((emp: { id: string; fingerprint_id: string | null }) => {
+    if (emp.fingerprint_id) {
+      map[normalizeId(emp.fingerprint_id)] = emp.id;
+    }
+  });
+  return map;
+}
+
+// ── Smart Importer ────────────────────────────────────────────────────────────
+
+const BATCH_SIZE = 50;
+
+// Helper to convert "HH:mm" to minutes since 00:00
+function timeToMinutes(timeStr: string): number {
+  const [h, m] = timeStr.split(':').map(Number);
+  return h * 60 + m;
+}
+
+export async function importAttendances(
   rows: ZKTecoRow[],
   storeId: number,
   employeeMap: Record<string, string>
 ): Promise<ImportResult> {
-  const result: ImportResult = { inserted: 0, skipped: 0, errors: [] };
+  const result: ImportResult = { inserted: 0, updated: 0, skipped: 0, errors: [] };
+  const skippedIds = new Set<string>();
 
+  // Ambil data setting absensi
+  const { data: settingData, error: settingError } = await supabaseAny
+    .from('attendance_settings')
+    .select('*')
+    .eq('store_id', Number(storeId))
+    .single();
+
+  if (settingError && settingError.code !== 'PGRST116') {
+    result.errors.push(`Gagal mengambil aturan absensi: ${settingError.message}`);
+    return result;
+  }
+
+  // Gunakan default fallback jika setting tidak ditemukan di DB
+  const shiftStartStr = settingData?.shift_start || '08:00';
+  const shiftEndStr = settingData?.shift_end || '17:00';
+  const gracePeriod = settingData?.grace_period_minutes ?? 15;
+  const breakStartStr = settingData?.break_start || '12:00';
+  const breakEndStr = settingData?.break_end || '13:00';
+
+  const shiftStartMin = timeToMinutes(shiftStartStr);
+  const shiftEndMin = timeToMinutes(shiftEndStr);
+  const breakStartMin = timeToMinutes(breakStartStr);
+  const breakEndMin = timeToMinutes(breakEndStr);
+  const breakDurationMin = breakEndMin - breakStartMin;
+
+  // Pisahkan baris yang punya mapping UUID
+  const mappedRows: { row: ZKTecoRow; employeeUuid: string }[] = [];
   for (const row of rows) {
-    const employeeUuid = employeeMap[row.employeeId];
-
+    const employeeUuid = employeeMap[row.machineId];
     if (!employeeUuid) {
       result.skipped++;
-      if (result.errors.length < 20) {
-        result.errors.push(`ID mesin "${row.employeeId}" (${row.name}) tidak ditemukan di sistem`);
-      }
-      continue;
+      skippedIds.add(row.machineId);
+    } else {
+      mappedRows.push({ row, employeeUuid });
     }
+  }
 
-    // Hitung durasi kerja
+  if (skippedIds.size > 0) {
+    result.errors.push(
+      `ID mesin tidak ada di database (${result.skipped} data dilewati): [ID ${Array.from(skippedIds).join(', ID ')}]`
+    );
+  }
+
+  if (mappedRows.length === 0) return result;
+
+  // Fetch data yang sudah ada di DB untuk komparasi (smart upsert)
+  const employeeUuids = [...new Set(mappedRows.map((r) => r.employeeUuid))];
+  const dates = [...new Set(mappedRows.map((r) => r.row.date))];
+
+  const { data: existing, error: fetchError } = await supabaseAny
+    .from('attendances')
+    .select('id, employee_id, attendance_date, clock_in, clock_out, penalty_minutes, status, is_manual_edit')
+    .in('employee_id', employeeUuids)
+    .in('attendance_date', dates);
+
+  if (fetchError) {
+    result.errors.push(`Gagal fetch data existing: ${fetchError.message}`);
+    return result;
+  }
+
+  // Buat lookup map: "employeeId|date" → existing row
+  type ExistingRow = {
+    id: number;
+    employee_id: string;
+    attendance_date: string;
+    clock_in: string | null;
+    clock_out: string | null;
+    penalty_minutes: number;
+    status: string;
+    is_manual_edit: boolean;
+  };
+  const existingMap = new Map<string, ExistingRow>();
+  (existing ?? []).forEach((row: ExistingRow) => {
+    existingMap.set(`${row.employee_id}|${row.attendance_date}`, row);
+  });
+
+  // Klasifikasi: INSERT vs UPDATE vs SKIP
+  const toInsert: object[] = [];
+  const toUpdate: { id: number; payload: object }[] = [];
+
+  for (const { row, employeeUuid } of mappedRows) {
+    const key = `${employeeUuid}|${row.date}`;
+    const existing = existingMap.get(key);
+
     let duration_minutes: number | null = null;
-    if (row.clockIn && row.clockOut) {
-      try {
-        const [inH, inM] = row.clockIn.split(':').map(Number);
-        const [outH, outM] = row.clockOut.split(':').map(Number);
-        const diff = (outH * 60 + outM) - (inH * 60 + inM);
-        if (diff > 0) duration_minutes = diff;
-      } catch { /* ignore invalid time */ }
+    let penaltyMinutes = row.penaltyMinutes;
+    let calculatedStatus: 'hadir' | 'alpha' = 'alpha';
+
+    if (row.clockIn) {
+      calculatedStatus = 'hadir';
+      
+      const clockInMin = timeToMinutes(row.clockIn);
+      const penalty = Math.max(0, (clockInMin - shiftStartMin) - gracePeriod);
+      penaltyMinutes = penalty; // Override ZKTeco penalty calculation
+
+      if (row.clockOut) {
+        const clockOutMin = timeToMinutes(row.clockOut);
+        
+        // Kalkulasi Effective Time (Virtual) untuk menghindari lembur
+        const effectiveStartMin = Math.max(clockInMin, shiftStartMin);
+        const effectiveEndMin = Math.min(clockOutMin, shiftEndMin);
+        
+        let totalDur = effectiveEndMin - effectiveStartMin;
+
+        // Kurangi durasi istirahat jika jam kerja efektif memotong waktu istirahat
+        if (effectiveStartMin <= breakStartMin && effectiveEndMin >= breakEndMin) {
+          totalDur -= breakDurationMin;
+        } else if (effectiveStartMin > breakStartMin && effectiveStartMin < breakEndMin && effectiveEndMin >= breakEndMin) {
+          totalDur -= (breakEndMin - effectiveStartMin);
+        } else if (effectiveStartMin <= breakStartMin && effectiveEndMin > breakStartMin && effectiveEndMin < breakEndMin) {
+          totalDur -= (effectiveEndMin - breakStartMin);
+        }
+
+        if (totalDur > 0) {
+          duration_minutes = totalDur;
+        } else {
+          duration_minutes = 0;
+        }
+      }
+    } else {
+      calculatedStatus = 'alpha';
     }
 
-    const record = {
+    const payload = {
       employee_id: employeeUuid,
-      store_id: storeId,
+      store_id: Number(storeId),
       attendance_date: row.date,
       clock_in: row.clockIn,
       clock_out: row.clockOut,
       duration_minutes,
-      status: (row.clockIn ? 'hadir' : 'alpha') as 'hadir' | 'alpha',
-      note: 'Import ZKTeco LX50',
+      penalty_minutes: penaltyMinutes,
+      status: calculatedStatus,
+      note: '',
       is_manual_edit: false,
     };
 
-    const { error } = await supabaseAny
-      .from('attendances')
-      .upsert(record, { onConflict: 'employee_id,attendance_date' });
-
-    if (error) {
-      if (result.errors.length < 20) {
-        result.errors.push(`${row.date} – ${row.name}: ${error.message}`);
-      }
+    if (!existing) {
+      // (d) Belum ada di DB → INSERT
+      toInsert.push(payload);
+    } else if (existing.is_manual_edit) {
+      // (a) Sudah diedit manual → SKIP
+      result.skipped++;
+    } else if (
+      existing.clock_in === row.clockIn &&
+      existing.clock_out === row.clockOut &&
+      existing.penalty_minutes === penaltyMinutes &&
+      existing.status === calculatedStatus
+    ) {
+      // (b) Data identik → SKIP
+      result.skipped++;
     } else {
-      result.inserted++;
+      // (c) Ada perbedaan → UPDATE
+      toUpdate.push({ id: existing.id, payload });
+    }
+  }
+
+  // Batch INSERT
+  for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
+    const batch = toInsert.slice(i, i + BATCH_SIZE);
+    const { error } = await supabaseAny.from('attendances').insert(batch);
+    if (error) {
+      result.errors.push(`Insert batch ${Math.floor(i / BATCH_SIZE) + 1}: ${error.message}`);
+    } else {
+      result.inserted += batch.length;
+    }
+  }
+
+  // Batch UPDATE (satu per satu karena update by id)
+  for (const { id, payload } of toUpdate) {
+    const { error } = await supabaseAny.from('attendances').update(payload).eq('id', id);
+    if (error) {
+      result.errors.push(`Update ID ${id}: ${error.message}`);
+    } else {
+      result.updated++;
     }
   }
 
   return result;
 }
 
-export async function buildEmployeeMap(storeId: number): Promise<Record<string, string>> {
-  const { data, error } = await supabaseAny
-    .from('employees')
-    .select('id, attendance_machine_id')
-    .eq('store_id', storeId)
-    .not('attendance_machine_id', 'is', null);
+// ── One-shot helper ───────────────────────────────────────────────────────────
 
-  if (error) {
-    console.warn('[AttendanceImport] Gagal load employees:', error.message);
-    return {};
+export async function importZKTecoFile(
+  file: File,
+  storeId: number
+): Promise<{ parseResult: ParseResult; importResult: ImportResult }> {
+  const parseResult = await parseExceptionStatSheet(file);
+
+  if (parseResult.rows.length === 0) {
+    return {
+      parseResult,
+      importResult: {
+        inserted: 0,
+        updated: 0,
+        skipped: 0,
+        errors: ['Tidak ada data absensi valid yang ditemukan di file ini.'],
+      },
+    };
   }
 
-  const map: Record<string, string> = {};
-  (data ?? []).forEach((emp: { id: string; attendance_machine_id: string | null }) => {
-    if (emp.attendance_machine_id) map[emp.attendance_machine_id.trim()] = emp.id;
-  });
-  return map;
+  const employeeMap = await buildEmployeeMap(storeId);
+  const importResult = await importAttendances(parseResult.rows, storeId, employeeMap);
+
+  return { parseResult, importResult };
 }

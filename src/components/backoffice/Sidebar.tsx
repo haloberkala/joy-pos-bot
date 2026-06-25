@@ -63,11 +63,13 @@ export function Sidebar() {
     { to: '/backoffice/products/categories-brands', icon: Tag, label: 'Klasifikasi Produk' },
   ];
 
+  const isOwner = user?.role === 'owner';
+
   const sdmSubItems = [
-    { to: '/backoffice/sdm/employees', icon: UserPlus, label: 'Manajemen Karyawan' },
+    ...(isOwner ? [{ to: '/backoffice/sdm/employees', icon: UserPlus, label: 'Manajemen Karyawan' }] : []),
     { to: '/backoffice/sdm/attendance', icon: ClipboardList, label: 'Rekap Absensi' },
-    { to: '/backoffice/sdm/payroll', icon: Banknote, label: 'Penggajian' },
-    { to: '/backoffice/sdm/evaluation', icon: Star, label: 'Evaluasi' },
+    ...(isOwner ? [{ to: '/backoffice/sdm/payroll', icon: Banknote, label: 'Penggajian' }] : []),
+    ...(isOwner ? [{ to: '/backoffice/sdm/evaluation', icon: Star, label: 'Evaluasi' }] : []),
   ];
 
   const bottomItems = [

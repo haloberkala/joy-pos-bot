@@ -1,4 +1,4 @@
-import { supabase } from '@/lib/supabase';
+import { supabase, supabaseAny } from '@/lib/supabase';
 
 export interface Attendance {
   id: number;
@@ -13,6 +13,16 @@ export interface Attendance {
   is_manual_edit: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface AttendanceSetting {
+  id: number;
+  store_id: number;
+  shift_start: string;
+  shift_end: string;
+  grace_period_minutes: number;
+  break_start: string;
+  break_end: string;
 }
 
 export interface CreateAttendanceInput {
@@ -55,6 +65,35 @@ export async function getAttendancesByStore(storeId: number): Promise<Attendance
 }
 
 /**
+ * Get attendances by store filtered by month/year (server-side filtering)
+ */
+export async function getAttendancesByStoreAndMonth(
+  storeId: number,
+  year: number,
+  month: number
+): Promise<Attendance[]> {
+  try {
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+    const { data, error } = await supabase
+      .from('attendances')
+      .select('*')
+      .eq('store_id', storeId)
+      .gte('attendance_date', startDate)
+      .lte('attendance_date', endDate)
+      .order('attendance_date', { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+  } catch (error) {
+    console.error('Error fetching monthly attendances by store:', error);
+    throw error;
+  }
+}
+
+/**
  * Get attendances by employee
  */
 export async function getAttendancesByEmployee(employeeId: string): Promise<Attendance[]> {
@@ -83,7 +122,8 @@ export async function getAttendancesByMonth(
 ): Promise<Attendance[]> {
   try {
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-    const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
     const { data, error } = await supabase
       .from('attendances')
@@ -188,7 +228,8 @@ export async function getAttendanceSummary(
 ): Promise<{ total: number; hadir: number; alpha: number; izin: number; sakit: number; cuti: number }> {
   try {
     const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-    const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
+    const lastDay = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
 
     const { data, error } = await supabase
       .from('attendances')
@@ -220,5 +261,51 @@ export async function getAttendanceSummary(
   } catch (error) {
     console.error('Error getting attendance summary:', error);
     return { total: 0, hadir: 0, alpha: 0, izin: 0, sakit: 0, cuti: 0 };
+  }
+}
+
+export async function getAttendanceSetting(storeId: number) {
+  const { data, error } = await supabaseAny
+    .from('attendance_settings')
+    .select('*')
+    .eq('store_id', storeId)
+    .single();
+
+  if (error && error.code !== 'PGRST116') {
+    throw error;
+  }
+  return data;
+}
+
+export async function upsertAttendanceSetting(storeId: number, setting: any) {
+  // Bersihkan payload (jangan kirim id, dll agar aman)
+  const { id, created_at, updated_at, store_id, ...cleanSetting } = setting;
+
+  // Cek apakah data sudah ada
+  const { data: existing } = await supabaseAny
+    .from('attendance_settings')
+    .select('id')
+    .eq('store_id', storeId)
+    .single();
+
+  if (existing) {
+    // Manual Update
+    const { data, error } = await supabaseAny
+      .from('attendance_settings')
+      .update(cleanSetting)
+      .eq('store_id', storeId)
+      .select();
+
+    if (error) throw error;
+    return data && data.length > 0 ? data[0] : null;
+  } else {
+    // Manual Insert
+    const { data, error } = await supabaseAny
+      .from('attendance_settings')
+      .insert({ ...cleanSetting, store_id: storeId })
+      .select();
+
+    if (error) throw error;
+    return data && data.length > 0 ? data[0] : null;
   }
 }

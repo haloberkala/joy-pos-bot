@@ -849,7 +849,10 @@ export default function POS() {
             ) : (
               <User className="w-3.5 h-3.5 text-primary" />
             )}
-            <span className="font-medium">{user?.name || "User"}</span>
+            <div className="flex flex-col">
+              <span className="font-medium leading-none">{user?.name || "User"}</span>
+              <span className="text-[10px] text-muted-foreground mt-0.5 capitalize">{user?.role === 'admin' ? 'Kepala Toko' : user?.role || "user"}</span>
+            </div>
           </div>
           <button
             onClick={() => {

@@ -48,7 +48,6 @@ export interface Database {
           position: string | null
           daily_salary: number | null
           fingerprint_id: string | null
-          attendance_machine_id: string | null
         }
         Insert: {
           id?: string
@@ -64,7 +63,6 @@ export interface Database {
           position?: string | null
           daily_salary?: number | null
           fingerprint_id?: string | null
-          attendance_machine_id?: string | null
         }
         Update: {
           id?: string
@@ -80,7 +78,6 @@ export interface Database {
           position?: string | null
           daily_salary?: number | null
           fingerprint_id?: string | null
-          attendance_machine_id?: string | null
         }
         Relationships: any[]
       }

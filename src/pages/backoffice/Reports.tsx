@@ -45,7 +45,7 @@ export default function Reports() {
 
   const {
     sales, expenses, expenseCategories, salesByProduct, stockReport, refundReport,
-    totalCOGS, isLoading, error, reload,
+    totalCOGS, totalPayroll, isLoading, error, reload,
     totalRevenue, grossProfit, totalExpenses, netProfit,
   } = useReportData(dateRange, dateFilterType);
 
@@ -289,11 +289,17 @@ export default function Reports() {
                 <TableRow><TableCell className="text-muted-foreground pl-6">Harga Pokok Penjualan (HPP)</TableCell><TableCell className="text-right text-muted-foreground">-{formatCurrency(totalCOGS)}</TableCell></TableRow>
                 <TableRow className="bg-emerald-50/50"><TableCell className="font-semibold">Laba Kotor</TableCell><TableCell className="text-right font-bold text-emerald-600">{formatCurrency(grossProfit)}</TableCell></TableRow>
                 <TableRow><TableCell className="text-xs text-muted-foreground pt-3 pb-1 font-medium uppercase tracking-wide" colSpan={2}>Pengeluaran Operasional</TableCell></TableRow>
-                {expenseBreakdown.length === 0
+                {expenseBreakdown.length === 0 && totalPayroll === 0
                   ? <TableRow><TableCell colSpan={2} className="text-center text-muted-foreground text-sm py-4">Tidak ada pengeluaran tercatat</TableCell></TableRow>
                   : expenseBreakdown.map((e) => (
                     <TableRow key={e.name}><TableCell className="text-muted-foreground pl-6">{e.name}</TableCell><TableCell className="text-right text-red-600">-{formatCurrency(e.amount)}</TableCell></TableRow>
                   ))}
+                {totalPayroll > 0 && (
+                  <TableRow>
+                    <TableCell className="text-muted-foreground pl-6">Gaji Karyawan</TableCell>
+                    <TableCell className="text-right text-red-600">-{formatCurrency(totalPayroll)}</TableCell>
+                  </TableRow>
+                )}
                 <TableRow><TableCell className="font-medium">Total Pengeluaran</TableCell><TableCell className="text-right font-semibold text-red-600">-{formatCurrency(totalExpenses)}</TableCell></TableRow>
                 <TableRow className={netProfit >= 0 ? 'bg-emerald-50' : 'bg-red-50'}>
                   <TableCell className="font-bold text-base">LABA BERSIH</TableCell>

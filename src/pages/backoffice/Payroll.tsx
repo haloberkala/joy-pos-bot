@@ -4,6 +4,7 @@ import {
   getPayrollsByPeriod, 
   generatePayrollsForMonth, 
   markPayrollTransferred as markTransferred,
+  deletePayrollsByMonth,
   Payroll 
 } from '@/services/payrollService';
 import { getEmployeesByStore } from '@/services/employeesService';
@@ -12,6 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { toast } from 'sonner';
 import { formatRupiah } from '@/lib/format';
 import { Calculator, CheckCircle, FileText } from 'lucide-react';
@@ -26,6 +28,8 @@ export default function PayrollPage() {
   const [slipDetail, setSlipDetail] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
 
   // Data from Supabase
   const [payrolls, setPayrolls] = useState<Payroll[]>([]);
@@ -75,6 +79,21 @@ export default function PayrollPage() {
     }
   };
 
+  const handleReset = async () => {
+    try {
+      setIsResetting(true);
+      await deletePayrollsByMonth(activeStoreId, selectedYear, selectedMonth);
+      toast.success('Data gaji bulan ini berhasil di-reset');
+      setIsResetDialogOpen(false);
+      await loadData();
+    } catch (error) {
+      console.error('Error resetting payroll:', error);
+      toast.error('Gagal reset penggajian');
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   const handleTransfer = async (id: number) => {
     try {
       await markTransferred(id);
@@ -104,12 +123,23 @@ export default function PayrollPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-foreground">Penggajian</h1>
-        <Button onClick={handleGenerate} disabled={isGenerating}>
-          <Calculator className="w-4 h-4 mr-2" />
-          {isGenerating ? 'Generating...' : 'Generate Gaji'}
-        </Button>
+      {/* Header Container */}
+      <div className="flex justify-between items-start mb-6">
+        <div className="flex flex-col gap-1.5">
+          <h1 className="text-2xl font-bold text-foreground">Penggajian</h1>
+          <p className="text-sm text-muted-foreground max-w-2xl">
+            Pastikan rekap absensi sudah benar sebelum generate gaji. Jika ada perubahan data absensi setelah generate, silakan gunakan tombol Reset dan lakukan Generate ulang.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" className="text-destructive border-destructive hover:bg-destructive/10" onClick={() => setIsResetDialogOpen(true)} disabled={isGenerating || isResetting}>
+            Reset Gaji
+          </Button>
+          <Button onClick={handleGenerate} disabled={isGenerating || isResetting}>
+            <Calculator className="w-4 h-4 mr-2" />
+            {isGenerating ? 'Generating...' : 'Generate Gaji'}
+          </Button>
+        </div>
       </div>
 
       {/* Period selector */}
@@ -206,6 +236,23 @@ export default function PayrollPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={isResetDialogOpen} onOpenChange={setIsResetDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset Data Penggajian?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Apakah Anda yakin ingin mereset/menghapus seluruh slip gaji untuk periode {MONTHS[selectedMonth - 1]} {selectedYear}? Tindakan ini tidak dapat dibatalkan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction onClick={handleReset} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground" disabled={isResetting}>
+              {isResetting ? 'Mereset...' : 'Ya, Reset Gaji'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

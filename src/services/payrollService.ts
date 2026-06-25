@@ -144,6 +144,25 @@ export async function deletePayroll(id: number): Promise<void> {
 }
 
 /**
+ * Delete all payrolls for a given period
+ */
+export async function deletePayrollsByMonth(storeId: number, year: number, month: number): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('payrolls')
+      .delete()
+      .eq('store_id', storeId)
+      .eq('year', year)
+      .eq('month', month);
+
+    if (error) throw error;
+  } catch (error) {
+    console.error('Error deleting payrolls by month:', error);
+    throw error;
+  }
+}
+
+/**
  * Generate payrolls for all active employees in a store for a given month
  */
 export async function generatePayrollsForMonth(

@@ -1,6 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
+import { format } from 'date-fns';
+import { id as localeId } from 'date-fns/locale';
+import { CalendarIcon, Pencil, Trash2, Settings } from 'lucide-react';
+import { useForm } from 'react-hook-form';
 import { useAuth } from '@/contexts/AuthContext';
-import { getAttendancesByStore, updateAttendance, Attendance } from '@/services/attendanceService';
+import { getAttendancesByStore, updateAttendance, deleteAttendance, getAttendanceSetting, upsertAttendanceSetting, Attendance, AttendanceSetting } from '@/services/attendanceService';
 import { getEmployeesByStore } from '@/services/employeesService';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -8,8 +12,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { ZKTecoImportButton } from '@/components/backoffice/ZKTecoImportButton';
 import { toast } from 'sonner';
-import { Pencil } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 type SimpleStatus = 'hadir' | 'tidak_hadir';
 
@@ -27,22 +35,34 @@ function toSimpleStatus(s: string): SimpleStatus {
 }
 
 export default function AttendancePage() {
-  const { activeStoreId } = useAuth();
-  const now = new Date();
+  const { activeStoreId, user } = useAuth();
+  const isOwner = user?.role === 'owner';
+
   const [filterEmployee, setFilterEmployee] = useState<string>('all');
-  const [filterMonth, setFilterMonth] = useState(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+  const [filterDate, setFilterDate] = useState<Date | undefined>(new Date());
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [calendarOpen, setCalendarOpen] = useState(false);
+
   const [editRow, setEditRow] = useState<Attendance | null>(null);
   const [editStatus, setEditStatus] = useState<SimpleStatus>('hadir');
   const [editNote, setEditNote] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
-  // Data from Supabase
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+
+  const {
+    register: registerSettings,
+    handleSubmit: handleSaveSettings,
+    reset: resetSettings,
+  } = useForm<AttendanceSetting>();
+
   const [attendances, setAttendances] = useState<Attendance[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
 
-  // Load data from Supabase
   useEffect(() => {
     loadData();
   }, [activeStoreId]);
@@ -54,7 +74,6 @@ export default function AttendancePage() {
         getAttendancesByStore(activeStoreId),
         getEmployeesByStore(activeStoreId),
       ]);
-      
       setAttendances(attendancesData);
       setEmployees(employeesData);
     } catch (error) {
@@ -65,29 +84,31 @@ export default function AttendancePage() {
     }
   };
 
-  const storeEmployees = useMemo(() => employees.filter(e => e.store_id === activeStoreId), [employees, activeStoreId]);
+  const storeEmployees = useMemo(
+    () => employees.filter((e) => e.store_id === activeStoreId),
+    [employees, activeStoreId]
+  );
 
   const filtered = useMemo(() => {
-    return attendances.filter(a => {
-      const emp = employees.find(e => e.id === a.employee_id);
-      if (!emp || emp.store_id !== activeStoreId) return false;
-      if (filterEmployee !== 'all' && String(a.employee_id) !== String(filterEmployee)) return false;
-      if (filterMonth && !a.attendance_date.startsWith(filterMonth)) return false;
-      if (filterStatus !== 'all') {
-        const simple = toSimpleStatus(a.status);
-        if (simple !== filterStatus) return false;
-      }
-      return true;
-    }).sort((a, b) => b.attendance_date.localeCompare(a.attendance_date));
-  }, [attendances, employees, activeStoreId, filterEmployee, filterMonth, filterStatus]);
+    const dateStr = filterDate ? format(filterDate, 'yyyy-MM-dd') : null;
+    return attendances
+      .filter((a) => {
+        const emp = employees.find((e) => e.id === a.employee_id);
+        if (!emp || emp.store_id !== activeStoreId) return false;
+        if (filterEmployee !== 'all' && String(a.employee_id) !== String(filterEmployee)) return false;
+        if (dateStr && a.attendance_date !== dateStr) return false;
+        if (filterStatus !== 'all' && toSimpleStatus(a.status) !== filterStatus) return false;
+        return true;
+      })
+      .sort((a, b) => b.attendance_date.localeCompare(a.attendance_date));
+  }, [attendances, employees, activeStoreId, filterEmployee, filterDate, filterStatus]);
 
-  // Monthly summary
+  // Summary per karyawan (berdasarkan data yang sudah difilter)
   const summary = useMemo(() => {
-    const map: Record<number, { hadir: number; tidak_hadir: number }> = {};
+    const map: Record<string, { hadir: number; tidak_hadir: number }> = {};
     for (const a of filtered) {
       if (!map[a.employee_id]) map[a.employee_id] = { hadir: 0, tidak_hadir: 0 };
-      const simple = toSimpleStatus(a.status);
-      map[a.employee_id][simple]++;
+      map[a.employee_id][toSimpleStatus(a.status)]++;
     }
     return map;
   }, [filtered]);
@@ -95,39 +116,111 @@ export default function AttendancePage() {
   const openEdit = (row: Attendance) => {
     setEditRow(row);
     setEditStatus(toSimpleStatus(row.status));
-    setEditNote(row.note);
+    setEditNote(row.note ?? '');
   };
 
   const saveEdit = async () => {
     if (!editRow) return;
-    
     try {
       setIsSaving(true);
-      
-      // Map simple status back to the original type format
-      const mappedStatus = editStatus === 'hadir' ? 'hadir' : 'alpha';
-      
-      await updateAttendance(editRow.id, { 
-        status: mappedStatus as any, 
+      await updateAttendance(editRow.id, {
+        status: (editStatus === 'hadir' ? 'hadir' : 'alpha') as any,
         note: editNote.trim(),
         is_manual_edit: true,
       });
-      
       await loadData();
       toast.success('Absensi berhasil diperbarui');
       setEditRow(null);
-    } catch (error) {
-      console.error('Error updating attendance:', error);
+    } catch {
       toast.error('Gagal memperbarui absensi');
     } finally {
       setIsSaving(false);
     }
   };
 
+  const handleDelete = async () => {
+    if (!editRow) return;
+    try {
+      setIsDeleting(true);
+      await deleteAttendance(editRow.id);
+      await loadData();
+      toast.success('Data absensi berhasil dihapus');
+      setIsDeleteDialogOpen(false);
+      setEditRow(null);
+    } catch {
+      toast.error('Gagal menghapus data absensi');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const formatTime24h = (timeStr: string) => {
+    if (!timeStr) return '';
+    const parts = timeStr.match(/(\d+):(\d+)/);
+    if (parts) return `${parts[1].padStart(2, '0')}:${parts[2].padStart(2, '0')}`;
+    return timeStr;
+  };
+
+  const openSettings = async () => {
+    setSettingsOpen(true);
+    if (!activeStoreId) return;
+    try {
+      const setting = await getAttendanceSetting(activeStoreId);
+      if (setting) {
+        resetSettings({
+          ...setting,
+          shift_start: formatTime24h(setting.shift_start),
+          shift_end: formatTime24h(setting.shift_end),
+          break_start: formatTime24h(setting.break_start),
+          break_end: formatTime24h(setting.break_end),
+        });
+      } else {
+        resetSettings({
+          shift_start: '08:00',
+          shift_end: '17:00',
+          grace_period_minutes: 15,
+          break_start: '12:00',
+          break_end: '13:00',
+        });
+      }
+    } catch {
+      toast.error('Gagal memuat aturan absensi');
+    }
+  };
+
+  const onSubmitSettings = async (data: AttendanceSetting) => {
+    if (!activeStoreId) return;
+    try {
+      setIsSavingSettings(true);
+      
+      const payload = {
+        ...data,
+        shift_start: formatTime24h(data.shift_start),
+        shift_end: formatTime24h(data.shift_end),
+        break_start: formatTime24h(data.break_start),
+        break_end: formatTime24h(data.break_end),
+      };
+
+      await upsertAttendanceSetting(activeStoreId, payload);
+      toast.success('Aturan absensi berhasil disimpan');
+      setSettingsOpen(false);
+      await loadData();
+    } catch {
+      toast.error('Gagal menyimpan aturan absensi');
+    } finally {
+      setIsSavingSettings(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-foreground">Rekap Absensi</h1>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Rekap Absensi</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">Data kehadiran karyawan per hari</p>
+          </div>
+        </div>
         <p className="text-muted-foreground">Memuat data...</p>
       </div>
     );
@@ -135,22 +228,86 @@ export default function AttendancePage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-foreground">Rekap Absensi</h1>
+      {/* ── Header ── */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-foreground">Rekap Absensi</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">Data kehadiran karyawan per hari</p>
+        </div>
+        {activeStoreId && (
+          <div className="flex items-center gap-2">
+            {isOwner && (
+              <Button variant="outline" onClick={openSettings}>
+                <Settings className="w-4 h-4 mr-2" />
+                Aturan Absensi
+              </Button>
+            )}
+            <ZKTecoImportButton storeId={activeStoreId} onSuccess={loadData} />
+          </div>
+        )}
+      </div>
 
-      {/* Filters */}
+      {/* ── Filters ── */}
       <div className="flex flex-wrap gap-3">
         <Select value={filterEmployee} onValueChange={setFilterEmployee}>
-          <SelectTrigger className="w-48"><SelectValue placeholder="Semua Karyawan" /></SelectTrigger>
+          <SelectTrigger className="w-48">
+            <SelectValue placeholder="Semua Karyawan" />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua Karyawan</SelectItem>
-            {storeEmployees.map(e => <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>)}
+            {storeEmployees.map((e) => (
+              <SelectItem key={e.id} value={String(e.id)}>
+                {e.name}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
 
-        <Input type="month" value={filterMonth} onChange={e => setFilterMonth(e.target.value)} className="w-44" />
+        {/* Date Picker harian */}
+        <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              className={cn(
+                'w-48 justify-start text-left font-normal',
+                !filterDate && 'text-muted-foreground'
+              )}
+            >
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              {filterDate
+                ? format(filterDate, 'd MMMM yyyy', { locale: localeId })
+                : 'Pilih tanggal'}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={filterDate}
+              onSelect={(date) => {
+                setFilterDate(date);
+                setCalendarOpen(false);
+              }}
+              initialFocus
+            />
+            {filterDate && (
+              <div className="border-t p-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-muted-foreground"
+                  onClick={() => { setFilterDate(undefined); setCalendarOpen(false); }}
+                >
+                  Tampilkan semua tanggal
+                </Button>
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
 
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-36"><SelectValue placeholder="Semua Status" /></SelectTrigger>
+          <SelectTrigger className="w-36">
+            <SelectValue placeholder="Semua Status" />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua Status</SelectItem>
             <SelectItem value="hadir">Hadir</SelectItem>
@@ -159,25 +316,38 @@ export default function AttendancePage() {
         </Select>
       </div>
 
-      {/* Monthly Summary Cards */}
+      {/* ── Summary Cards ── */}
       {filterEmployee === 'all' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {storeEmployees.filter(e => e.is_active).map(emp => {
-            const s = summary[emp.id] || { hadir: 0, tidak_hadir: 0 };
-            return (
-              <div key={emp.id} className="bg-card border border-border rounded-lg p-3">
-                <p className="font-medium text-sm">{emp.name}</p>
-                <div className="flex gap-2 mt-2 flex-wrap">
-                  <Badge variant="outline" className="bg-green-50 text-green-700">Hadir: {s.hadir}</Badge>
-                  <Badge variant="outline" className="bg-red-50 text-red-700">Tidak Hadir: {s.tidak_hadir}</Badge>
+          {storeEmployees
+            .filter((e) => e.is_active)
+            .map((emp) => {
+              const s = summary[emp.id] || { hadir: 0, tidak_hadir: 0 };
+              const hasData = s.hadir > 0 || s.tidak_hadir > 0;
+              return (
+                <div key={emp.id} className="bg-card border border-border rounded-lg p-3">
+                  <p className="font-medium text-sm">{emp.name}</p>
+                  <div className="flex gap-2 mt-2 flex-wrap">
+                    {hasData ? (
+                      <>
+                        <Badge variant="outline" className="bg-green-50 text-green-700">
+                          Hadir: {s.hadir}
+                        </Badge>
+                        <Badge variant="outline" className="bg-red-50 text-red-700">
+                          Tidak Hadir: {s.tidak_hadir}
+                        </Badge>
+                      </>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Tidak ada data</span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
         </div>
       )}
 
-      {/* Attendance Table */}
+      {/* ── Attendance Table ── */}
       <div className="bg-card border border-border rounded-lg">
         <Table>
           <TableHeader>
@@ -189,15 +359,19 @@ export default function AttendancePage() {
               <TableHead>Durasi</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Keterangan</TableHead>
-              <TableHead className="w-12"></TableHead>
+              <TableHead className="w-12" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.length === 0 && (
-              <TableRow><TableCell colSpan={8} className="text-center text-muted-foreground py-8">Tidak ada data absensi</TableCell></TableRow>
+              <TableRow>
+                <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                  Tidak ada data absensi
+                </TableCell>
+              </TableRow>
             )}
-            {filtered.slice(0, 100).map(row => {
-              const emp = employees.find(e => e.id === row.employee_id);
+            {filtered.slice(0, 200).map((row) => {
+              const emp = employees.find((e) => e.id === row.employee_id);
               const durH = row.duration_minutes ? Math.floor(row.duration_minutes / 60) : null;
               const durM = row.duration_minutes ? row.duration_minutes % 60 : null;
               const simple = toSimpleStatus(row.status);
@@ -210,11 +384,15 @@ export default function AttendancePage() {
                   <TableCell>{durH !== null ? `${durH}j ${durM}m` : '-'}</TableCell>
                   <TableCell>
                     <Badge className={STATUS_COLORS[simple]}>{STATUS_LABELS[simple]}</Badge>
-                    {row.is_manual_edit && <span className="ml-1 text-xs text-muted-foreground">(edit)</span>}
+                    {row.is_manual_edit && (
+                      <span className="ml-1 text-xs text-muted-foreground">(edit)</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{row.note}</TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(row)}><Pencil className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => openEdit(row)}>
+                      <Pencil className="w-4 h-4" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               );
@@ -223,18 +401,23 @@ export default function AttendancePage() {
         </Table>
       </div>
 
-      {/* Edit Dialog */}
+      {/* ── Edit Dialog ── */}
       <Dialog open={!!editRow} onOpenChange={() => setEditRow(null)}>
         <DialogContent>
-          <DialogHeader><DialogTitle>Edit Absensi</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>Edit Absensi</DialogTitle>
+          </DialogHeader>
           <div className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              {employees.find(e => e.id === editRow?.employee_id)?.name} — {editRow?.attendance_date}
+              {employees.find((e) => e.id === editRow?.employee_id)?.name} —{' '}
+              {editRow?.attendance_date}
             </p>
             <div>
               <label className="text-sm font-medium">Status</label>
-              <Select value={editStatus} onValueChange={v => setEditStatus(v as SimpleStatus)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+              <Select value={editStatus} onValueChange={(v) => setEditStatus(v as SimpleStatus)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="hadir">Hadir</SelectItem>
                   <SelectItem value="tidak_hadir">Tidak Hadir</SelectItem>
@@ -243,15 +426,96 @@ export default function AttendancePage() {
             </div>
             <div>
               <label className="text-sm font-medium">Keterangan</label>
-              <Input value={editNote} onChange={e => setEditNote(e.target.value)} placeholder="Isi keterangan..." />
+              <Input
+                value={editNote}
+                onChange={(e) => setEditNote(e.target.value)}
+                placeholder="Isi keterangan..."
+              />
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditRow(null)}>Batal</Button>
-            <Button onClick={saveEdit} disabled={isSaving}>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            {/* Tombol Hapus — hanya owner */}
+            {isOwner && (
+              <Button
+                variant="destructive"
+                onClick={() => setIsDeleteDialogOpen(true)}
+                disabled={isDeleting || isSaving}
+                className="sm:mr-auto"
+              >
+                <Trash2 className="w-4 h-4 mr-1.5" />
+                {isDeleting ? 'Menghapus...' : 'Hapus Data'}
+              </Button>
+            )}
+            <Button variant="outline" onClick={() => setEditRow(null)}>
+              Batal
+            </Button>
+            <Button onClick={saveEdit} disabled={isSaving || isDeleting}>
               {isSaving ? 'Menyimpan...' : 'Simpan'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Delete Confirmation Dialog ── */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus Data Absensi?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Apakah Anda yakin ingin menghapus data absensi ini? Tindakan ini tidak dapat dibatalkan dan akan memengaruhi laporan penggajian.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete} className="bg-destructive hover:bg-destructive/90 text-destructive-foreground">
+              Ya, Hapus
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ── Settings Dialog ── */}
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Aturan Absensi</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSaveSettings(onSubmitSettings)} className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Jam Masuk (Shift Start)</label>
+                <Input type="text" placeholder="08:00" {...registerSettings('shift_start', { required: true, pattern: /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/ })} />
+                <p className="text-[10px] text-muted-foreground">Format 24 Jam (misal: 08:00)</p>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Jam Keluar (Shift End)</label>
+                <Input type="text" placeholder="17:00" {...registerSettings('shift_end', { required: true, pattern: /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/ })} />
+                <p className="text-[10px] text-muted-foreground">Format 24 Jam (misal: 17:00)</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Toleransi Keterlambatan (Menit)</label>
+              <Input type="number" {...registerSettings('grace_period_minutes', { required: true, valueAsNumber: true })} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Mulai Istirahat</label>
+                <Input type="text" placeholder="12:00" {...registerSettings('break_start', { required: true, pattern: /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/ })} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Selesai Istirahat</label>
+                <Input type="text" placeholder="13:00" {...registerSettings('break_end', { required: true, pattern: /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/ })} />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setSettingsOpen(false)}>
+                Batal
+              </Button>
+              <Button type="submit" disabled={isSavingSettings}>
+                {isSavingSettings ? 'Menyimpan...' : 'Simpan'}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>
