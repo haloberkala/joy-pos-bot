@@ -81,6 +81,54 @@ function createBillWithNumber(num: number): Bill {
 
 const MAX_BILLS = 10;
 
+// ========== CART QTY INPUT COMPONENT ==========
+interface CartQtyInputProps {
+  item: CartItem;
+  updateQuantity: (productId: number, qty: number) => void;
+  searchRef: React.RefObject<HTMLInputElement>;
+}
+
+function CartQtyInput({ item, updateQuantity, searchRef }: CartQtyInputProps) {
+  const [inputValue, setInputValue] = useState<string>(item.quantity.toString());
+
+  useEffect(() => {
+    setInputValue(item.quantity.toString());
+  }, [item.quantity]);
+
+  const handleBlur = () => {
+    const parsed = parseInt(inputValue, 10);
+    if (isNaN(parsed) || parsed < 1) {
+      setInputValue(item.quantity.toString());
+    } else if (parsed !== item.quantity) {
+      updateQuantity(item.product.id, parsed);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      const parsed = parseInt(inputValue, 10);
+      if (isNaN(parsed) || parsed < 1) {
+        setInputValue(item.quantity.toString());
+      } else if (parsed !== item.quantity) {
+        updateQuantity(item.product.id, parsed);
+      }
+      searchRef.current?.focus();
+    }
+  };
+
+  return (
+    <input
+      type="number"
+      min="1"
+      value={inputValue}
+      onChange={(e) => setInputValue(e.target.value)}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+      className="w-14 text-center text-[13px] font-medium rounded-lg border border-border bg-white text-foreground py-1 focus:border-primary focus:outline-none mx-auto block"
+    />
+  );
+}
+
 export default function POS() {
   // ========== OPEN BILL STATE ==========
   const [bills, setBills] = useState<Bill[]>(() => [createBillWithNumber(1)]);
@@ -183,6 +231,7 @@ export default function POS() {
     null,
   );
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const [isDebt, setIsDebt] = useState(false);
   const [showShipping, setShowShipping] = useState(false);
   const [showDebtModal, setShowDebtModal] = useState(false);
@@ -208,6 +257,18 @@ export default function POS() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
+
+  const filteredStoreProducts = useMemo(() => {
+    if (!searchQuery.trim()) return storeProducts;
+    const q = searchQuery.toLowerCase();
+    return storeProducts.filter(
+      (p) => p.code.toLowerCase().includes(q) || p.name.toLowerCase().includes(q)
+    );
+  }, [storeProducts, searchQuery]);
+
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [searchQuery]);
 
   // Load stores once on mount
   useEffect(() => {
@@ -259,6 +320,21 @@ export default function POS() {
 
   useEffect(() => {
     searchRef.current?.focus();
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Abaikan jika ada modifier key atau bukan satu karakter (huruf/angka)
+      if (e.ctrlKey || e.altKey || e.metaKey || e.key.length !== 1) return;
+      
+      const target = e.target as HTMLElement;
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return;
+
+      if (searchRef.current) {
+        searchRef.current.focus();
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
   }, []);
 
   // Touchscreen fix: --vh variable agar layout tidak geser saat virtual keyboard muncul
@@ -292,26 +368,32 @@ export default function POS() {
 
   const handleSearchKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === "Enter" && searchQuery.trim()) {
-        const q = searchQuery.trim().toLowerCase();
-        const product = storeProducts.find(
-          (p) => p.code.toLowerCase() === q || p.name.toLowerCase().includes(q),
-        );
-        if (product && product.quantity > 0) {
-          addItem(product);
+      // Jika event sudah dicegah (oleh barcode scanner hook), abaikan agar tidak dobel
+      if (e.isDefaultPrevented()) return;
+
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setSelectedIndex((prev) => Math.min(prev + 1, Math.max(0, filteredStoreProducts.length - 1)));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setSelectedIndex((prev) => Math.max(prev - 1, 0));
+      } else if (e.key === "Enter" && filteredStoreProducts.length > 0) {
+        e.preventDefault();
+        const selected = filteredStoreProducts[selectedIndex];
+        if (selected && selected.quantity > 0) {
+          addItem(selected);
           setSearchQuery("");
-          toast.success(`${product.name} ditambahkan`, { duration: 1000 });
-        } else if (product) toast.error(`${product.name} stok habis`);
-        else toast.error("Produk tidak ditemukan");
+          setSelectedIndex(0);
+          toast.success(`${selected.name} ditambahkan`, { duration: 1000 });
+        } else if (selected) {
+          toast.error(`${selected.name} stok habis`);
+        }
       }
     },
-    [searchQuery, storeProducts, addItem],
+    [filteredStoreProducts, selectedIndex, addItem],
   );
 
-  const handleQtyChange = (productId: number, value: string) => {
-    const qty = parseInt(value, 10);
-    if (!isNaN(qty)) updateQuantity(productId, qty);
-  };
+  // handleQtyChange removed, handled by CartQtyInput
 
   const handleAddService = () => {
     if (!serviceDesc.trim() || !servicePrice.trim()) {
@@ -745,9 +827,9 @@ export default function POS() {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-lg overflow-hidden flex-shrink-0">
-              <img src="/logo.png" alt="Nadi" className="w-full h-full object-cover" />
+              <img src="/logo.png" alt="Kombeng Baru" className="w-full h-full object-cover" />
             </div>
-            <h1 className="text-[15px] font-bold text-foreground tracking-tight">Nadi</h1>
+              <h1 className="text-[15px] font-bold text-foreground tracking-tight">Kombeng Baru</h1>
           </div>
           {activeBillCount > 0 && (
             <span className="px-2 py-0.5 rounded-full bg-primary text-primary-foreground text-[10px] font-medium">
@@ -943,10 +1025,14 @@ export default function POS() {
             </div>
           </div>
           <ProductListPanel
-            products={storeProducts}
+            products={filteredStoreProducts}
+            selectedIndex={selectedIndex}
             onAddProduct={(product) => {
               if (product.quantity > 0) {
                 addItem(product);
+                setSearchQuery("");
+                setSelectedIndex(0);
+                searchRef.current?.focus();
                 toast.success(`${product.name} ditambahkan`, {
                   duration: 1000,
                 });
@@ -1059,17 +1145,10 @@ export default function POS() {
                           {formatCurrency(item.price_per_unit)}
                         </td>
                         <td className="px-1 py-2 text-center">
-                          <input
-                            type="number"
-                            min="1"
-                            value={item.quantity}
-                            onChange={(e) =>
-                              handleQtyChange(item.product.id, e.target.value)
-                            }
-                            className="w-14 text-center text-[13px] font-medium rounded-lg border border-border bg-white text-foreground py-1 focus:border-primary focus:outline-none mx-auto block"
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") searchRef.current?.focus();
-                            }}
+                          <CartQtyInput
+                            item={item}
+                            updateQuantity={updateQuantity}
+                            searchRef={searchRef}
                           />
                         </td>
                         <td className="px-3 py-2 text-right text-[13px] font-medium text-primary tabular-nums">

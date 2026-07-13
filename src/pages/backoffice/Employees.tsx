@@ -383,154 +383,152 @@ export default function Employees() {
               </div>
             )}
 
-            {/* Two Column Layout */}
-            <div className="grid grid-cols-2 gap-4">
-              {/* LEFT COLUMN */}
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>
-                    Username <span className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    value={formUsername}
-                    onChange={(e) => setFormUsername(e.target.value.toLowerCase())}
-                    placeholder="Contoh: kasir1"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Huruf kecil, angka, dan underscore saja
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label>
-                    Password {editEmployee ? '(Opsional)' : <span className="text-destructive">*</span>}
-                  </Label>
-                  <div className="relative">
-                    <Input
-                      type={showPassword ? "text" : "password"}
-                      value={formPassword}
-                      onChange={(e) => setFormPassword(e.target.value)}
-                      placeholder={editEmployee ? 'Kosongkan jika tidak ingin mengubah' : 'Minimal 6 karakter'}
-                      className="pr-10"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                      tabIndex={-1}
-                    >
-                      {showPassword ? (
-                        <EyeOff className="w-4 h-4" />
-                      ) : (
-                        <Eye className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
-                  {editEmployee ? (
-                    <p className="text-xs text-muted-foreground">
-                      Kosongkan jika tidak ingin mengubah password
-                    </p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      Password untuk login karyawan (minimal 6 karakter)
-                    </p>
-                  )}
-                </div>
-
-                <div className="space-y-2">
-                  <Label>
-                    Nama Lengkap <span className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    value={formName}
-                    onChange={(e) => setFormName(e.target.value)}
-                    placeholder="Nama lengkap karyawan"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>ID Fingerprint</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={formFingerprintId}
-                      onChange={(e) => setFormFingerprintId(e.target.value)}
-                      placeholder="Scan atau input manual"
-                      className="flex-1"
-                    />
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={handleScanFingerprint}
-                      disabled={isScanning}
-                      className="shrink-0"
-                    >
-                      {isScanning ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Scanning...
-                        </>
-                      ) : (
-                        'Scan'
-                      )}
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Untuk integrasi absensi fingerprint
-                  </p>
-                </div>
+            {/* Grid Layout (2 Columns, row-based alignment) */}
+            <div className="grid grid-cols-2 gap-x-4 gap-y-4 items-start">
+              {/* Row 1 */}
+              <div className="space-y-2">
+                <Label>
+                  Username <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  value={formUsername}
+                  onChange={(e) => setFormUsername(e.target.value.toLowerCase())}
+                  placeholder="Contoh: kasir1"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Huruf kecil, angka, dan underscore saja
+                </p>
               </div>
 
-              {/* RIGHT COLUMN */}
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Jabatan</Label>
-                  <Input
-                    value={formPosition}
-                    onChange={(e) => setFormPosition(e.target.value)}
-                    placeholder="Contoh: Kasir, Staff Gudang"
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label>Jabatan</Label>
+                <Input
+                  value={formPosition}
+                  onChange={(e) => setFormPosition(e.target.value)}
+                  placeholder="Contoh: Kasir, Staff Gudang"
+                />
+              </div>
 
-                <div className="space-y-2">
-                  <Label>No. HP</Label>
+              {/* Row 2 */}
+              <div className="space-y-2">
+                <Label>
+                  Password {editEmployee ? '(Opsional)' : <span className="text-destructive">*</span>}
+                </Label>
+                <div className="relative">
                   <Input
-                    value={formPhone}
-                    onChange={(e) => setFormPhone(e.target.value)}
-                    placeholder="08xx-xxxx-xxxx"
+                    type={showPassword ? "text" : "password"}
+                    value={formPassword}
+                    onChange={(e) => setFormPassword(e.target.value)}
+                    placeholder={editEmployee ? 'Kosongkan jika tidak ingin mengubah' : 'Minimal 6 karakter'}
+                    className="pr-10"
                   />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>
-                    Role <span className="text-destructive">*</span>
-                  </Label>
-                  <Select
-                    value={formRole}
-                    onValueChange={(v) => setFormRole(v as 'admin' | 'cashier')}
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    tabIndex={-1}
                   >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="admin">Admin</SelectItem>
-                      <SelectItem value="cashier">Kasir</SelectItem>
-                    </SelectContent>
-                  </Select>
+                    {showPassword ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
+                  </button>
                 </div>
-
-                <div className="space-y-2">
-                  <Label>Gaji Harian (Rp)</Label>
-                  <Input
-                    type="number"
-                    value={formDailySalary}
-                    onChange={(e) => setFormDailySalary(e.target.value)}
-                    placeholder="Contoh: 100000"
-                    min="0"
-                  />
+                {editEmployee ? (
                   <p className="text-xs text-muted-foreground">
-                    Untuk perhitungan penggajian bulanan
+                    Kosongkan jika tidak ingin mengubah password
                   </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Password untuk login karyawan (minimal 6 karakter)
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label>No. HP</Label>
+                <Input
+                  value={formPhone}
+                  onChange={(e) => setFormPhone(e.target.value)}
+                  placeholder="08xx-xxxx-xxxx"
+                />
+              </div>
+
+              {/* Row 3 */}
+              <div className="space-y-2">
+                <Label>
+                  Nama Lengkap <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  placeholder="Nama lengkap karyawan"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>
+                  Role <span className="text-destructive">*</span>
+                </Label>
+                <Select
+                  value={formRole}
+                  onValueChange={(v) => setFormRole(v as 'admin' | 'cashier')}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="cashier">Kasir</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Row 4 */}
+              <div className="space-y-2">
+                <Label>ID Fingerprint</Label>
+                <div className="flex gap-2">
+                  <Input
+                    value={formFingerprintId}
+                    onChange={(e) => setFormFingerprintId(e.target.value)}
+                    placeholder="Scan atau input manual"
+                    className="flex-1"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleScanFingerprint}
+                    disabled={isScanning}
+                    className="shrink-0"
+                  >
+                    {isScanning ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Scanning...
+                      </>
+                    ) : (
+                      'Scan'
+                    )}
+                  </Button>
                 </div>
+                <p className="text-xs text-muted-foreground">
+                  Untuk integrasi absensi fingerprint
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Gaji Harian (Rp)</Label>
+                <Input
+                  type="number"
+                  value={formDailySalary}
+                  onChange={(e) => setFormDailySalary(e.target.value)}
+                  placeholder="Contoh: 100000"
+                  min="0"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Untuk perhitungan penggajian bulanan
+                </p>
               </div>
             </div>
 

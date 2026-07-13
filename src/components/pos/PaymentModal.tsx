@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,12 +27,48 @@ export function PaymentModal({ isOpen, onClose, items, total, paymentMethod, onC
   const [amountPaid, setAmountPaid] = useState<string>(total.toString());
   const change = Math.max(0, Number(amountPaid) - total);
 
+  const amountInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!isOpen || paymentMethod !== 'cash') return;
+
+    // Auto-focus after a short delay so Dialog rendering is fully complete
+    const timeoutId = setTimeout(() => {
+      if (amountInputRef.current) {
+        amountInputRef.current.focus();
+        amountInputRef.current.select();
+      }
+    }, 50);
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!/^[0-9]$/.test(e.key)) return;
+
+      const active = document.activeElement as HTMLElement | null;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
+        return;
+      }
+
+      if (amountInputRef.current) {
+        amountInputRef.current.focus();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      clearTimeout(timeoutId);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, paymentMethod]);
+
   const paymentIcon = { cash: <Wallet className="w-4 h-4" />, transfer: <CreditCard className="w-4 h-4" />, qris: <QrCode className="w-4 h-4" /> };
   const paymentLabel = { cash: 'Tunai', transfer: 'Transfer', qris: 'QRIS' };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent 
+        className="sm:max-w-md max-h-[90vh] overflow-y-auto"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {paymentIcon[paymentMethod]} Pembayaran {paymentLabel[paymentMethod]}
@@ -63,8 +99,18 @@ export function PaymentModal({ isOpen, onClose, items, total, paymentMethod, onC
               <div>
                 <label className="text-caption mb-2 block">Jumlah Dibayar</label>
                 <div className="relative">
-                  <Input type="number" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)}
-                    className="text-right text-[15px] font-medium rounded-lg pr-10" />
+                  <Input 
+                    ref={amountInputRef}
+                    type="number" 
+                    value={amountPaid} 
+                    onChange={(e) => setAmountPaid(e.target.value)}
+                    onFocus={(e) => {
+                      if (amountPaid === total.toString()) {
+                        e.target.select();
+                      }
+                    }}
+                    className="text-right text-[15px] font-medium rounded-lg pr-10" 
+                  />
                   {amountPaid && amountPaid !== '0' && (
                     <button
                       onClick={() => setAmountPaid('')}

@@ -115,10 +115,10 @@ export function Sidebar() {
       <div className="p-4 border-b border-border">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 shadow-sm border border-indigo-100">
-            <img src="/logo.png" alt="Nadi" className="w-full h-full object-cover" />
+            <img src="/logo.png" alt="Kombeng Baru" className="w-full h-full object-cover" />
           </div>
           <div>
-            <h1 className="text-[15px] font-bold text-foreground tracking-tight">Nadi</h1>
+            <h1 className="text-[15px] font-bold text-foreground tracking-tight">Kombeng Baru</h1>
             <p className="text-[11px] text-muted-foreground">Pusat Kendali Bisnismu</p>
           </div>
         </div>

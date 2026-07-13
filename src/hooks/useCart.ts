@@ -7,10 +7,10 @@ function getPriceForMode(product: Product, mode: PriceMode): number {
   return product.selling_price_retail;
 }
 
-function getAutoMode(product: Product, qty: number, currentMode: PriceMode): PriceMode {
-  if (qty >= product.special_min_qty) return 'special';
-  if (qty >= product.wholesale_min_qty) return 'wholesale';
-  return currentMode === 'special' || currentMode === 'wholesale' ? 'retail' : currentMode;
+function getAutoMode(product: Product, qty: number): PriceMode {
+  if (product.special_min_qty > 0 && qty >= product.special_min_qty) return 'special';
+  if (product.wholesale_min_qty > 0 && qty >= product.wholesale_min_qty) return 'wholesale';
+  return 'retail';
 }
 
 export function useCart() {
@@ -22,21 +22,38 @@ export function useCart() {
       const existing = prev.find((item) => item.product.id === product.id);
       if (existing) {
         const newQty = existing.quantity + 1;
-        const mode = priceMode || getAutoMode(product, newQty, existing.price_mode);
+        let mode = existing.price_mode;
+        let is_manual = existing.is_manual_price_mode;
+
+        if (priceMode) {
+          mode = priceMode;
+          is_manual = true;
+        } else if (!is_manual) {
+          mode = getAutoMode(product, newQty);
+        }
+
         const price = getPriceForMode(product, mode);
         return prev.map((item) =>
           item.product.id === product.id
-            ? { ...item, quantity: newQty, price_mode: mode, price_per_unit: price }
+            ? { ...item, quantity: newQty, price_mode: mode, price_per_unit: price, is_manual_price_mode: is_manual }
             : item
         );
       }
-      const mode = priceMode || globalPriceMode;
+
+      let mode = priceMode || globalPriceMode;
+      let is_manual = !!priceMode || globalPriceMode !== 'retail';
+
+      if (!is_manual) {
+        mode = getAutoMode(product, 1);
+      }
+
       const price = getPriceForMode(product, mode);
       const cartItem: CartItem = {
         product,
         quantity: 1,
         price_per_unit: price,
         price_mode: mode,
+        is_manual_price_mode: is_manual,
       };
       return [...prev, cartItem];
     });
@@ -53,7 +70,7 @@ export function useCart() {
       setItems((prev) =>
         prev.map((item) => {
           if (item.product.id !== productId) return item;
-          const mode = getAutoMode(item.product, quantity, item.price_mode);
+          const mode = item.is_manual_price_mode ? item.price_mode : getAutoMode(item.product, quantity);
           const price = getPriceForMode(item.product, mode);
           return { ...item, quantity, price_mode: mode, price_per_unit: price };
         })
@@ -66,7 +83,7 @@ export function useCart() {
       prev.map((item) => {
         if (item.product.id !== productId) return item;
         const price = getPriceForMode(item.product, mode);
-        return { ...item, price_mode: mode, price_per_unit: price };
+        return { ...item, price_mode: mode, price_per_unit: price, is_manual_price_mode: true };
       })
     );
   }, []);

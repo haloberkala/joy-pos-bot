@@ -1,45 +1,33 @@
-import { useState, useMemo } from 'react';
 import { Product } from '@/types/pos';
 import { formatCurrency } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { Search, Package } from 'lucide-react';
+import { Package } from 'lucide-react';
 
 interface ProductListPanelProps {
   products: Product[];
   onAddProduct: (product: Product) => void;
+  selectedIndex?: number;
 }
 
-export function ProductListPanel({ products, onAddProduct }: ProductListPanelProps) {
-  const [search, setSearch] = useState('');
-
-  const filtered = useMemo(() => {
-    if (!search.trim()) return products;
-    const q = search.toLowerCase();
-    return products.filter(p => p.name.toLowerCase().includes(q) || p.code.toLowerCase().includes(q));
-  }, [products, search]);
-
+export function ProductListPanel({ products, onAddProduct, selectedIndex = -1 }: ProductListPanelProps) {
   return (
     <div className="flex flex-col h-full bg-white">
-      <div className="px-3 py-2 border-b border-border space-y-2">
+      <div className="px-3 py-2 border-b border-border">
         <div className="flex items-center gap-2">
           <Package className="w-3.5 h-3.5 text-primary" />
           <span className="text-[12px] font-medium text-foreground">Daftar Barang ({products.length})</span>
         </div>
-        <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-          <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari barang..."
-            className="w-full pl-8 pr-3 py-1.5 text-[12px] rounded-lg border border-border bg-surface text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
-        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {filtered.map(product => {
+        {products.map((product, index) => {
           const isOut = product.quantity <= 0;
+          const isSelected = index === selectedIndex;
           return (
             <button key={product.id} onClick={() => !isOut && onAddProduct(product)} disabled={isOut}
               className={cn(
                 'w-full flex items-center justify-between px-3 py-2.5 border-b border-border text-left transition-colors',
-                'hover:bg-surface active:bg-primary-light',
+                isSelected ? 'bg-primary/10' : 'hover:bg-surface active:bg-primary-light',
                 isOut && 'opacity-40 cursor-not-allowed'
               )}>
               <div className="flex-1 min-w-0 mr-2">
@@ -58,7 +46,7 @@ export function ProductListPanel({ products, onAddProduct }: ProductListPanelPro
             </button>
           );
         })}
-        {filtered.length === 0 && (
+        {products.length === 0 && (
           <div className="text-center py-8 text-[12px] text-muted-foreground">Tidak ada barang ditemukan</div>
         )}
       </div>

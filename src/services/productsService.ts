@@ -18,6 +18,8 @@ type ProductRow = {
   selling_price_retail: number;
   selling_price_wholesale: number;
   selling_price_special: number;
+  wholesale_min_qty: number;
+  special_min_qty: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -29,8 +31,6 @@ function mapProduct(row: ProductRow): Product {
     ...row,
     // Fields in types/pos.ts not present in DB — provide sensible defaults
     selling_price: row.selling_price_retail,
-    wholesale_min_qty: 0,
-    special_min_qty: 0,
     created_by: null,
     updated_by: null,
     created_at: new Date(row.created_at),
@@ -51,6 +51,8 @@ export interface CreateProductInput {
   selling_price_retail: number;
   selling_price_wholesale?: number;
   selling_price_special?: number;
+  wholesale_min_qty?: number;
+  special_min_qty?: number;
 }
 
 export interface UpdateProductInput {
@@ -65,6 +67,8 @@ export interface UpdateProductInput {
   selling_price_retail?: number;
   selling_price_wholesale?: number;
   selling_price_special?: number;
+  wholesale_min_qty?: number;
+  special_min_qty?: number;
 }
 
 /**
@@ -178,6 +182,8 @@ export async function createProduct(input: CreateProductInput): Promise<Product>
         selling_price_retail: input.selling_price_retail,
         selling_price_wholesale: input.selling_price_wholesale || input.selling_price_retail,
         selling_price_special: input.selling_price_special || input.selling_price_retail,
+        wholesale_min_qty: input.wholesale_min_qty || 0,
+        special_min_qty: input.special_min_qty || 0,
       })
       .select()
       .single();
@@ -220,6 +226,8 @@ export async function updateProduct(productId: number, input: UpdateProductInput
     if (input.selling_price_retail !== undefined) updateData.selling_price_retail = input.selling_price_retail;
     if (input.selling_price_wholesale !== undefined) updateData.selling_price_wholesale = input.selling_price_wholesale;
     if (input.selling_price_special !== undefined) updateData.selling_price_special = input.selling_price_special;
+    if (input.wholesale_min_qty !== undefined) updateData.wholesale_min_qty = input.wholesale_min_qty;
+    if (input.special_min_qty !== undefined) updateData.special_min_qty = input.special_min_qty;
 
     const { data, error } = await db
       .from('products')

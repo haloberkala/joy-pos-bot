@@ -294,6 +294,7 @@ export interface CartItem {
   price_per_unit: number;
   price_mode: PriceMode;
   discount?: number;
+  is_manual_price_mode?: boolean;
 }
 
 // ==========================================

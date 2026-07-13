@@ -319,12 +319,14 @@ export async function importAttendances(
     }
   }
 
-  // Batch INSERT
+  // Batch UPSERT (onConflict sebagai jaring pengaman duplikat)
   for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
     const batch = toInsert.slice(i, i + BATCH_SIZE);
-    const { error } = await supabaseAny.from('attendances').insert(batch);
+    const { error } = await supabaseAny
+      .from('attendances')
+      .upsert(batch, { onConflict: 'employee_id, attendance_date' });
     if (error) {
-      result.errors.push(`Insert batch ${Math.floor(i / BATCH_SIZE) + 1}: ${error.message}`);
+      result.errors.push(`Upsert batch ${Math.floor(i / BATCH_SIZE) + 1}: ${error.message}`);
     } else {
       result.inserted += batch.length;
     }

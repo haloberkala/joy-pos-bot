@@ -52,6 +52,8 @@ export function AddProductModal({
     selling_price_retail: undefined,
     selling_price_wholesale: undefined,
     selling_price_special: undefined,
+    wholesale_min_qty: undefined,
+    special_min_qty: undefined,
     min_stock_alert: undefined,
     quantity: undefined,
   });
@@ -115,6 +117,8 @@ export function AddProductModal({
         selling_price_retail: editingProduct.selling_price_retail,
         selling_price_wholesale: editingProduct.selling_price_wholesale,
         selling_price_special: editingProduct.selling_price_special,
+        wholesale_min_qty: editingProduct.wholesale_min_qty,
+        special_min_qty: editingProduct.special_min_qty,
         min_stock_alert: editingProduct.min_stock_alert,
         quantity: editingProduct.quantity,
       });
@@ -129,6 +133,8 @@ export function AddProductModal({
         selling_price_retail: undefined,
         selling_price_wholesale: undefined,
         selling_price_special: undefined,
+        wholesale_min_qty: undefined,
+        special_min_qty: undefined,
         min_stock_alert: undefined,
         quantity: undefined,
       });
@@ -246,6 +252,8 @@ export function AddProductModal({
         selling_price_retail: formData.selling_price_retail || 0,
         selling_price_wholesale: formData.selling_price_wholesale || 0,
         selling_price_special: formData.selling_price_special || 0,
+        wholesale_min_qty: formData.wholesale_min_qty || 0,
+        special_min_qty: formData.special_min_qty || 0,
         min_stock_alert: formData.min_stock_alert || 0,
         quantity: formData.quantity || 0,
       };
@@ -563,7 +571,7 @@ export function AddProductModal({
             />
           </div>
 
-          {/* Baris 5: Harga Dasar & Diskon - Harga Modal | Harga Jual Spesial */}
+          {/* Baris 5: Harga Dasar & Eceran */}
           <div className="space-y-2">
             <Label>Harga Modal *</Label>
             <Input
@@ -580,21 +588,21 @@ export function AddProductModal({
           </div>
 
           <div className="space-y-2">
-            <Label>Harga Jual Spesial</Label>
+            <Label>Harga Jual Eceran *</Label>
             <Input
               type="number"
-              value={formData.selling_price_special !== undefined ? formData.selling_price_special : ""}
+              value={formData.selling_price_retail !== undefined ? formData.selling_price_retail : ""}
               onChange={(e) =>
                 setFormData((p) => ({
                   ...p,
-                  selling_price_special: e.target.value === "" ? undefined : parseFloat(e.target.value) || 0,
+                  selling_price_retail: e.target.value === "" ? undefined : parseFloat(e.target.value) || 0,
                 }))
               }
               placeholder="0"
             />
           </div>
 
-          {/* Baris 6: Harga Tingkat - Harga Jual Grosir | Harga Jual Eceran */}
+          {/* Baris 6: Harga Grosir */}
           <div className="space-y-2">
             <Label>Harga Jual Grosir</Label>
             <Input
@@ -611,14 +619,45 @@ export function AddProductModal({
           </div>
 
           <div className="space-y-2">
-            <Label>Harga Jual Eceran *</Label>
+            <Label>Min. Qty Grosir</Label>
             <Input
               type="number"
-              value={formData.selling_price_retail !== undefined ? formData.selling_price_retail : ""}
+              value={formData.wholesale_min_qty !== undefined ? formData.wholesale_min_qty : ""}
               onChange={(e) =>
                 setFormData((p) => ({
                   ...p,
-                  selling_price_retail: e.target.value === "" ? undefined : parseFloat(e.target.value) || 0,
+                  wholesale_min_qty: e.target.value === "" ? undefined : parseInt(e.target.value) || 0,
+                }))
+              }
+              placeholder="0"
+            />
+          </div>
+
+          {/* Baris 7: Harga Spesial */}
+          <div className="space-y-2">
+            <Label>Harga Jual Spesial</Label>
+            <Input
+              type="number"
+              value={formData.selling_price_special !== undefined ? formData.selling_price_special : ""}
+              onChange={(e) =>
+                setFormData((p) => ({
+                  ...p,
+                  selling_price_special: e.target.value === "" ? undefined : parseFloat(e.target.value) || 0,
+                }))
+              }
+              placeholder="0"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label>Min. Qty Spesial</Label>
+            <Input
+              type="number"
+              value={formData.special_min_qty !== undefined ? formData.special_min_qty : ""}
+              onChange={(e) =>
+                setFormData((p) => ({
+                  ...p,
+                  special_min_qty: e.target.value === "" ? undefined : parseInt(e.target.value) || 0,
                 }))
               }
               placeholder="0"
