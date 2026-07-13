@@ -141,16 +141,12 @@ export function ReceiptModal({
 
   // ─── Handler: Cetak Struk + Faktur (berurutan) ────────────────────────────
   const handlePrintBoth = () => {
-    // ⚠️ Pre-open jendela faktur SEKARANG (sinkron, saat masih dalam user gesture)
-    // agar browser tidak memblokir popup saat dipanggil dari dalam setTimeout.
-    const preopenedFakturWin = store ? window.open('', '_blank') : null;
-
     // Cetak struk thermal terlebih dahulu
     handlePrintStruk();
 
-    // Tulis konten faktur ke jendela yang sudah dibuka, setelah delay
+    // Tulis konten faktur ke hidden iframe, setelah delay
     setTimeout(() => {
-      if (!store || !preopenedFakturWin) return;
+      if (!store) return;
 
       const items: SaleItem[] = saleDetails.map(d => ({
         id: d.id,
@@ -189,7 +185,6 @@ export function ReceiptModal({
         items,
         store,
         customerName,
-        targetWindow: preopenedFakturWin, // gunakan window yang sudah dibuka
       });
     }, 800);
   };

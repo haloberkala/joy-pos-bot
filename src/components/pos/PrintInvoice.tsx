@@ -12,15 +12,14 @@ interface PrintInvoiceProps {
   items: SaleItem[];
   store: Store;
   customerName?: string;
-  /** Pre-opened window (untuk menghindari popup blocking saat dipanggil dari setTimeout) */
-  targetWindow?: Window | null;
+  customerName?: string;
 }
 
 /**
  * Faktur Industri — Landscape A4, dua kolom header, tabel profesional,
  * blok tanda tangan, kompatibel dengan printer laser/inkjet toko.
  */
-export function printInvoice({ sale, items, store, customerName, targetWindow }: PrintInvoiceProps) {
+export function printInvoice({ sale, items, store, customerName }: PrintInvoiceProps) {
   const safeDate = (v: string | null | undefined) => {
     try {
       return new Intl.DateTimeFormat('id-ID', {
@@ -521,11 +520,28 @@ export function printInvoice({ sale, items, store, customerName, targetWindow }:
 </body>
 </html>`;
 
-  // Gunakan targetWindow (pre-opened) jika tersedia, hindari popup blocking
-  const w = targetWindow ?? window.open('', '_blank');
-  if (w) {
-    w.document.write(printContent);
-    w.document.close();
-    w.onload = () => { w.print(); };
+  // Membuat hidden iframe untuk mencetak tanpa membuka tab baru
+  const iframe = document.createElement('iframe');
+  iframe.style.display = 'none';
+  document.body.appendChild(iframe);
+
+  const iframeDoc = iframe.contentWindow?.document;
+  if (iframeDoc) {
+    iframeDoc.open();
+    iframeDoc.write(printContent);
+    iframeDoc.close();
+
+    // Tunggu iframe selesai memuat resource sebelum memanggil print
+    iframe.onload = () => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      
+      // Hapus iframe dari DOM setelah proses selesai
+      setTimeout(() => {
+        if (document.body.contains(iframe)) {
+          document.body.removeChild(iframe);
+        }
+      }, 1000);
+    };
   }
 }
