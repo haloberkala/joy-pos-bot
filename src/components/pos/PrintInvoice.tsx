@@ -12,7 +12,6 @@ interface PrintInvoiceProps {
   items: SaleItem[];
   store: Store;
   customerName?: string;
-  customerName?: string;
 }
 
 /**
