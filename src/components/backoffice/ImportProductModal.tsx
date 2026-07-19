@@ -26,11 +26,17 @@ interface ImportProductModalProps {
   onSuccess?: () => void;
 }
 
+interface FailedRow {
+  rowNumber: number | string;
+  sku: string;
+  reason: string;
+}
+
 interface ImportSummary {
   total: number;
   success: number;
   failed: number;
-  errors: string[];
+  errors: FailedRow[];
 }
 
 export function ImportProductModal({ isOpen, onClose, storeId, onSuccess }: ImportProductModalProps) {
@@ -182,7 +188,7 @@ export function ImportProductModal({ isOpen, onClose, storeId, onSuccess }: Impo
       };
 
       const validProducts: CreateProductInput[] = [];
-      const errors: string[] = [];
+      const errors: FailedRow[] = [];
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
@@ -193,17 +199,20 @@ export function ImportProductModal({ isOpen, onClose, storeId, onSuccess }: Impo
         Object.keys(row).forEach(k => normRow[k.trim()] = row[k]);
 
         // Mandatory fields check
-        const code = normRow["Barcode/SKU * (Wajib)"]?.toString().trim();
-        const mainProductName = normRow["Produk Utama * (Wajib)"]?.toString().trim();
-        const unitName = normRow["Satuan * (Wajib)"]?.toString().trim();
-        const priceRetail = parseFloat(normRow["Harga Jual Eceran * (Wajib)"]);
-        const priceWholesale = parseFloat(normRow["Harga Jual Grosir * (Wajib)"]);
-        const priceSpecial = parseFloat(normRow["Harga Jual Spesial * (Wajib)"]);
+        const code = normRow["Barcode/SKU *"]?.toString().trim() || "";
+        const mainProductName = normRow["Produk Utama *"]?.toString().trim() || "";
+        const unitName = normRow["Satuan *"]?.toString().trim() || "";
+        const priceRetail = parseFloat(normRow["Harga Jual Eceran *"]);
+        const priceWholesale = parseFloat(normRow["Harga Jual Grosir *"]);
+        const priceSpecial = parseFloat(normRow["Harga Jual Spesial *"]);
 
-        if (!code || !mainProductName || !unitName || isNaN(priceRetail) || isNaN(priceWholesale) || isNaN(priceSpecial)) {
-          errors.push(`Baris ${rowNumber}: Kolom wajib belum diisi atau format harga salah`);
-          continue;
-        }
+        if (!code) { errors.push({ rowNumber, sku: code, reason: "Kolom 'Barcode/SKU' wajib diisi." }); continue; }
+        if (!mainProductName) { errors.push({ rowNumber, sku: code, reason: "Kolom 'Produk Utama' wajib diisi." }); continue; }
+        if (!unitName) { errors.push({ rowNumber, sku: code, reason: "Kolom 'Satuan' wajib diisi." }); continue; }
+        
+        if (isNaN(priceRetail)) { errors.push({ rowNumber, sku: code, reason: "Format 'Harga Jual Eceran' tidak valid (harus angka)." }); continue; }
+        if (isNaN(priceWholesale)) { errors.push({ rowNumber, sku: code, reason: "Format 'Harga Jual Grosir' tidak valid (harus angka)." }); continue; }
+        if (isNaN(priceSpecial)) { errors.push({ rowNumber, sku: code, reason: "Format 'Harga Jual Spesial' tidak valid (harus angka)." }); continue; }
 
         setProgress(40 + Math.floor((i / rows.length) * 40)); // Progress 40 -> 80
 
@@ -255,7 +264,7 @@ export function ImportProductModal({ isOpen, onClose, storeId, onSuccess }: Impo
 
           validProducts.push(productInput);
         } catch (e: any) {
-          errors.push(`Baris ${rowNumber}: ${e.message}`);
+          errors.push({ rowNumber, sku: code, reason: e.message || "Gagal memproses master data/produk" });
         }
       }
 
@@ -267,11 +276,13 @@ export function ImportProductModal({ isOpen, onClose, storeId, onSuccess }: Impo
         // Wait, bulkCreateProducts uses .insert(products).select(). Let's assume it handles what it needs.
         const result = await bulkCreateProducts(validProducts);
         
+        const bulkErrors = result.errors.map(err => ({ rowNumber: "Bulk", sku: "-", reason: err }));
+
         setSummary({
           total: rows.length,
           success: result.success,
-          failed: (rows.length - validProducts.length) + result.errors.length,
-          errors: [...errors, ...result.errors]
+          failed: (rows.length - validProducts.length) + bulkErrors.length,
+          errors: [...errors, ...bulkErrors]
         });
 
         if (result.success > 0) {
@@ -372,13 +383,26 @@ export function ImportProductModal({ isOpen, onClose, storeId, onSuccess }: Impo
               </div>
               
               {summary.errors.length > 0 && (
-                <div className="p-4 bg-red-50/50 max-h-48 overflow-y-auto">
-                  <p className="text-xs font-semibold text-red-800 mb-2">Detail Error:</p>
-                  <ul className="space-y-1 text-xs text-red-700 list-disc list-inside">
-                    {summary.errors.map((err, idx) => (
-                      <li key={idx}>{err}</li>
-                    ))}
-                  </ul>
+                <div className="p-4 bg-red-50/50 max-h-60 overflow-y-auto">
+                  <p className="text-xs font-semibold text-red-800 mb-2">Detail Error ({summary.errors.length} baris gagal):</p>
+                  <table className="w-full text-left text-xs text-red-900 border-collapse">
+                    <thead>
+                      <tr className="border-b border-red-200">
+                        <th className="py-2 pr-2 w-16">Baris</th>
+                        <th className="py-2 pr-2 w-32">SKU</th>
+                        <th className="py-2">Detail Error</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {summary.errors.map((err, idx) => (
+                        <tr key={idx} className="border-b border-red-100 last:border-0 align-top">
+                          <td className="py-2 pr-2 whitespace-nowrap">#{err.rowNumber}</td>
+                          <td className="py-2 pr-2 font-mono break-all">{err.sku || "-"}</td>
+                          <td className="py-2">{err.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
