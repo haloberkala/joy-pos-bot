@@ -24,6 +24,8 @@ interface RowData {
   selling_price_special: string;
   selling_price_wholesale: string;
   selling_price_retail: string;
+  wholesale_min_qty: string;
+  special_min_qty: string;
 }
 
 interface RowErrors {
@@ -223,6 +225,7 @@ const createRow = (): RowData => ({
   category_id: null, brand_id: null, unit_id: null,
   name: "", code: "", quantity: "", min_stock_alert: "",
   cost_price: "", selling_price_special: "", selling_price_wholesale: "", selling_price_retail: "",
+  wholesale_min_qty: "0", special_min_qty: "0",
 });
 
 // ─── Main ────────────────────────────────────────────────────────────────────
@@ -310,7 +313,9 @@ export function BulkProductModal({ isOpen, onClose, storeId, onProductsAdded }: 
           cost_price: cost,
           selling_price_retail: retail,
           selling_price_wholesale: parseFloat(r.selling_price_wholesale) || retail,
+          wholesale_min_qty: parseInt(r.wholesale_min_qty) || 0,
           selling_price_special: parseFloat(r.selling_price_special) || retail,
+          special_min_qty: parseInt(r.special_min_qty) || 0,
         };
       });
 
@@ -334,9 +339,11 @@ export function BulkProductModal({ isOpen, onClose, storeId, onProductsAdded }: 
     { label: "Stok Awal", width: "w-[80px] min-w-[80px]" },
     { label: "Stok Min", width: "w-[80px] min-w-[80px]" },
     { label: "Harga Modal", width: "w-[110px] min-w-[110px]" },
-    { label: "Harga Spesial", width: "w-[110px] min-w-[110px]" },
-    { label: "Harga Grosir", width: "w-[110px] min-w-[110px]" },
     { label: "Harga Eceran", width: "w-[110px] min-w-[110px]" },
+    { label: "Harga Grosir", width: "w-[110px] min-w-[110px]" },
+    { label: "Min Qty Grosir", width: "w-[100px] min-w-[100px]" },
+    { label: "Harga Spesial", width: "w-[110px] min-w-[110px]" },
+    { label: "Min Qty Spesial", width: "w-[100px] min-w-[100px]" },
   ];
 
   if (!isOpen) return null;
@@ -475,9 +482,9 @@ export function BulkProductModal({ isOpen, onClose, storeId, onProductsAdded }: 
                         <CellInput value={row.cost_price} onChange={(v) => updateRow(row.id, "cost_price", v)} placeholder="0" type="number" hasError={!!rowErr.cost_price} />
                       </td>
 
-                      {/* Harga Spesial */}
+                      {/* Harga Eceran */}
                       <td className="border-r border-border/40 py-0.5 px-0.5">
-                        <CellInput value={row.selling_price_special} onChange={(v) => updateRow(row.id, "selling_price_special", v)} placeholder="0" type="number" />
+                        <CellInput value={row.selling_price_retail} onChange={(v) => updateRow(row.id, "selling_price_retail", v)} placeholder="0" type="number" hasError={!!rowErr.selling_price_retail} />
                       </td>
 
                       {/* Harga Grosir */}
@@ -485,9 +492,19 @@ export function BulkProductModal({ isOpen, onClose, storeId, onProductsAdded }: 
                         <CellInput value={row.selling_price_wholesale} onChange={(v) => updateRow(row.id, "selling_price_wholesale", v)} placeholder="0" type="number" />
                       </td>
 
-                      {/* Harga Eceran */}
+                      {/* Min Qty Grosir */}
                       <td className="border-r border-border/40 py-0.5 px-0.5">
-                        <CellInput value={row.selling_price_retail} onChange={(v) => updateRow(row.id, "selling_price_retail", v)} placeholder="0" type="number" hasError={!!rowErr.selling_price_retail} />
+                        <CellInput value={row.wholesale_min_qty} onChange={(v) => updateRow(row.id, "wholesale_min_qty", v)} placeholder="0" type="number" />
+                      </td>
+
+                      {/* Harga Spesial */}
+                      <td className="border-r border-border/40 py-0.5 px-0.5">
+                        <CellInput value={row.selling_price_special} onChange={(v) => updateRow(row.id, "selling_price_special", v)} placeholder="0" type="number" />
+                      </td>
+
+                      {/* Min Qty Spesial */}
+                      <td className="border-r border-border/40 py-0.5 px-0.5">
+                        <CellInput value={row.special_min_qty} onChange={(v) => updateRow(row.id, "special_min_qty", v)} placeholder="0" type="number" />
                       </td>
 
                       {/* Delete */}
@@ -505,7 +522,7 @@ export function BulkProductModal({ isOpen, onClose, storeId, onProductsAdded }: 
                 })}
 
                 <tr>
-                  <td colSpan={13} className="px-4 py-3">
+                  <td colSpan={15} className="px-4 py-3">
                     <button
                       onClick={addRow}
                       className="flex items-center gap-2 text-xs text-primary hover:text-primary/80 font-medium transition-colors group"
