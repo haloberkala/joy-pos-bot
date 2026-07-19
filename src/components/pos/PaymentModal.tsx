@@ -82,7 +82,7 @@ export function PaymentModal({ isOpen, onClose, items, total, paymentMethod, onC
           <div className="bg-surface rounded-xl p-3 space-y-2 max-h-32 overflow-y-auto">
             {items.map((item) => (
               <div key={item.product.id} className="flex justify-between text-[13px]">
-                <span className="text-muted-foreground">{item.product.name} x{item.quantity}</span>
+                <span className="text-muted-foreground">{item.product.short_name || item.product.name} x{item.quantity}</span>
                 <span className="font-medium text-foreground">{formatCurrency(item.price_per_unit * item.quantity)}</span>
               </div>
             ))}

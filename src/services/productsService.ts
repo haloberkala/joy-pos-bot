@@ -12,6 +12,11 @@ type ProductRow = {
   category_id: number | null;
   brand_id: number | null;
   unit_id: number | null;
+  main_product_id: number | null;
+  variant_id: number | null;
+  specification_id: number | null;
+  size_id: number | null;
+  short_name: string | null;
   quantity: number;
   min_stock_alert: number;
   cost_price: number;
@@ -23,6 +28,13 @@ type ProductRow = {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  categories?: { name: string } | null;
+  brands?: { name: string } | null;
+  units?: { name: string } | null;
+  main_products?: { name: string } | null;
+  variants?: { name: string } | null;
+  specifications?: { name: string } | null;
+  sizes?: { name: string } | null;
 };
 
 /** Bridge raw DB row → types/pos.ts Product */
@@ -35,6 +47,13 @@ function mapProduct(row: ProductRow): Product {
     updated_by: null,
     created_at: new Date(row.created_at),
     updated_at: new Date(row.updated_at),
+    category_name: row.categories?.name,
+    brand_name: row.brands?.name,
+    unit_name: row.units?.name,
+    main_product_name: row.main_products?.name,
+    variant_name: row.variants?.name,
+    specification_name: row.specifications?.name,
+    size_name: row.sizes?.name,
   };
 }
 
@@ -45,6 +64,11 @@ export interface CreateProductInput {
   category_id?: number;
   brand_id?: number;
   unit_id?: number;
+  main_product_id?: number;
+  variant_id?: number;
+  specification_id?: number;
+  size_id?: number;
+  short_name?: string;
   quantity?: number;
   min_stock_alert?: number;
   cost_price: number;
@@ -61,6 +85,11 @@ export interface UpdateProductInput {
   category_id?: number;
   brand_id?: number;
   unit_id?: number;
+  main_product_id?: number;
+  variant_id?: number;
+  specification_id?: number;
+  size_id?: number;
+  short_name?: string;
   quantity?: number;
   min_stock_alert?: number;
   cost_price?: number;
@@ -78,7 +107,7 @@ export async function getProductsByStore(storeId: number): Promise<Product[]> {
   try {
     const { data, error } = await db
       .from('products')
-      .select('*')
+      .select('*, categories(name), brands(name), main_products(name), variants(name), specifications(name), sizes(name), units(name)')
       .eq('store_id', storeId)
       .eq('is_active', true)
       .order('name', { ascending: true });
@@ -176,6 +205,11 @@ export async function createProduct(input: CreateProductInput): Promise<Product>
         category_id: input.category_id || null,
         brand_id: input.brand_id || null,
         unit_id: input.unit_id || null,
+        main_product_id: input.main_product_id || null,
+        variant_id: input.variant_id || null,
+        specification_id: input.specification_id || null,
+        size_id: input.size_id || null,
+        short_name: input.short_name || null,
         quantity: input.quantity || 0,
         min_stock_alert: input.min_stock_alert || 5,
         cost_price: input.cost_price,
@@ -220,6 +254,11 @@ export async function updateProduct(productId: number, input: UpdateProductInput
     if (input.category_id !== undefined) updateData.category_id = input.category_id;
     if (input.brand_id !== undefined) updateData.brand_id = input.brand_id;
     if (input.unit_id !== undefined) updateData.unit_id = input.unit_id;
+    if (input.main_product_id !== undefined) updateData.main_product_id = input.main_product_id;
+    if (input.variant_id !== undefined) updateData.variant_id = input.variant_id;
+    if (input.specification_id !== undefined) updateData.specification_id = input.specification_id;
+    if (input.size_id !== undefined) updateData.size_id = input.size_id;
+    if (input.short_name !== undefined) updateData.short_name = input.short_name;
     if (input.quantity !== undefined) updateData.quantity = input.quantity;
     if (input.min_stock_alert !== undefined) updateData.min_stock_alert = input.min_stock_alert;
     if (input.cost_price !== undefined) updateData.cost_price = input.cost_price;
@@ -245,27 +284,55 @@ export async function updateProduct(productId: number, input: UpdateProductInput
 }
 
 /**
- * Bulk create products (for Excel import)
+ * Bulk create/upsert products (for Excel import & Bulk Add)
  */
 export async function bulkCreateProducts(products: CreateProductInput[]): Promise<{
   success: number;
   errors: string[];
 }> {
-  let successCount = 0;
-  const errors: string[] = [];
+  try {
+    if (products.length === 0) return { success: 0, errors: [] };
 
-  for (let i = 0; i < products.length; i++) {
-    try {
-      await createProduct(products[i]);
-      successCount++;
-    } catch (error: any) {
-      const rowNum = i + 2;
-      const productCode = products[i].code;
-      const productName = products[i].name;
-      const errorMsg = error.message || 'Gagal menambahkan produk';
-      errors.push(`Baris ${rowNum} (${productCode} - ${productName}): ${errorMsg}`);
-    }
+    const payload = products.map((input) => ({
+      store_id: input.store_id,
+      code: input.code,
+      name: input.name,
+      category_id: input.category_id || null,
+      brand_id: input.brand_id || null,
+      unit_id: input.unit_id || null,
+      main_product_id: input.main_product_id || null,
+      variant_id: input.variant_id || null,
+      specification_id: input.specification_id || null,
+      size_id: input.size_id || null,
+      short_name: input.short_name || null,
+      quantity: input.quantity || 0,
+      min_stock_alert: input.min_stock_alert || 5,
+      cost_price: input.cost_price,
+      selling_price_retail: input.selling_price_retail,
+      selling_price_wholesale: input.selling_price_wholesale || input.selling_price_retail,
+      selling_price_special: input.selling_price_special || input.selling_price_retail,
+      wholesale_min_qty: input.wholesale_min_qty || 0,
+      special_min_qty: input.special_min_qty || 0,
+    }));
+
+    // Use bulk upsert. Must specify onConflict constraint name if there is one,
+    // or columns. Our migration set a unique constraint on (store_id, code).
+    const { data, error } = await db
+      .from('products')
+      .upsert(payload, { onConflict: 'store_id,code' })
+      .select();
+
+    if (error) throw error;
+
+    return {
+      success: data ? data.length : payload.length,
+      errors: []
+    };
+  } catch (error: any) {
+    console.error('Error in bulk upsert:', error);
+    return {
+      success: 0,
+      errors: [error.message || 'Gagal menyimpan data massal']
+    };
   }
-
-  return { success: successCount, errors };
 }

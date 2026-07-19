@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -26,6 +26,14 @@ import {
 import { getAllCategories, getOrCreateCategory } from "@/services/categoriesService";
 import { getAllBrands, getOrCreateBrand } from "@/services/brandsService";
 import { getAllUnits, getOrCreateUnit } from "@/services/unitsService";
+import { 
+  getMainProducts, getOrCreateMainProduct,
+  getVariants, getOrCreateVariant,
+  getSpecifications, getOrCreateSpecification,
+  getSizes, getOrCreateSize,
+  ProductMaster 
+} from "@/services/productMasterService";
+import { generateProductName, generateShortName } from "@/lib/productUtils";
 
 interface AddProductModalProps {
   isOpen: boolean;
@@ -42,68 +50,62 @@ export function AddProductModal({
   onProductAdded,
   editingProduct,
 }: AddProductModalProps) {
-  const [formData, setFormData] = useState<Partial<CreateProductInput>>({
-    name: "",
-    code: "",
-    category_id: undefined,
-    brand_id: undefined,
-    unit_id: undefined,
-    cost_price: undefined,
-    selling_price_retail: undefined,
-    selling_price_wholesale: undefined,
-    selling_price_special: undefined,
-    wholesale_min_qty: undefined,
-    special_min_qty: undefined,
-    min_stock_alert: undefined,
-    quantity: undefined,
-  });
-
+  const [formData, setFormData] = useState<Partial<CreateProductInput>>({});
   const [categories, setCategories] = useState<any[]>([]);
   const [brands, setBrands] = useState<any[]>([]);
+  const [mainProducts, setMainProducts] = useState<ProductMaster[]>([]);
+  const [variants, setVariants] = useState<ProductMaster[]>([]);
+  const [specifications, setSpecifications] = useState<ProductMaster[]>([]);
+  const [sizes, setSizes] = useState<ProductMaster[]>([]);
   const [units, setUnits] = useState<any[]>([]);
-  const [newCategoryName, setNewCategoryName] = useState("");
-  const [newBrandName, setNewBrandName] = useState("");
-  const [newUnitName, setNewUnitName] = useState("");
-  const [showNewCategory, setShowNewCategory] = useState(false);
-  const [showNewBrand, setShowNewBrand] = useState(false);
-  const [showNewUnit, setShowNewUnit] = useState(false);
+
+  const [quickAdd, setQuickAdd] = useState<{
+    type: 'category' | 'brand' | 'main_product' | 'variant' | 'specification' | 'size' | 'unit';
+  } | null>(null);
+  const [quickAddName, setQuickAddName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  // Load categories, brands, and units
+  // Auto-generate name preview
+  const generatedName = useMemo(() => {
+    return generateProductName({
+      brandName: brands.find(b => b.id === formData.brand_id)?.name,
+      mainProductName: mainProducts.find(m => m.id === formData.main_product_id)?.name,
+      variantName: variants.find(v => v.id === formData.variant_id)?.name,
+      specificationName: specifications.find(s => s.id === formData.specification_id)?.name,
+      sizeName: sizes.find(s => s.id === formData.size_id)?.name,
+    });
+  }, [formData, brands, mainProducts, variants, specifications, sizes]);
+
+  const generatedShortName = useMemo(() => generateShortName(generatedName), [generatedName]);
+
+  const loadData = async () => {
+    try {
+      const [cats, brs, mains, vars, specs, szs, uns] = await Promise.all([
+        getAllCategories(storeId),
+        getAllBrands(storeId),
+        getMainProducts(storeId),
+        getVariants(storeId),
+        getSpecifications(storeId),
+        getSizes(storeId),
+        getAllUnits(storeId),
+      ]);
+      setCategories(cats);
+      setBrands(brs);
+      setMainProducts(mains);
+      setVariants(vars);
+      setSpecifications(specs);
+      setSizes(szs);
+      setUnits(uns);
+    } catch (error) {
+      console.error('Error loading master data:', error);
+    }
+  };
+
   useEffect(() => {
     if (isOpen) {
-      loadCategories();
-      loadBrands();
-      loadUnits();
+      loadData();
     }
   }, [isOpen, storeId]);
-
-  const loadCategories = async () => {
-    try {
-      const data = await getAllCategories(storeId);
-      setCategories(data);
-    } catch (error) {
-      console.error('Error loading categories:', error);
-    }
-  };
-
-  const loadBrands = async () => {
-    try {
-      const data = await getAllBrands(storeId);
-      setBrands(data);
-    } catch (error) {
-      console.error('Error loading brands:', error);
-    }
-  };
-
-  const loadUnits = async () => {
-    try {
-      const data = await getAllUnits(storeId);
-      setUnits(data);
-    } catch (error) {
-      console.error('Error loading units:', error);
-    }
-  };
 
   useEffect(() => {
     if (editingProduct) {
@@ -112,6 +114,10 @@ export function AddProductModal({
         code: editingProduct.code,
         category_id: editingProduct.category_id || undefined,
         brand_id: editingProduct.brand_id || undefined,
+        main_product_id: editingProduct.main_product_id || undefined,
+        variant_id: editingProduct.variant_id || undefined,
+        specification_id: editingProduct.specification_id || undefined,
+        size_id: editingProduct.size_id || undefined,
         unit_id: editingProduct.unit_id || undefined,
         cost_price: editingProduct.cost_price,
         selling_price_retail: editingProduct.selling_price_retail,
@@ -128,6 +134,10 @@ export function AddProductModal({
         code: "",
         category_id: undefined,
         brand_id: undefined,
+        main_product_id: undefined,
+        variant_id: undefined,
+        specification_id: undefined,
+        size_id: undefined,
         unit_id: undefined,
         cost_price: undefined,
         selling_price_retail: undefined,
@@ -139,90 +149,64 @@ export function AddProductModal({
         quantity: undefined,
       });
     }
-    setShowNewCategory(false);
-    setShowNewBrand(false);
-    setShowNewUnit(false);
-    setNewCategoryName("");
-    setNewBrandName("");
-    setNewUnitName("");
+    setQuickAdd(null);
+    setQuickAddName("");
   }, [isOpen, editingProduct]);
 
-  const handleAddCategory = async () => {
-    if (!newCategoryName.trim()) {
-      toast.error("Nama kategori tidak boleh kosong");
+  const handleQuickAdd = async () => {
+    if (!quickAddName.trim()) {
+      toast.error("Nama tidak boleh kosong");
       return;
     }
     
     try {
-      const category = await getOrCreateCategory(newCategoryName.trim(), storeId);
+      const name = quickAddName.trim();
+      let createdId: number;
       
-      // Set kategori yang baru dibuat sebagai kategori terpilih
-      setFormData((p) => ({ 
-        ...p, 
-        category_id: category.id,
-        brand_id: undefined // Reset brand karena kategori berubah
-      }));
+      switch (quickAdd!.type) {
+        case 'category':
+          createdId = (await getOrCreateCategory(name, storeId)).id;
+          setFormData(p => ({ ...p, category_id: createdId, brand_id: undefined }));
+          break;
+        case 'brand':
+          createdId = (await getOrCreateBrand(name, storeId)).id;
+          setFormData(p => ({ ...p, brand_id: createdId }));
+          break;
+        case 'main_product':
+          createdId = (await getOrCreateMainProduct(name, storeId)).id;
+          setFormData(p => ({ ...p, main_product_id: createdId }));
+          break;
+        case 'variant':
+          createdId = (await getOrCreateVariant(name, storeId)).id;
+          setFormData(p => ({ ...p, variant_id: createdId }));
+          break;
+        case 'specification':
+          createdId = (await getOrCreateSpecification(name, storeId)).id;
+          setFormData(p => ({ ...p, specification_id: createdId }));
+          break;
+        case 'size':
+          createdId = (await getOrCreateSize(name, storeId)).id;
+          setFormData(p => ({ ...p, size_id: createdId }));
+          break;
+        case 'unit':
+          createdId = (await getOrCreateUnit(name, storeId)).id;
+          setFormData(p => ({ ...p, unit_id: createdId }));
+          break;
+      }
       
-      setNewCategoryName("");
-      setShowNewCategory(false);
-      await loadCategories();
-      
-      toast.success(`Kategori "${category.name}" berhasil ditambahkan dan dipilih`);
+      toast.success("Berhasil ditambahkan");
+      setQuickAdd(null);
+      setQuickAddName("");
+      await loadData();
     } catch (error) {
-      console.error('Error adding category:', error);
-      toast.error("Gagal menambahkan kategori");
-    }
-  };
-
-  const handleAddBrand = async () => {
-    if (!newBrandName.trim()) {
-      toast.error("Nama brand tidak boleh kosong");
-      return;
-    }
-    
-    try {
-      const brand = await getOrCreateBrand(newBrandName.trim(), storeId);
-      
-      // Set brand yang baru dibuat sebagai brand terpilih
-      setFormData((p) => ({ ...p, brand_id: brand.id }));
-      
-      setNewBrandName("");
-      setShowNewBrand(false);
-      await loadBrands();
-      
-      toast.success(`Brand "${brand.name}" berhasil ditambahkan dan dipilih`);
-    } catch (error) {
-      console.error('Error adding brand:', error);
-      toast.error("Gagal menambahkan brand");
-    }
-  };
-
-  const handleAddUnit = async () => {
-    if (!newUnitName.trim()) {
-      toast.error("Nama satuan tidak boleh kosong");
-      return;
-    }
-    
-    try {
-      const unit = await getOrCreateUnit(newUnitName.trim(), storeId);
-      
-      // Set unit yang baru dibuat sebagai unit terpilih
-      setFormData((p) => ({ ...p, unit_id: unit.id }));
-      
-      setNewUnitName("");
-      setShowNewUnit(false);
-      await loadUnits();
-      
-      toast.success(`Satuan "${unit.name}" berhasil ditambahkan dan dipilih`);
-    } catch (error) {
-      console.error('Error adding unit:', error);
-      toast.error("Gagal menambahkan satuan");
+      console.error('Error in quick add:', error);
+      toast.error("Gagal menambahkan data");
     }
   };
 
   const handleSave = async () => {
-    if (!formData.name?.trim()) {
-      toast.error("Nama produk wajib diisi");
+    if (!generatedName.trim()) {
+      toast.error("Nama produk belum terbentuk. Pilih minimal satu master data (Brand/Produk Utama/dll)");
       return;
     }
     if (!formData.code?.trim()) {
@@ -241,12 +225,16 @@ export function AddProductModal({
     try {
       setIsSaving(true);
 
-      // Prepare payload - no min qty fields
       const payload = {
-        name: formData.name,
-        code: formData.code, // Include code for updates
+        name: generatedName,
+        short_name: generatedShortName,
+        code: formData.code,
         category_id: formData.category_id,
         brand_id: formData.brand_id,
+        main_product_id: formData.main_product_id,
+        variant_id: formData.variant_id,
+        specification_id: formData.specification_id,
+        size_id: formData.size_id,
         unit_id: formData.unit_id,
         cost_price: formData.cost_price || 0,
         selling_price_retail: formData.selling_price_retail || 0,
@@ -259,11 +247,9 @@ export function AddProductModal({
       };
 
       if (editingProduct) {
-        // Update existing product
         await updateProduct(editingProduct.id, payload);
         toast.success("Produk berhasil diperbarui");
       } else {
-        // Create new product
         await createProduct({
           store_id: storeId,
           code: formData.code!,
@@ -282,6 +268,70 @@ export function AddProductModal({
     }
   };
 
+  const MasterDropdown = ({ 
+    label, 
+    type, 
+    items, 
+    valueKey 
+  }: { 
+    label: string, 
+    type: 'category' | 'brand' | 'main_product' | 'variant' | 'specification' | 'size' | 'unit', 
+    items: any[], 
+    valueKey: keyof CreateProductInput 
+  }) => (
+    <div className="space-y-2">
+      <Label>{label}</Label>
+      <div className="flex gap-1">
+        <Select
+          value={formData[valueKey]?.toString() || "none"}
+          onValueChange={(val) => {
+            const numVal = val === "none" ? undefined : parseInt(val);
+            setFormData(p => ({ ...p, [valueKey]: numVal }));
+            setQuickAdd(null);
+          }}
+        >
+          <SelectTrigger className="flex-1">
+            <SelectValue placeholder={`Pilih ${label.toLowerCase()}`} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none" className="italic text-muted-foreground">— Kosong —</SelectItem>
+            {items.map((i) => (
+              <SelectItem key={i.id} value={String(i.id)}>{i.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => {
+            setQuickAdd(quickAdd?.type === type ? null : { type });
+            setQuickAddName("");
+          }}
+          title={`Tambah ${label.toLowerCase()} baru`}
+        >
+          <Plus className="w-4 h-4" />
+        </Button>
+      </div>
+      {quickAdd?.type === type && (
+        <div className="flex gap-1 mt-2 p-3 bg-muted/50 rounded-lg">
+          <Input
+            value={quickAddName}
+            onChange={(e) => setQuickAddName(e.target.value)}
+            placeholder={`Nama ${label.toLowerCase()} baru`}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); handleQuickAdd(); }
+            }}
+            autoFocus
+          />
+          <Button size="sm" onClick={handleQuickAdd}>Tambah</Button>
+          <Button variant="ghost" size="icon" onClick={() => setQuickAdd(null)}>
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -292,170 +342,21 @@ export function AddProductModal({
         </DialogHeader>
 
         <div className="grid grid-cols-2 gap-4 py-4">
-          {/* Baris 1: Klasifikasi - Kategori | Brand */}
-          <div className="space-y-2">
-            <Label>Kategori</Label>
-            <div className="flex gap-1">
-              <Select
-                value={formData.category_id?.toString() || ""}
-                onValueChange={(val) => {
-                  const categoryId = parseInt(val) || undefined;
-                  setFormData((p) => ({
-                    ...p,
-                    category_id: categoryId,
-                  }));
-                  setShowNewCategory(false);
-                  setNewCategoryName("");
-                }}
-              >
-                <SelectTrigger className="flex-1">
-                  <SelectValue placeholder="Pilih kategori" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map((c) => (
-                    <SelectItem key={c.id} value={String(c.id)}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => {
-                  setShowNewCategory(!showNewCategory);
-                  setShowNewBrand(false);
-                }}
-                title="Tambah kategori baru"
-              >
-                <Plus className="w-4 h-4" />
-              </Button>
-            </div>
-            {showNewCategory && (
-              <div className="flex gap-1 mt-2 p-3 bg-muted/50 rounded-lg">
-                <Input
-                  value={newCategoryName}
-                  onChange={(e) => setNewCategoryName(e.target.value)}
-                  placeholder="Nama kategori baru"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddCategory();
-                    }
-                  }}
-                  autoFocus
-                />
-                <Button size="sm" onClick={handleAddCategory}>
-                  Tambah
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    setShowNewCategory(false);
-                    setNewCategoryName("");
-                  }}
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-            )}
-          </div>
+          
+          <MasterDropdown label="Kategori" type="category" items={categories} valueKey="category_id" />
+          <MasterDropdown label="Brand" type="brand" items={brands} valueKey="brand_id" />
+          <MasterDropdown label="Produk Utama" type="main_product" items={mainProducts} valueKey="main_product_id" />
+          <MasterDropdown label="Varian" type="variant" items={variants} valueKey="variant_id" />
+          <MasterDropdown label="Spesifikasi" type="specification" items={specifications} valueKey="specification_id" />
+          <MasterDropdown label="Ukuran/Isi" type="size" items={sizes} valueKey="size_id" />
 
-          <div className="space-y-2">
-            <Label>Brand</Label>
-            <div className="flex gap-1">
-              <Select
-                value={formData.brand_id?.toString() || ""}
-                onValueChange={(val) => {
-                  setFormData((p) => ({
-                    ...p,
-                    brand_id: parseInt(val) || undefined,
-                  }));
-                  setShowNewBrand(false);
-                  setNewBrandName("");
-                }}
-              >
-                <SelectTrigger className="flex-1">
-                  <SelectValue placeholder="Pilih brand" />
-                </SelectTrigger>
-                <SelectContent>
-                  {brands.length === 0 ? (
-                    <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                      Belum ada brand
-                    </div>
-                  ) : (
-                    brands.map((b) => (
-                      <SelectItem key={b.id} value={String(b.id)}>
-                        {b.name}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => {
-                  setShowNewBrand(!showNewBrand);
-                  setShowNewCategory(false);
-                }}
-                title="Tambah brand baru"
-              >
-                <Plus className="w-4 h-4" />
-              </Button>
-            </div>
-            {showNewBrand && (
-              <div className="flex gap-1 mt-2 p-3 bg-muted/50 rounded-lg">
-                <Input
-                  value={newBrandName}
-                  onChange={(e) => setNewBrandName(e.target.value)}
-                  placeholder="Nama brand baru"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddBrand();
-                    }
-                  }}
-                  autoFocus
-                />
-                <Button size="sm" onClick={handleAddBrand}>
-                  Tambah
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    setShowNewBrand(false);
-                    setNewBrandName("");
-                  }}
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-            )}
-          </div>
-
-          {/* Baris 2: Identitas - Nama Produk | Barcode/SKU */}
-          <div className="space-y-2">
-            <Label>Nama Produk *</Label>
-            <Input
-              value={formData.name || ""}
-              onChange={(e) =>
-                setFormData((p) => ({ ...p, name: e.target.value }))
-              }
-              placeholder="Nama produk"
-            />
-          </div>
-
+          {/* Barcode/SKU */}
           <div className="space-y-2">
             <Label>Barcode/SKU *</Label>
             <div className="relative">
               <Input
                 value={formData.code || ""}
-                onChange={(e) =>
-                  setFormData((p) => ({ ...p, code: e.target.value }))
-                }
+                onChange={(e) => setFormData((p) => ({ ...p, code: e.target.value }))}
                 placeholder="Scan barcode"
                 data-barcode-input="true"
               />
@@ -463,94 +364,15 @@ export function AddProductModal({
             </div>
           </div>
 
-          {/* Baris 3: Fisik - Satuan (Full Width) */}
-          <div className="col-span-2 space-y-2">
-            <Label>Satuan</Label>
-            <div className="flex gap-1">
-              <Select
-                value={formData.unit_id?.toString() || ""}
-                onValueChange={(val) => {
-                  setFormData((p) => ({
-                    ...p,
-                    unit_id: parseInt(val) || undefined,
-                  }));
-                  setShowNewUnit(false);
-                  setNewUnitName("");
-                }}
-              >
-                <SelectTrigger className="flex-1">
-                  <SelectValue placeholder="Pilih satuan" />
-                </SelectTrigger>
-                <SelectContent>
-                  {units.length === 0 ? (
-                    <div className="px-2 py-6 text-center text-sm text-muted-foreground">
-                      Belum ada satuan
-                    </div>
-                  ) : (
-                    units.map((u) => (
-                      <SelectItem key={u.id} value={String(u.id)}>
-                        {u.name}
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={() => {
-                  setShowNewUnit(!showNewUnit);
-                  setShowNewCategory(false);
-                  setShowNewBrand(false);
-                }}
-                title="Tambah satuan baru"
-              >
-                <Plus className="w-4 h-4" />
-              </Button>
-            </div>
-            {showNewUnit && (
-              <div className="flex gap-1 mt-2 p-3 bg-muted/50 rounded-lg">
-                <Input
-                  value={newUnitName}
-                  onChange={(e) => setNewUnitName(e.target.value)}
-                  placeholder="Nama satuan baru (contoh: Pcs, Kg, Liter)"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      handleAddUnit();
-                    }
-                  }}
-                  autoFocus
-                />
-                <Button size="sm" onClick={handleAddUnit}>
-                  Tambah
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    setShowNewUnit(false);
-                    setNewUnitName("");
-                  }}
-                >
-                  <X className="w-4 h-4" />
-                </Button>
-              </div>
-            )}
-          </div>
+          <MasterDropdown label="Satuan" type="unit" items={units} valueKey="unit_id" />
 
-          {/* Baris 4: Stok & Kontrol - Stok Awal | Stok Minimum Alert */}
+          {/* Stok */}
           <div className="space-y-2">
             <Label>Stok Awal</Label>
             <Input
               type="number"
               value={formData.quantity !== undefined ? formData.quantity : ""}
-              onChange={(e) =>
-                setFormData((p) => ({
-                  ...p,
-                  quantity: e.target.value === "" ? undefined : parseInt(e.target.value) || 0,
-                }))
-              }
+              onChange={(e) => setFormData((p) => ({ ...p, quantity: e.target.value === "" ? undefined : parseInt(e.target.value) || 0 }))}
               placeholder="0"
               disabled={!!editingProduct}
             />
@@ -561,28 +383,18 @@ export function AddProductModal({
             <Input
               type="number"
               value={formData.min_stock_alert !== undefined ? formData.min_stock_alert : ""}
-              onChange={(e) =>
-                setFormData((p) => ({
-                  ...p,
-                  min_stock_alert: e.target.value === "" ? undefined : parseInt(e.target.value) || 0,
-                }))
-              }
+              onChange={(e) => setFormData((p) => ({ ...p, min_stock_alert: e.target.value === "" ? undefined : parseInt(e.target.value) || 0 }))}
               placeholder="0"
             />
           </div>
 
-          {/* Baris 5: Harga Dasar & Eceran */}
+          {/* Harga Dasar & Eceran */}
           <div className="space-y-2">
             <Label>Harga Modal *</Label>
             <Input
               type="number"
               value={formData.cost_price !== undefined ? formData.cost_price : ""}
-              onChange={(e) =>
-                setFormData((p) => ({
-                  ...p,
-                  cost_price: e.target.value === "" ? undefined : parseFloat(e.target.value) || 0,
-                }))
-              }
+              onChange={(e) => setFormData((p) => ({ ...p, cost_price: e.target.value === "" ? undefined : parseFloat(e.target.value) || 0 }))}
               placeholder="0"
             />
           </div>
@@ -592,28 +404,18 @@ export function AddProductModal({
             <Input
               type="number"
               value={formData.selling_price_retail !== undefined ? formData.selling_price_retail : ""}
-              onChange={(e) =>
-                setFormData((p) => ({
-                  ...p,
-                  selling_price_retail: e.target.value === "" ? undefined : parseFloat(e.target.value) || 0,
-                }))
-              }
+              onChange={(e) => setFormData((p) => ({ ...p, selling_price_retail: e.target.value === "" ? undefined : parseFloat(e.target.value) || 0 }))}
               placeholder="0"
             />
           </div>
 
-          {/* Baris 6: Harga Grosir */}
+          {/* Harga Grosir */}
           <div className="space-y-2">
             <Label>Harga Jual Grosir</Label>
             <Input
               type="number"
               value={formData.selling_price_wholesale !== undefined ? formData.selling_price_wholesale : ""}
-              onChange={(e) =>
-                setFormData((p) => ({
-                  ...p,
-                  selling_price_wholesale: e.target.value === "" ? undefined : parseFloat(e.target.value) || 0,
-                }))
-              }
+              onChange={(e) => setFormData((p) => ({ ...p, selling_price_wholesale: e.target.value === "" ? undefined : parseFloat(e.target.value) || 0 }))}
               placeholder="0"
             />
           </div>
@@ -623,28 +425,18 @@ export function AddProductModal({
             <Input
               type="number"
               value={formData.wholesale_min_qty !== undefined ? formData.wholesale_min_qty : ""}
-              onChange={(e) =>
-                setFormData((p) => ({
-                  ...p,
-                  wholesale_min_qty: e.target.value === "" ? undefined : parseInt(e.target.value) || 0,
-                }))
-              }
+              onChange={(e) => setFormData((p) => ({ ...p, wholesale_min_qty: e.target.value === "" ? undefined : parseInt(e.target.value) || 0 }))}
               placeholder="0"
             />
           </div>
 
-          {/* Baris 7: Harga Spesial */}
+          {/* Harga Spesial */}
           <div className="space-y-2">
             <Label>Harga Jual Spesial</Label>
             <Input
               type="number"
               value={formData.selling_price_special !== undefined ? formData.selling_price_special : ""}
-              onChange={(e) =>
-                setFormData((p) => ({
-                  ...p,
-                  selling_price_special: e.target.value === "" ? undefined : parseFloat(e.target.value) || 0,
-                }))
-              }
+              onChange={(e) => setFormData((p) => ({ ...p, selling_price_special: e.target.value === "" ? undefined : parseFloat(e.target.value) || 0 }))}
               placeholder="0"
             />
           </div>
@@ -654,14 +446,26 @@ export function AddProductModal({
             <Input
               type="number"
               value={formData.special_min_qty !== undefined ? formData.special_min_qty : ""}
-              onChange={(e) =>
-                setFormData((p) => ({
-                  ...p,
-                  special_min_qty: e.target.value === "" ? undefined : parseInt(e.target.value) || 0,
-                }))
-              }
+              onChange={(e) => setFormData((p) => ({ ...p, special_min_qty: e.target.value === "" ? undefined : parseInt(e.target.value) || 0 }))}
               placeholder="0"
             />
+          </div>
+
+          {/* Live Preview Name */}
+          <div className="col-span-2 mt-4 p-4 bg-muted/30 rounded-lg border border-border">
+            <Label className="text-muted-foreground text-xs font-semibold uppercase tracking-wider mb-2 block">
+              Preview Penamaan Produk
+            </Label>
+            <div className="space-y-3">
+              <div>
+                <div className="text-[10px] text-muted-foreground">Nama Lengkap:</div>
+                <div className="font-medium text-foreground">{generatedName || <span className="italic text-muted-foreground">Belum ada data</span>}</div>
+              </div>
+              <div>
+                <div className="text-[10px] text-muted-foreground">Nama Pendek (Struk):</div>
+                <div className="font-mono text-sm text-primary font-bold">{generatedShortName || <span className="italic text-muted-foreground font-sans font-normal">Belum ada data</span>}</div>
+              </div>
+            </div>
           </div>
 
           <div className="col-span-2 flex justify-end gap-2 pt-4">

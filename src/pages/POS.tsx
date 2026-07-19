@@ -359,8 +359,8 @@ export default function POS() {
       if (product) {
         if (product.quantity > 0) {
           addItem(product);
-          toast.success(`${product.name} ditambahkan`, { duration: 1500 });
-        } else toast.error(`${product.name} stok habis`);
+          toast.success(`${product.short_name || product.name} ditambahkan`, { duration: 1500 });
+        } else toast.error(`${product.short_name || product.name} stok habis`);
       } else toast.error(`Produk tidak ditemukan: ${barcode}`);
     },
     enabled: scannerActive && !paymentMethod && !showReceipt,
@@ -384,9 +384,9 @@ export default function POS() {
           addItem(selected);
           setSearchQuery("");
           setSelectedIndex(0);
-          toast.success(`${selected.name} ditambahkan`, { duration: 1000 });
+          toast.success(`${selected.short_name || selected.name} ditambahkan`, { duration: 1000 });
         } else if (selected) {
-          toast.error(`${selected.name} stok habis`);
+          toast.error(`${selected.short_name || selected.name} stok habis`);
         }
       }
     },
@@ -446,7 +446,7 @@ export default function POS() {
       const saleItems = [
         ...items.map(item => ({
           product_id: item.product.id,
-          product_name: item.product.name,
+          product_name: item.product.short_name || item.product.name,
           product_code: item.product.code,
           quantity: item.quantity,
           price_per_unit: item.price_per_unit,
@@ -555,7 +555,7 @@ export default function POS() {
       const saleItems = [
         ...items.map(item => ({
           product_id: item.product.id,
-          product_name: item.product.name,
+          product_name: item.product.short_name || item.product.name,
           product_code: item.product.code,
           quantity: item.quantity,
           price_per_unit: item.price_per_unit,
@@ -678,7 +678,7 @@ export default function POS() {
       const saleItems = [
         ...items.map(item => ({
           product_id: item.product.id,
-          product_name: item.product.name,
+          product_name: item.product.short_name || item.product.name,
           product_code: item.product.code,
           quantity: item.quantity,
           price_per_unit: item.price_per_unit,
@@ -1033,10 +1033,10 @@ export default function POS() {
                 setSearchQuery("");
                 setSelectedIndex(0);
                 searchRef.current?.focus();
-                toast.success(`${product.name} ditambahkan`, {
+                toast.success(`${product.short_name || product.name} ditambahkan`, {
                   duration: 1000,
                 });
-              } else toast.error(`${product.name} stok habis`);
+              } else toast.error(`${product.short_name || product.name} stok habis`);
             }}
           />
         </div>
@@ -1098,7 +1098,7 @@ export default function POS() {
                         </td>
                         <td className="px-3 py-2">
                           <p className="text-[13px] font-medium text-foreground">
-                            {item.product.name}
+                            {item.product.short_name || item.product.name}
                           </p>
                           <p className="text-[10px] text-muted-foreground mt-0.5">
                             E:

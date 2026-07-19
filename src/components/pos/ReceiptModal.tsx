@@ -152,7 +152,7 @@ export function ReceiptModal({
         id: d.id,
         sale_id: sale.id,
         product_id: d.product_id,
-        product_name: d.product?.name ?? `Produk #${d.product_id}`,
+        product_name: d.product ? (d.product.short_name || d.product.name) : `Produk #${d.product_id}`,
         product_code: null,
         quantity: d.quantity,
         price_per_unit: d.price_at_sale,

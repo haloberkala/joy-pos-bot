@@ -3,12 +3,14 @@ import { useAuth } from "@/contexts/AuthContext";
 import { 
   getProductsByStore, 
   deleteProduct,
+  updateProduct,
   Product
 } from "@/services/productsService";
 import { getAllCategories } from "@/services/categoriesService";
 import { getAllBrands } from "@/services/brandsService";
 import { getAllUnits, Unit } from "@/services/unitsService";
 import { getStockOpnamesByStore, StockOpname } from "@/services/stockOpnameService";
+import { getMainProducts, getVariants, getSpecifications, getSizes, ProductMaster } from "@/services/productMasterService";
 import { formatCurrency } from "@/lib/format";
 import { formatDate } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -22,6 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Plus,
@@ -37,6 +40,7 @@ import {
   AlertTriangle,
   Eye,
   LayoutGrid,
+  FileSpreadsheet,
 } from "lucide-react";
 import {
   Select,
@@ -58,6 +62,7 @@ import { StockOpnameViewModal } from "@/components/backoffice/StockOpnameViewMod
 import { BarcodeGenerator } from "@/components/backoffice/BarcodeGenerator";
 import { AddProductModal } from "@/components/backoffice/AddProductModal";
 import { BulkProductModal } from "@/components/backoffice/BulkProductModal";
+import { ImportProductModal } from "@/components/backoffice/ImportProductModal";
 import JsBarcode from "jsbarcode";
 
 export default function Products() {
@@ -66,10 +71,15 @@ export default function Products() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedBrand, setSelectedBrand] = useState<string>("all");
   const [selectedUnit, setSelectedUnit] = useState<string>("all");
+  const [selectedMainProduct, setSelectedMainProduct] = useState<string>("all");
+  const [selectedVariant, setSelectedVariant] = useState<string>("all");
+  const [selectedSpec, setSelectedSpec] = useState<string>("all");
+  const [selectedSize, setSelectedSize] = useState<string>("all");
   const [activeStockFilter, setActiveStockFilter] = useState<"all" | "low" | "out">("all");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [showBulkModal, setShowBulkModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [showOpnameDetail, setShowOpnameDetail] = useState(false);
   const [selectedOpname, setSelectedOpname] = useState<StockOpname | null>(null);
   const [activeTab, setActiveTab] = useState("products");
@@ -83,6 +93,10 @@ export default function Products() {
   const [storeCategories, setStoreCategories] = useState<any[]>([]);
   const [storeBrands, setStoreBrands] = useState<any[]>([]);
   const [storeUnits, setStoreUnits] = useState<Unit[]>([]);
+  const [storeMainProducts, setStoreMainProducts] = useState<ProductMaster[]>([]);
+  const [storeVariants, setStoreVariants] = useState<ProductMaster[]>([]);
+  const [storeSpecs, setStoreSpecs] = useState<ProductMaster[]>([]);
+  const [storeSizes, setStoreSizes] = useState<ProductMaster[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   // Load products from Supabase
@@ -92,7 +106,25 @@ export default function Products() {
     loadCategories();
     loadBrands();
     loadUnits();
+    loadMasterData();
   }, [activeStoreId, refreshKey]);
+
+  const loadMasterData = async () => {
+    try {
+      const [mains, vars, specs, szs] = await Promise.all([
+        getMainProducts(activeStoreId),
+        getVariants(activeStoreId),
+        getSpecifications(activeStoreId),
+        getSizes(activeStoreId),
+      ]);
+      setStoreMainProducts(mains);
+      setStoreVariants(vars);
+      setStoreSpecs(specs);
+      setStoreSizes(szs);
+    } catch (error) {
+      console.error('Error loading new master data:', error);
+    }
+  };
 
   const loadProducts = async () => {
     try {
@@ -257,7 +289,7 @@ export default function Products() {
         toast.error(`Produk dengan barcode ${barcode} tidak ditemukan`);
       }
     },
-    enabled: !showOpnameDetail && !isAddModalOpen && !showBulkModal,
+    enabled: !showOpnameDetail && !isAddModalOpen && !showBulkModal && !showImportModal,
   });
 
   // Open edit modal when editing product is set
@@ -282,6 +314,17 @@ export default function Products() {
     }
   };
 
+  const handleToggleActive = async (product: Product, isActive: boolean) => {
+    try {
+      await updateProduct(product.id, { is_active: isActive } as any);
+      toast.success(`Produk "${product.name}" berhasil di${isActive ? 'aktifkan' : 'nonaktifkan'}`);
+      setRefreshKey((k) => k + 1); // Refresh data
+    } catch (error) {
+      console.error('Error toggling product active state:', error);
+      toast.error('Gagal mengubah status produk');
+    }
+  };
+
   const filteredProducts = storeProducts.filter((product) => {
     const matchesSearch =
       product.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -295,6 +338,10 @@ export default function Products() {
     const matchesUnit =
       selectedUnit === "all" ||
       product.unit_id === Number(selectedUnit);
+    const matchesMain = selectedMainProduct === "all" || product.main_product_id === Number(selectedMainProduct);
+    const matchesVar = selectedVariant === "all" || product.variant_id === Number(selectedVariant);
+    const matchesSpec = selectedSpec === "all" || product.specification_id === Number(selectedSpec);
+    const matchesSize = selectedSize === "all" || product.size_id === Number(selectedSize);
     
     // Apply stock filter
     let matchesStockFilter = true;
@@ -304,7 +351,7 @@ export default function Products() {
       matchesStockFilter = product.quantity === 0;
     }
     
-    return matchesSearch && matchesCategory && matchesBrand && matchesUnit && matchesStockFilter;
+    return matchesSearch && matchesCategory && matchesBrand && matchesUnit && matchesMain && matchesVar && matchesSpec && matchesSize && matchesStockFilter;
   });
 
   const getCategoryLabel = (categoryId: number | null) => {
@@ -370,6 +417,13 @@ export default function Products() {
           <Button
             variant="outline"
             className="gap-2"
+            onClick={() => setShowImportModal(true)}
+          >
+            <FileSpreadsheet className="w-4 h-4 text-green-600" /> Import Excel
+          </Button>
+          <Button
+            variant="outline"
+            className="gap-2"
             onClick={() => setShowBulkModal(true)}
           >
             <LayoutGrid className="w-4 h-4" /> Tambah Massal
@@ -397,6 +451,12 @@ export default function Products() {
             onClose={() => setShowBulkModal(false)}
             storeId={activeStoreId}
             onProductsAdded={() => setRefreshKey((k) => k + 1)}
+          />
+          <ImportProductModal
+            isOpen={showImportModal}
+            onClose={() => setShowImportModal(false)}
+            storeId={activeStoreId}
+            onSuccess={() => setRefreshKey((k) => k + 1)}
           />
         </div>
       </div>
@@ -493,25 +553,25 @@ export default function Products() {
         {/* ========== PRODUCTS & STOCK (MERGED) ========== */}
         <TabsContent value="products" className="space-y-4">
           {/* Search & Filter */}
-          <div className="flex flex-col lg:flex-row gap-4">
-            <div className="relative flex-1">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3 mb-4">
+            <div className="relative col-span-1 md:col-span-2 xl:col-span-2">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
                 placeholder="Cari nama atau barcode..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
+                className="pl-10 h-9"
                 data-barcode-input="true"
               />
             </div>
             
             {/* Filter Kategori */}
             <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-              <SelectTrigger className="w-full lg:w-[180px]">
-                <SelectValue placeholder="Semua Kategori" />
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Kategori" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Semua Kategori</SelectItem>
+                <SelectItem value="all">Kategori</SelectItem>
                 {storeCategories.map((c) => (
                   <SelectItem key={c.id} value={String(c.id)}>
                     {c.name}
@@ -522,11 +582,11 @@ export default function Products() {
 
             {/* Filter Brand */}
             <Select value={selectedBrand} onValueChange={setSelectedBrand}>
-              <SelectTrigger className="w-full lg:w-[180px]">
-                <SelectValue placeholder="Semua Brand" />
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Brand" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Semua Brand</SelectItem>
+                <SelectItem value="all">Brand</SelectItem>
                 {storeBrands.map((b) => (
                   <SelectItem key={b.id} value={String(b.id)}>
                     {b.name}
@@ -535,16 +595,61 @@ export default function Products() {
               </SelectContent>
             </Select>
 
-            {/* Filter Satuan */}
-            <Select value={selectedUnit} onValueChange={setSelectedUnit}>
-              <SelectTrigger className="w-full lg:w-[180px]">
-                <SelectValue placeholder="Semua Satuan" />
+            {/* Filter Produk Utama */}
+            <Select value={selectedMainProduct} onValueChange={setSelectedMainProduct}>
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Produk Utama" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Semua Satuan</SelectItem>
-                {storeUnits.map((u) => (
-                  <SelectItem key={u.id} value={String(u.id)}>
-                    {u.name}
+                <SelectItem value="all">Prod. Utama</SelectItem>
+                {storeMainProducts.map((m) => (
+                  <SelectItem key={m.id} value={String(m.id)}>
+                    {m.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Filter Varian */}
+            <Select value={selectedVariant} onValueChange={setSelectedVariant}>
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Varian" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Varian</SelectItem>
+                {storeVariants.map((v) => (
+                  <SelectItem key={v.id} value={String(v.id)}>
+                    {v.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Filter Spesifikasi */}
+            <Select value={selectedSpec} onValueChange={setSelectedSpec}>
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Spesifikasi" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Spesifikasi</SelectItem>
+                {storeSpecs.map((s) => (
+                  <SelectItem key={s.id} value={String(s.id)}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Filter Ukuran/Isi */}
+            <Select value={selectedSize} onValueChange={setSelectedSize}>
+              <SelectTrigger className="h-9">
+                <SelectValue placeholder="Ukuran/Isi" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Ukuran/Isi</SelectItem>
+                {storeSizes.map((s) => (
+                  <SelectItem key={s.id} value={String(s.id)}>
+                    {s.name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -552,27 +657,35 @@ export default function Products() {
           </div>
 
           {/* Products Table - Merged */}
-          <div className="bg-card rounded-xl border border-border overflow-hidden">
+          <div className="bg-card rounded-xl border border-border overflow-x-auto">
             {isLoading ? (
               <div className="text-center py-12">
                 <p className="text-muted-foreground">Memuat produk...</p>
               </div>
             ) : (
-              <Table>
+              <Table className="min-w-[1800px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="font-semibold">Produk</TableHead>
-                  <TableHead className="font-semibold">Kode</TableHead>
-                  <TableHead className="font-semibold">Kategori</TableHead>
-                  <TableHead className="font-semibold">Brand</TableHead>
-                  <TableHead className="text-right font-semibold">Modal</TableHead>
-                  <TableHead className="text-right font-semibold">Eceran</TableHead>
-                  <TableHead className="text-right font-semibold">Grosir</TableHead>
-                  <TableHead className="text-right font-semibold">Spesial</TableHead>
-                  <TableHead className="text-center font-semibold">Stok</TableHead>
-                  <TableHead className="text-center font-semibold">Stok Minimum</TableHead>
-                  <TableHead className="text-center font-semibold">Status</TableHead>
-                  <TableHead className="text-center font-semibold">Aksi</TableHead>
+                  <TableHead className="font-semibold whitespace-nowrap">Nama Produk</TableHead>
+                  <TableHead className="font-semibold whitespace-nowrap">Nama Pendek</TableHead>
+                  <TableHead className="font-semibold whitespace-nowrap">Kategori</TableHead>
+                  <TableHead className="font-semibold whitespace-nowrap">Brand</TableHead>
+                  <TableHead className="font-semibold whitespace-nowrap">Produk Utama</TableHead>
+                  <TableHead className="font-semibold whitespace-nowrap">Varian</TableHead>
+                  <TableHead className="font-semibold whitespace-nowrap">Spesifikasi</TableHead>
+                  <TableHead className="font-semibold whitespace-nowrap">Ukuran/Isi</TableHead>
+                  <TableHead className="font-semibold whitespace-nowrap">Barcode/SKU</TableHead>
+                  <TableHead className="font-semibold whitespace-nowrap text-center">Satuan</TableHead>
+                  <TableHead className="font-semibold whitespace-nowrap text-center">Stok Awal</TableHead>
+                  <TableHead className="font-semibold whitespace-nowrap text-center">Stok Minimum</TableHead>
+                  <TableHead className="text-right font-semibold whitespace-nowrap">Harga Modal</TableHead>
+                  <TableHead className="text-right font-semibold whitespace-nowrap">Harga Jual Eceran</TableHead>
+                  <TableHead className="text-right font-semibold whitespace-nowrap">Harga Jual Grosir</TableHead>
+                  <TableHead className="text-right font-semibold whitespace-nowrap">Min Qty Grosir</TableHead>
+                  <TableHead className="text-right font-semibold whitespace-nowrap">Harga Jual Spesial</TableHead>
+                  <TableHead className="text-right font-semibold whitespace-nowrap">Min Qty Spesial</TableHead>
+                  <TableHead className="text-center font-semibold whitespace-nowrap">Status</TableHead>
+                  <TableHead className="text-center font-semibold whitespace-nowrap sticky right-0 bg-card z-10 shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.1)]">Aksi</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -582,45 +695,85 @@ export default function Products() {
                     product.min_stock_alert,
                   );
                   return (
-                    <TableRow key={product.id} className="hover:bg-muted/50">
-                      <TableCell className="font-medium py-4">
-                        {product.name}
+                    <TableRow key={product.id} className="hover:bg-muted/50 group">
+                      <TableCell className="font-medium py-4 whitespace-nowrap">
+                        <div className="flex flex-col">
+                          <span>{product.name || "-"}</span>
+                        </div>
                       </TableCell>
-                      <TableCell className="py-4">
+                      <TableCell className="text-sm py-4 whitespace-nowrap">
+                        <span className="font-mono text-muted-foreground">{product.short_name || "-"}</span>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground py-4 whitespace-nowrap">
+                        {product.category_name || "-"}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground py-4 whitespace-nowrap">
+                        {product.brand_name || "-"}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground py-4 whitespace-nowrap">
+                        {product.main_product_name || "-"}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground py-4 whitespace-nowrap">
+                        {product.variant_name || "-"}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground py-4 whitespace-nowrap">
+                        {product.specification_name || "-"}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground py-4 whitespace-nowrap">
+                        {product.size_name || "-"}
+                      </TableCell>
+                      <TableCell className="py-4 whitespace-nowrap">
                         <span className="font-mono text-sm text-muted-foreground">
-                          {product.code}
+                          {product.code || "-"}
                         </span>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground py-4">
-                        {getCategoryLabel(product.category_id)}
+                      <TableCell className="text-center text-sm text-muted-foreground py-4 whitespace-nowrap">
+                        {product.unit_name || "-"}
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground py-4">
-                        {getBrandName(product.brand_id)}
+                      <TableCell className="text-center font-medium text-sm py-4 whitespace-nowrap">
+                        {product.quantity}
+                        {product.quantity < product.min_stock_alert && (
+                          <span className="ml-2 inline-flex items-center rounded-full bg-red-100 px-1.5 py-0.5 text-xs font-medium text-red-700 ring-1 ring-inset ring-red-600/10">!</span>
+                        )}
                       </TableCell>
-                      <TableCell className="text-right text-sm text-muted-foreground py-4">
-                        {formatCurrency(product.cost_price)}
-                      </TableCell>
-                      <TableCell className="text-right font-medium text-sm py-4">
-                        {formatCurrency(product.selling_price_retail)}
-                      </TableCell>
-                      <TableCell className="text-right font-medium text-sm text-blue-600 py-4">
-                        {formatCurrency(product.selling_price_wholesale)}
-                      </TableCell>
-                      <TableCell className="text-right font-medium text-sm text-purple-600 py-4">
-                        {formatCurrency(product.selling_price_special)}
-                      </TableCell>
-                      <TableCell className="text-center font-medium text-sm py-4">
-                        {product.quantity} {getUnitName(product.unit_id)}
-                      </TableCell>
-                      <TableCell className="text-center text-sm text-muted-foreground py-4">
+                      <TableCell className="text-center text-sm text-muted-foreground py-4 whitespace-nowrap">
                         {product.min_stock_alert}
                       </TableCell>
-                      <TableCell className="text-center py-4">
-                        <Badge variant={stockStatus.variant} className="font-normal">
-                          {stockStatus.label}
-                        </Badge>
+                      <TableCell className="text-right text-sm text-muted-foreground py-4 whitespace-nowrap">
+                        {formatCurrency(product.cost_price)}
                       </TableCell>
-                      <TableCell className="text-center py-4">
+                      <TableCell className="text-right font-medium text-sm py-4 whitespace-nowrap">
+                        {formatCurrency(product.selling_price_retail)}
+                      </TableCell>
+                      <TableCell className="text-right text-sm py-4 whitespace-nowrap">
+                        {product.selling_price_wholesale > 0 ? (
+                           <span className="text-blue-600 font-medium">{formatCurrency(product.selling_price_wholesale)}</span>
+                        ) : "-"}
+                      </TableCell>
+                      <TableCell className="text-right text-sm text-muted-foreground py-4 whitespace-nowrap">
+                        {product.wholesale_min_qty > 0 ? product.wholesale_min_qty : "-"}
+                      </TableCell>
+                      <TableCell className="text-right text-sm py-4 whitespace-nowrap">
+                        {product.selling_price_special > 0 ? (
+                          <span className="text-purple-600 font-medium">{formatCurrency(product.selling_price_special)}</span>
+                        ) : "-"}
+                      </TableCell>
+                      <TableCell className="text-right text-sm text-muted-foreground py-4 whitespace-nowrap">
+                        {product.special_min_qty > 0 ? product.special_min_qty : "-"}
+                      </TableCell>
+                      <TableCell className="text-center py-4 whitespace-nowrap">
+                        <div className="flex justify-center items-center gap-2">
+                          <Switch 
+                            checked={product.is_active} 
+                            onCheckedChange={(checked) => handleToggleActive(product, checked)}
+                            aria-label="Toggle active status"
+                          />
+                          <span className={`text-xs ${product.is_active ? 'text-green-600 font-medium' : 'text-muted-foreground'}`}>
+                            {product.is_active ? 'Aktif' : 'Nonaktif'}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-center py-4 whitespace-nowrap sticky right-0 bg-card group-hover:bg-muted/50 z-10 transition-colors">
                         <div className="flex items-center justify-center gap-1">
                           <Button
                             variant="ghost"
