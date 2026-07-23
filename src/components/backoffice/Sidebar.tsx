@@ -40,7 +40,7 @@ export function Sidebar() {
   };
 
   const getRoleLabel = (role: string) => {
-    switch (role) { case 'owner': return 'Owner'; case 'admin': return 'Kepala Toko'; case 'cashier': return 'Kasir'; default: return 'User'; }
+    switch (role) { case 'owner': return 'Owner'; case 'admin': return 'Admin'; case 'cashier': return 'Kasir'; default: return 'User'; }
   };
 
   const RoleIcon = user?.role === 'owner' ? ShieldCheck : user?.role === 'admin' ? UserCog : User;
@@ -59,7 +59,7 @@ export function Sidebar() {
   ];
 
   const productsSubItems = [
-    { to: '/backoffice/products', icon: List, label: 'Daftar Produk' },
+    { to: '/backoffice/products', icon: List, label: 'Daftar Produk', end: true },
     { to: '/backoffice/products/categories-brands', icon: Tag, label: 'Klasifikasi Produk' },
   ];
 
@@ -182,7 +182,7 @@ export function Sidebar() {
             {productsOpen && (
               <div className="ml-4 mt-0.5 space-y-0.5 border-l border-border pl-3">
                 {productsSubItems.map(item => (
-                  <NavLink key={item.to} to={item.to} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" activeClassName={activeCls}>
+                  <NavLink key={item.to} to={item.to} end={item.end} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[12px] text-muted-foreground hover:bg-accent hover:text-foreground transition-colors" activeClassName={activeCls}>
                     <item.icon className="w-3.5 h-3.5" /><span>{item.label}</span>
                   </NavLink>
                 ))}

@@ -23,7 +23,7 @@ import { toast } from 'sonner';
 import { printInvoice } from '@/components/pos/PrintInvoice';
 
 export default function Transactions() {
-  const { activeStoreId } = useAuth();
+  const { activeStoreId, user } = useAuth();
   const [activeTab, setActiveTab] = useState<'transactions' | 'debts'>('transactions');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
@@ -610,7 +610,7 @@ export default function Transactions() {
                 )}
               </div>
 
-              {selectedDebt.payment_status === 'debt' && (
+              {selectedDebt.payment_status === 'debt' && user?.role === 'owner' && (
                 <div className="border-t pt-4 space-y-3">
                   <h4 className="font-semibold">Catat Pembayaran</h4>
                   <div className="space-y-2">

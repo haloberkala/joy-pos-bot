@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { getStoreById, updateStore } from '@/services/storesService';
 import {
@@ -6,19 +6,38 @@ import {
   isWebSerialSupported, triggerCashDrawer,
   CashDrawerConfig,
 } from '@/services/cashDrawerService';
+import { exportFullDatabase } from '@/services/backupService';
+import { importFullDatabase } from '@/services/restoreService';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
-import { Store, Banknote, Zap, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+  DialogDescription, DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  Store, Banknote, Zap, AlertTriangle, CheckCircle2,
+  Download, Upload, HardDrive, Loader2, ShieldAlert,
+} from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Settings() {
-  const { activeStoreId } = useAuth();
-  const [isLoading, setIsLoading]   = useState(true);
-  const [isSaving, setIsSaving]     = useState(false);
+  const { activeStoreId, user } = useAuth();
+  const [isLoading, setIsLoading]         = useState(true);
+  const [isSaving, setIsSaving]           = useState(false);
   const [isTestingDrawer, setIsTestingDrawer] = useState(false);
+
+  // Backup / Restore state
+  const [isExporting, setIsExporting]     = useState(false);
+  const [isImporting, setIsImporting]     = useState(false);
+  const [restoreProgress, setRestoreProgress] = useState<{ step: string; pct: number } | null>(null);
+
+  const [showRestoreDialog, setShowRestoreDialog] = useState(false);
+  const [pendingRestoreFile, setPendingRestoreFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Store data
   const [storeName,    setStoreName]    = useState('');
@@ -82,6 +101,62 @@ export default function Settings() {
       toast.success('✅ Perintah terkirim! Laci kasir seharusnya terbuka.');
     } else {
       toast.error('Gagal mengirim perintah. Pastikan printer terhubung via USB.');
+    }
+  };
+
+  // ── Backup Handlers ────────────────────────────────────────────────────────
+  const handleExport = async () => {
+    try {
+      setIsExporting(true);
+      toast.info('Menyiapkan export data, harap tunggu...');
+      await exportFullDatabase(activeStoreId, storeName || 'Toko');
+      toast.success('✅ Export berhasil! File Excel telah diunduh.');
+    } catch (err: any) {
+      console.error('Export error:', err);
+      toast.error(`Gagal export: ${err.message ?? 'Error tidak diketahui'}`);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    // Reset input so same file can be re-selected
+    e.target.value = '';
+    setPendingRestoreFile(file);
+    setShowRestoreDialog(true);
+  };
+
+  const handleRestoreConfirm = async () => {
+    if (!pendingRestoreFile) return;
+    setShowRestoreDialog(false);
+    try {
+      setIsImporting(true);
+      setRestoreProgress({ step: 'Memulai proses restore...', pct: 0 });
+
+      const { warnings } = await importFullDatabase(pendingRestoreFile, (step, current, total) => {
+        setRestoreProgress({ step, pct: Math.round((current / total) * 100) });
+      });
+
+      setRestoreProgress({ step: 'Selesai!', pct: 100 });
+
+      if (warnings.length > 0) {
+        console.warn('Restore warnings:', warnings);
+        toast.warning(
+          `Restore selesai dengan ${warnings.length} peringatan. Cek konsol untuk detail.`,
+          { duration: 8000 },
+        );
+      } else {
+        toast.success('✅ Data berhasil dipulihkan dari backup!');
+      }
+    } catch (err: any) {
+      console.error('Restore error:', err);
+      toast.error(`Gagal restore: ${err.message ?? 'Error tidak diketahui'}`, { duration: 10000 });
+    } finally {
+      setIsImporting(false);
+      setPendingRestoreFile(null);
+      setTimeout(() => setRestoreProgress(null), 3000);
     }
   };
 
@@ -156,7 +231,6 @@ export default function Settings() {
         </div>
         <Separator />
 
-        {/* Browser support warning */}
         {!webSerialSupported && (
           <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
             <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
@@ -167,7 +241,6 @@ export default function Settings() {
           </div>
         )}
 
-        {/* Enable toggle */}
         <div className="flex items-center justify-between">
           <div>
             <Label className="text-sm font-medium">Aktifkan Laci Kasir</Label>
@@ -186,8 +259,6 @@ export default function Settings() {
         {drawerConfig.enabled && webSerialSupported && (
           <>
             <Separator />
-
-            {/* Pin selector */}
             <div className="grid gap-2">
               <Label className="text-sm">Pin Kabel RJ-11</Label>
               <div className="flex gap-3">
@@ -210,7 +281,6 @@ export default function Settings() {
               </p>
             </div>
 
-            {/* Baud rate */}
             <div className="grid gap-2">
               <Label htmlFor="baudRate" className="text-sm">Baud Rate</Label>
               <select
@@ -225,7 +295,6 @@ export default function Settings() {
               </select>
             </div>
 
-            {/* Info */}
             <div className="flex items-start gap-3 p-3 rounded-lg bg-blue-50 border border-blue-200">
               <CheckCircle2 className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
               <div className="text-xs text-blue-800">
@@ -240,7 +309,6 @@ export default function Settings() {
               </div>
             </div>
 
-            {/* Test button */}
             <Button
               variant="outline"
               className="w-full gap-2"
@@ -253,6 +321,136 @@ export default function Settings() {
           </>
         )}
       </div>
+
+      {/* ── Backup & Restore Card (Owner Only) ── */}
+      {user?.role === 'owner' && (
+        <div className="bg-card rounded-xl border border-border p-6 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-emerald-100">
+              <HardDrive className="w-5 h-5 text-emerald-600" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-foreground">Manajemen Data & Backup</h2>
+              <p className="text-sm text-muted-foreground">
+                Export seluruh data ke Excel atau pulihkan data dari file backup sebelumnya.
+              </p>
+            </div>
+          </div>
+          <Separator />
+
+          {/* Progress bar during restore */}
+          {restoreProgress && (
+            <div className="space-y-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex justify-between text-xs text-blue-800 font-medium">
+                <span>{restoreProgress.step}</span>
+                <span>{restoreProgress.pct}%</span>
+              </div>
+              <Progress value={restoreProgress.pct} className="h-2" />
+            </div>
+          )}
+
+          <div className="grid gap-3">
+            {/* Export Button */}
+            <div className="p-4 rounded-lg border border-border bg-muted/20 space-y-2">
+              <div className="flex items-start gap-2">
+                <Download className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-foreground">Export Semua Data</p>
+                  <p className="text-xs text-muted-foreground">
+                    Unduh database lengkap (produk, transaksi, SDM, dll) menjadi satu file Excel multi-sheet untuk arsip.
+                  </p>
+                </div>
+              </div>
+              <Button
+                className="w-full gap-2"
+                variant="outline"
+                onClick={handleExport}
+                disabled={isExporting || isImporting}
+              >
+                {isExporting
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Mengekspor Data...</>
+                  : <><Download className="w-4 h-4" /> Export Semua Data</>
+                }
+              </Button>
+            </div>
+
+            {/* Restore Button */}
+            <div className="p-4 rounded-lg border border-destructive/30 bg-destructive/5 space-y-2">
+              <div className="flex items-start gap-2">
+                <ShieldAlert className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-foreground">Restore Data dari Excel</p>
+                  <p className="text-xs text-muted-foreground">
+                    Pulihkan data dari file backup. <strong className="text-destructive">Hati-hati:</strong> data yang ada bisa tertimpa dan hilang selamanya.
+                  </p>
+                </div>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx"
+                className="hidden"
+                onChange={handleFileSelect}
+              />
+              <Button
+                className="w-full gap-2"
+                variant="destructive"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isImporting || isExporting}
+              >
+                {isImporting
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> Memulihkan Data...</>
+                  : <><Upload className="w-4 h-4" /> Restore Data dari Excel</>
+                }
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Dialog: Konfirmasi Restore ── */}
+      <Dialog open={showRestoreDialog} onOpenChange={(open) => {
+        if (!open) { setShowRestoreDialog(false); setPendingRestoreFile(null); }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <ShieldAlert className="w-5 h-5" />
+              AWAS! Konfirmasi Pemulihan Data
+            </DialogTitle>
+            <DialogDescription className="text-left pt-2">
+              <span className="inline-flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-900 text-sm">
+                <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-red-600" />
+                <span>
+                  <strong>BAHAYA:</strong> Mengembalikan data dari file Excel akan{' '}
+                  <strong>MENIMPA sistem saat ini secara paksa</strong>. Jika ada
+                  transaksi atau data baru yang masuk setelah file Excel ini dibuat,
+                  data baru tersebut berisiko hilang atau tertimpa. Pastikan Anda
+                  sangat yakin!
+                </span>
+              </span>
+              {pendingRestoreFile && (
+                <span className="block mt-3 text-xs text-muted-foreground">
+                  File dipilih: <strong>{pendingRestoreFile.name}</strong>{' '}
+                  ({(pendingRestoreFile.size / 1024 / 1024).toFixed(2)} MB)
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="ghost"
+              onClick={() => { setShowRestoreDialog(false); setPendingRestoreFile(null); }}
+            >
+              Batal
+            </Button>
+            <Button variant="destructive" className="gap-2" onClick={handleRestoreConfirm}>
+              <Upload className="w-4 h-4" />
+              Ya, Saya Yakin Timpa Data
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

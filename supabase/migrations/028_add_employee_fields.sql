@@ -18,7 +18,7 @@ UPDATE employees
 SET 
   position = CASE 
     WHEN role = 'owner' THEN 'Owner'
-    WHEN role = 'admin' THEN 'Kepala Toko'
+    WHEN role = 'admin' THEN 'Admin'
     WHEN role = 'cashier' THEN 'Kasir'
     ELSE 'Staff'
   END,

@@ -11,7 +11,6 @@ interface PaymentMethodChartProps {
 
 const PAYMENT_LABELS: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   cash: { label: 'Tunai', color: 'hsl(158, 64%, 52%)', icon: <Banknote className="w-4 h-4" /> },
-  debit: { label: 'Debit', color: 'hsl(200, 70%, 50%)', icon: <CreditCard className="w-4 h-4" /> },
   qris: { label: 'QRIS', color: 'hsl(280, 60%, 55%)', icon: <Smartphone className="w-4 h-4" /> },
   transfer: { label: 'Transfer', color: 'hsl(45, 80%, 55%)', icon: <CreditCard className="w-4 h-4" /> },
 };
