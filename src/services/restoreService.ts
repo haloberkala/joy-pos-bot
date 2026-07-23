@@ -40,9 +40,9 @@ async function upsertTable(
   const CHUNK = 200;
   for (let i = 0; i < cleaned.length; i += CHUNK) {
     const chunk = cleaned.slice(i, i + CHUNK);
-    const { error } = await supabase
+    const { error } = await (supabase as any)
       .from(tableName)
-      .upsert(chunk, { onConflict, ignoreDuplicates: false });
+      .upsert(chunk as any[], { onConflict, ignoreDuplicates: false });
     if (error) {
       throw new Error(`Gagal restore tabel '${tableName}': ${error.message} (detail: ${error.details ?? '-'})`);
     }

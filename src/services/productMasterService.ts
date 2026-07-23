@@ -7,7 +7,7 @@ export interface ProductMaster {
 }
 
 export async function getMasterData(table: string, storeId: number): Promise<ProductMaster[]> {
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from(table)
     .select("*")
     .eq("store_id", storeId)
@@ -21,7 +21,7 @@ export async function getOrCreateMasterData(table: string, name: string, storeId
   const cleanName = name.trim();
   
   // Try to find existing
-  const { data: existing, error: searchError } = await supabase
+  const { data: existing, error: searchError } = await (supabase as any)
     .from(table)
     .select("*")
     .eq("store_id", storeId)
@@ -32,7 +32,7 @@ export async function getOrCreateMasterData(table: string, name: string, storeId
   if (existing) return existing;
 
   // Create new if not exists
-  const { data: created, error: createError } = await supabase
+  const { data: created, error: createError } = await (supabase as any)
     .from(table)
     .insert([{ name: cleanName, store_id: storeId }])
     .select()
@@ -44,7 +44,7 @@ export async function getOrCreateMasterData(table: string, name: string, storeId
 
 export async function updateMasterData(table: string, id: number, name: string): Promise<ProductMaster> {
   const cleanName = name.trim();
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from(table)
     .update({ name: cleanName })
     .eq("id", id)
@@ -56,7 +56,7 @@ export async function updateMasterData(table: string, id: number, name: string):
 }
 
 export async function deleteMasterData(table: string, id: number): Promise<void> {
-  const { error } = await supabase
+  const { error } = await (supabase as any)
     .from(table)
     .delete()
     .eq("id", id);

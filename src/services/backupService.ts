@@ -36,12 +36,12 @@ function toSheet(rows: Record<string, any>[]): XLSX.WorkSheet {
 }
 
 async function fetchAll(table: string, storeId?: number, extraFilter?: (q: any) => any) {
-  let q = supabase.from(table).select('*');
+  let q = (supabase as any).from(table).select('*');
   if (storeId) q = q.eq('store_id', storeId);
   if (extraFilter) q = extraFilter(q);
   const { data, error } = await q;
   if (error) throw new Error(`Gagal fetch ${table}: ${error.message}`);
-  return data || [];
+  return (data || []) as Record<string, any>[];
 }
 
 // Remove sensitive columns before export
@@ -125,19 +125,19 @@ export async function exportFullDatabase(storeId: number, storeName: string): Pr
   const [saleItems, debtPayments, shipments,
          purchaseItems, supplierPayments, opnameItems] = await Promise.all([
     saleIds.length
-      ? supabase.from('sale_items').select('*').in('sale_id', saleIds).then(r => r.data || [])
-      : Promise.resolve([]),
+      ? (supabase as any).from('sale_items').select('*').in('sale_id', saleIds).then((r: any) => (r.data || []) as Record<string, any>[])
+      : Promise.resolve([] as Record<string, any>[]),
     saleIds.length
-      ? supabase.from('debt_payments').select('*').in('sale_id', saleIds).then(r => r.data || [])
-      : Promise.resolve([]),
+      ? (supabase as any).from('debt_payments').select('*').in('sale_id', saleIds).then((r: any) => (r.data || []) as Record<string, any>[])
+      : Promise.resolve([] as Record<string, any>[]),
     fetchAll('shipments', storeId),
     purchaseIds.length
-      ? supabase.from('purchase_items').select('*').in('purchase_id', purchaseIds).then(r => r.data || [])
-      : Promise.resolve([]),
+      ? (supabase as any).from('purchase_items').select('*').in('purchase_id', purchaseIds).then((r: any) => (r.data || []) as Record<string, any>[])
+      : Promise.resolve([] as Record<string, any>[]),
     fetchAll('supplier_payments', storeId),
     opnameIds.length
-      ? supabase.from('stock_opname_items').select('*').in('opname_id', opnameIds).then(r => r.data || [])
-      : Promise.resolve([]),
+      ? (supabase as any).from('stock_opname_items').select('*').in('opname_id', opnameIds).then((r: any) => (r.data || []) as Record<string, any>[])
+      : Promise.resolve([] as Record<string, any>[]),
   ]);
   append('sale_items', saleItems);
   append('debt_payments', debtPayments);
