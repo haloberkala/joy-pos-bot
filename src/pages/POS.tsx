@@ -9,8 +9,8 @@ import { getCustomersByStore, Customer } from "@/services/customersService";
 import { getAllStores, Store } from "@/services/storesService";
 import { createSale, processRefund as processRefundService, Sale as DBSale, SaleItem as DBSaleItem } from "@/services/salesService";
 import { createShipment } from "@/services/shipmentsService";
-import { openCashDrawerIfEnabled } from "@/services/cashDrawerService";
-import { connectPrinterSerial } from "@/services/thermalPrinterService";
+import { printer, PrinterError } from "@/lib/printer";
+import type { PrinterTransaction } from "@/lib/printer";
 import {
   PaymentMethod,
   Sale,
@@ -640,14 +640,56 @@ export default function POS() {
       setIsDebt(false);
       closeBill(activeBillId);
 
-      // Buka laci kasir otomatis untuk pembayaran tunai/QRIS (bukan utang)
-      if (!isDebt && (paymentMethod === 'cash' || paymentMethod === 'qris')) {
-        openCashDrawerIfEnabled(); // fire-and-forget, tidak memblokir receipt
+      // ── Cetak struk + buka laci kasir (satu ESC/POS stream) ─────────────
+      // Fire-and-forget: transaksi sudah tersimpan, printer tidak boleh block UX.
+      if (!isDebt) {
+        const tx: PrinterTransaction = {
+          id: String(sale.id),
+          invoiceNumber: sale.invoice_number,
+          storeName: activeStore?.name ?? 'Toko',
+          storeAddress: activeStore?.address,
+          cashierName: user?.name ?? 'Kasir',
+          customerName: selectedCustomer?.name,
+          paymentMethod: sale.payment_method as PrinterTransaction['paymentMethod'],
+          paymentStatus: sale.payment_status as PrinterTransaction['paymentStatus'],
+          items: [
+            ...items.map(item => ({
+              name: item.product.name,
+              quantity: item.quantity,
+              unitPrice: item.price_per_unit,
+              totalPrice: item.price_per_unit * item.quantity,
+            })),
+            ...serviceItems.map(svc => ({
+              name: `🔧 ${svc.description}`,
+              quantity: 1,
+              unitPrice: svc.price,
+              totalPrice: svc.price,
+            })),
+          ],
+          subtotal: sale.sub_total,
+          discount: sale.discount || undefined,
+          grandTotal: sale.grand_total,
+          amountReceived: sale.amount_received || undefined,
+          change: sale.change_amount || undefined,
+          createdAt: sale.created_at,
+        };
+
+        printer.printReceipt(tx).catch(err => {
+          if (err instanceof PrinterError) {
+            if (err.code === 'NO_PRINTER') {
+              toast.warning('Struk tidak tercetak. Hubungkan printer di menu Pengaturan.');
+            } else if (err.code === 'UNSUPPORTED_BROWSER') {
+              // silent — browser tidak support, sudah diperingatkan di Settings
+            } else {
+              console.error('[POS] printReceipt:', err.code, err.message);
+            }
+          }
+        });
       }
-      
+
       // Reload products to update stock
       loadStoreData();
-      
+
       toast.success(
         isDebt ? "Penjualan (Utang) berhasil dicatat!" : "Pembayaran berhasil!",
       );
@@ -882,14 +924,13 @@ export default function POS() {
           )}
           <button
             onClick={async () => {
-              const ok = await connectPrinterSerial();
-              if (ok) toast.success("Printer Bluetooth Terhubung!");
-              else toast.error("Gagal memilih printer Bluetooth.");
+              const ok = await printer.connect();
+              if (ok) toast.success('Printer terhubung!');
             }}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent active:bg-accent active:text-foreground text-[12px] font-medium transition-colors touch-manipulation"
-            title="Setel Printer Thermal Bluetooth"
+            title="Hubungkan Printer Thermal"
           >
-            <Printer className="w-3.5 h-3.5" /> Bluetooth
+            <Printer className="w-3.5 h-3.5" />
           </button>
           {canAccessMenu(user?.role, "dashboard") && (
             <Link

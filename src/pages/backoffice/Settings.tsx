@@ -1,40 +1,41 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { getStoreById, updateStore } from '@/services/storesService';
-import {
-  getCashDrawerConfig, saveCashDrawerConfig,
-  isWebSerialSupported, triggerCashDrawer,
-  CashDrawerConfig,
-} from '@/services/cashDrawerService';
 import { exportFullDatabase } from '@/services/backupService';
 import { importFullDatabase } from '@/services/restoreService';
+import { printer, PrinterError, isWebSerialSupported } from '@/lib/printer';
+import type { PrinterInfo } from '@/lib/printer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { Switch } from '@/components/ui/switch';
 import { Progress } from '@/components/ui/progress';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
   DialogDescription, DialogFooter,
 } from '@/components/ui/dialog';
 import {
-  Store, Banknote, Zap, AlertTriangle, CheckCircle2,
-  Download, Upload, HardDrive, Loader2, ShieldAlert,
+  Store, AlertTriangle, Download, Upload, HardDrive,
+  Loader2, ShieldAlert, Printer, Zap, Wifi, WifiOff,
+  RefreshCw, CheckCircle2, PlugZap,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function Settings() {
   const { activeStoreId, user } = useAuth();
-  const [isLoading, setIsLoading]         = useState(true);
-  const [isSaving, setIsSaving]           = useState(false);
-  const [isTestingDrawer, setIsTestingDrawer] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving]   = useState(false);
+
+  // Printer state
+  const [printerInfo, setPrinterInfo]   = useState<PrinterInfo>(printer.getInfo());
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [isTesting, setIsTesting]       = useState(false);
+  const serialSupported = isWebSerialSupported();
 
   // Backup / Restore state
-  const [isExporting, setIsExporting]     = useState(false);
-  const [isImporting, setIsImporting]     = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [restoreProgress, setRestoreProgress] = useState<{ step: string; pct: number } | null>(null);
-
   const [showRestoreDialog, setShowRestoreDialog] = useState(false);
   const [pendingRestoreFile, setPendingRestoreFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -43,11 +44,21 @@ export default function Settings() {
   const [storeName,    setStoreName]    = useState('');
   const [storeAddress, setStoreAddress] = useState('');
 
-  // Cash drawer config
-  const [drawerConfig, setDrawerConfig] = useState<CashDrawerConfig>(getCashDrawerConfig());
-  const webSerialSupported = isWebSerialSupported();
+  // Printer status config
+  const [paperWidth, setPaperWidth]   = useState<58 | 80>(printer.getPaperWidth());
+  const [drawerPin, setDrawerPin]     = useState(printer.getConfig().drawerPin);
+  const [baudRate, setBaudRate]       = useState(printer.getConfig().baudRate);
 
   useEffect(() => { loadStoreData(); }, [activeStoreId]);
+
+  // Subscribe ke perubahan status printer
+  useEffect(() => {
+    const unsub = printer.onStatusChange((info) => {
+      setPrinterInfo(info);
+      setPaperWidth(info.paperWidth);
+    });
+    return unsub;
+  }, []);
 
   const loadStoreData = async () => {
     try {
@@ -57,8 +68,8 @@ export default function Settings() {
         setStoreName(store.name);
         setStoreAddress(store.address || '');
       }
-    } catch (error) {
-      console.error('Error loading store data:', error);
+    } catch (err) {
+      console.error('Error loading store data:', err);
       toast.error('Gagal memuat data toko');
     } finally {
       setIsLoading(false);
@@ -74,37 +85,92 @@ export default function Settings() {
         address: storeAddress.trim() || null,
       });
       toast.success('Pengaturan toko berhasil disimpan');
-    } catch (error) {
-      console.error('Error saving store settings:', error);
+    } catch (err) {
+      console.error('Error saving store settings:', err);
       toast.error('Gagal menyimpan pengaturan');
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleDrawerConfigChange = (patch: Partial<CashDrawerConfig>) => {
-    const updated = { ...drawerConfig, ...patch };
-    setDrawerConfig(updated);
-    saveCashDrawerConfig(updated);
+  // ── Printer Handlers ─────────────────────────────────────────────────────────
+
+  const handleConnect = async () => {
+    setIsConnecting(true);
+    try {
+      const ok = await printer.connect();
+      if (ok) toast.success('✅ Printer terhubung');
+      // jika cancel (ok=false) tidak perlu toast
+    } finally {
+      setIsConnecting(false);
+    }
   };
 
-  const handleTestDrawer = async () => {
-    if (!webSerialSupported) {
-      toast.error('Browser tidak mendukung Web Serial API. Gunakan Chrome / Edge.');
-      return;
+  const handleReconnect = async () => {
+    setIsConnecting(true);
+    try {
+      const ok = await printer.reconnect();
+      if (ok) toast.success('✅ Printer terhubung kembali');
+      else toast.warning('Tidak ada printer tersimpan. Klik "Hubungkan Printer".');
+    } finally {
+      setIsConnecting(false);
     }
-    setIsTestingDrawer(true);
-    toast.info('Pilih port printer di dialog browser...');
-    const ok = await triggerCashDrawer(drawerConfig.pin, drawerConfig.baudRate);
-    setIsTestingDrawer(false);
-    if (ok) {
+  };
+
+  const handleDisconnect = async () => {
+    await printer.disconnect();
+    toast.info('Printer diputus.');
+  };
+
+  const handleTestPrint = async () => {
+    setIsTesting(true);
+    try {
+      await printer.testPrint();
+      toast.success('✅ Test print berhasil dikirim');
+    } catch (err) {
+      if (err instanceof PrinterError) {
+        toast.error(err.message);
+      } else {
+        toast.error('Gagal mengirim test print');
+      }
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
+  const handleOpenDrawer = async () => {
+    setIsTesting(true);
+    try {
+      await printer.openCashDrawer();
       toast.success('✅ Perintah terkirim! Laci kasir seharusnya terbuka.');
-    } else {
-      toast.error('Gagal mengirim perintah. Pastikan printer terhubung via USB.');
+    } catch (err) {
+      if (err instanceof PrinterError) {
+        toast.error(err.message);
+      } else {
+        toast.error('Gagal membuka laci kasir');
+      }
+    } finally {
+      setIsTesting(false);
     }
   };
 
-  // ── Backup Handlers ────────────────────────────────────────────────────────
+  const handlePaperWidthChange = (w: 58 | 80) => {
+    setPaperWidth(w);
+    printer.setPaperWidth(w);
+  };
+
+  const handleDrawerPinChange = (p: 'pin2' | 'pin5') => {
+    setDrawerPin(p);
+    printer.setDrawerPin(p);
+  };
+
+  const handleBaudRateChange = (r: number) => {
+    setBaudRate(r);
+    printer.setBaudRate(r);
+  };
+
+  // ── Backup Handlers ──────────────────────────────────────────────────────────
+
   const handleExport = async () => {
     try {
       setIsExporting(true);
@@ -122,7 +188,6 @@ export default function Settings() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    // Reset input so same file can be re-selected
     e.target.value = '';
     setPendingRestoreFile(file);
     setShowRestoreDialog(true);
@@ -134,19 +199,13 @@ export default function Settings() {
     try {
       setIsImporting(true);
       setRestoreProgress({ step: 'Memulai proses restore...', pct: 0 });
-
       const { warnings } = await importFullDatabase(pendingRestoreFile, (step, current, total) => {
         setRestoreProgress({ step, pct: Math.round((current / total) * 100) });
       });
-
       setRestoreProgress({ step: 'Selesai!', pct: 100 });
-
       if (warnings.length > 0) {
         console.warn('Restore warnings:', warnings);
-        toast.warning(
-          `Restore selesai dengan ${warnings.length} peringatan. Cek konsol untuk detail.`,
-          { duration: 8000 },
-        );
+        toast.warning(`Restore selesai dengan ${warnings.length} peringatan.`, { duration: 8000 });
       } else {
         toast.success('✅ Data berhasil dipulihkan dari backup!');
       }
@@ -171,6 +230,8 @@ export default function Settings() {
     );
   }
 
+  const isConnected = printerInfo.status === 'connected';
+
   return (
     <div className="space-y-6 max-w-2xl">
       {/* Page Header */}
@@ -187,28 +248,18 @@ export default function Settings() {
           </div>
           <div>
             <h2 className="font-semibold text-foreground">Informasi Toko</h2>
-            <p className="text-sm text-muted-foreground">Detail toko Anda</p>
+            <p className="text-sm text-muted-foreground">Nama dan alamat ditampilkan di struk</p>
           </div>
         </div>
         <Separator />
         <div className="grid gap-4">
           <div className="grid gap-2">
             <Label htmlFor="storeName">Nama Toko *</Label>
-            <Input
-              id="storeName"
-              value={storeName}
-              onChange={(e) => setStoreName(e.target.value)}
-              placeholder="Masukkan nama toko"
-            />
+            <Input id="storeName" value={storeName} onChange={e => setStoreName(e.target.value)} placeholder="Masukkan nama toko" />
           </div>
           <div className="grid gap-2">
             <Label htmlFor="storeAddress">Alamat</Label>
-            <Input
-              id="storeAddress"
-              value={storeAddress}
-              onChange={(e) => setStoreAddress(e.target.value)}
-              placeholder="Masukkan alamat toko"
-            />
+            <Input id="storeAddress" value={storeAddress} onChange={e => setStoreAddress(e.target.value)} placeholder="Masukkan alamat toko" />
           </div>
         </div>
         <Button onClick={handleSave} disabled={isSaving}>
@@ -216,113 +267,191 @@ export default function Settings() {
         </Button>
       </div>
 
-      {/* ── Cash Drawer Settings ── */}
+      {/* ── Printer Card ── */}
       <div className="bg-card rounded-xl border border-border p-6 space-y-4">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-orange-100">
-            <Banknote className="w-5 h-5 text-orange-600" />
+          <div className="p-2 rounded-lg bg-blue-100">
+            <Printer className="w-5 h-5 text-blue-600" />
           </div>
           <div>
-            <h2 className="font-semibold text-foreground">Laci Kasir (Cash Drawer)</h2>
-            <p className="text-sm text-muted-foreground">
-              Buka laci otomatis saat transaksi tunai selesai via ESC/POS
-            </p>
+            <h2 className="font-semibold text-foreground">Printer Thermal</h2>
+            <p className="text-sm text-muted-foreground">Koneksi via USB Serial (Web Serial API)</p>
           </div>
         </div>
         <Separator />
 
-        {!webSerialSupported && (
+        {/* API support warning */}
+        {!serialSupported && (
           <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
-            <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
+            <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
             <div className="text-sm text-amber-800">
               <p className="font-semibold">Browser tidak mendukung Web Serial API</p>
-              <p className="mt-0.5">Fitur ini memerlukan <strong>Google Chrome</strong> atau <strong>Microsoft Edge</strong>. Firefox / Safari tidak didukung.</p>
+              <p className="mt-0.5">Gunakan <strong>Google Chrome</strong> atau <strong>Microsoft Edge</strong>. Firefox dan Safari tidak didukung.</p>
             </div>
           </div>
         )}
 
-        <div className="flex items-center justify-between">
-          <div>
-            <Label className="text-sm font-medium">Aktifkan Laci Kasir</Label>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Kirim perintah ESC/POS ke printer saat pembayaran Tunai / QRIS
-            </p>
+        {/* Status rows */}
+        <div className="rounded-lg border border-border divide-y divide-border text-sm">
+          <div className="flex items-center justify-between px-3 py-2.5">
+            <div className="flex items-center gap-2">
+              {isConnected
+                ? <Wifi className="w-4 h-4 text-emerald-500" />
+                : <WifiOff className="w-4 h-4 text-muted-foreground" />}
+              <span className="font-medium">Status</span>
+            </div>
+            <span className={isConnected ? 'text-emerald-600 font-semibold' : 'text-muted-foreground'}>
+              {printerInfo.status === 'connecting'
+                ? '🔄 Menghubungkan...'
+                : isConnected ? '🟢 Terhubung' : '🔴 Tidak Terhubung'}
+            </span>
           </div>
-          <Switch
-            id="drawer-enabled"
-            checked={drawerConfig.enabled}
-            onCheckedChange={(v) => handleDrawerConfigChange({ enabled: v })}
-            disabled={!webSerialSupported}
-          />
+
+          <div className="flex items-center justify-between px-3 py-2.5">
+            <span className="text-muted-foreground">Printer</span>
+            <span className="font-medium">{printerInfo.portName ?? '—'}</span>
+          </div>
+
+          <div className="flex items-center justify-between px-3 py-2.5">
+            <span className="text-muted-foreground">Transport</span>
+            <span className="font-medium text-blue-600">USB Serial (Web Serial)</span>
+          </div>
         </div>
 
-        {drawerConfig.enabled && webSerialSupported && (
-          <>
-            <Separator />
-            <div className="grid gap-2">
-              <Label className="text-sm">Pin Kabel RJ-11</Label>
-              <div className="flex gap-3">
-                {(['pin2', 'pin5'] as const).map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => handleDrawerConfigChange({ pin: p })}
-                    className={`flex-1 py-2 px-3 rounded-lg border text-sm font-medium transition-colors ${
-                      drawerConfig.pin === p
-                        ? 'border-primary bg-primary/5 text-primary'
-                        : 'border-border text-muted-foreground hover:border-primary/50'
-                    }`}
-                  >
-                    {p === 'pin2' ? 'Pin 2 (standar)' : 'Pin 5 (alternatif)'}
-                  </button>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Sebagian besar printer thermal menggunakan <strong>Pin 2</strong>. Coba Pin 5 jika laci tidak terbuka.
-              </p>
-            </div>
-
-            <div className="grid gap-2">
-              <Label htmlFor="baudRate" className="text-sm">Baud Rate</Label>
-              <select
-                id="baudRate"
-                value={drawerConfig.baudRate}
-                onChange={(e) => handleDrawerConfigChange({ baudRate: Number(e.target.value) })}
-                className="w-full h-9 px-3 rounded-lg border border-border bg-white text-sm text-foreground focus:outline-none focus:border-primary"
+        {/* Paper Width */}
+        <div className="space-y-2">
+          <Label className="text-sm font-medium">Lebar Kertas</Label>
+          <div className="grid grid-cols-2 gap-2">
+            {([80, 58] as const).map(w => (
+              <button
+                key={w}
+                onClick={() => handlePaperWidthChange(w)}
+                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                  paperWidth === w
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border bg-background text-muted-foreground hover:border-primary/40'
+                }`}
               >
-                {[9600, 19200, 38400, 115200].map((r) => (
-                  <option key={r} value={r}>{r} bps{r === 9600 ? ' (default)' : ''}</option>
-                ))}
-              </select>
-            </div>
+                {paperWidth === w && <CheckCircle2 className="w-3.5 h-3.5" />}
+                {w}mm
+              </button>
+            ))}
+          </div>
+        </div>
 
-            <div className="flex items-start gap-3 p-3 rounded-lg bg-blue-50 border border-blue-200">
-              <CheckCircle2 className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
-              <div className="text-xs text-blue-800">
-                <p className="font-semibold mb-1">Cara setup pertama kali:</p>
-                <ol className="list-decimal list-inside space-y-0.5">
-                  <li>Hubungkan printer thermal ke PC via USB</li>
-                  <li>Sambungkan laci kasir ke printer via kabel RJ-11</li>
-                  <li>Klik tombol "Test Buka Laci" di bawah</li>
-                  <li>Pilih port printer di dialog browser (sekali saja)</li>
-                  <li>Laci akan otomatis terbuka saat transaksi tunai selesai</li>
-                </ol>
-              </div>
-            </div>
+        {/* Drawer Pin */}
+        <div className="space-y-2">
+          <Label className="text-sm font-medium">Pin Laci Kasir (RJ-11)</Label>
+          <div className="grid grid-cols-2 gap-2">
+            {(['pin2', 'pin5'] as const).map(p => (
+              <button
+                key={p}
+                onClick={() => handleDrawerPinChange(p)}
+                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                  drawerPin === p
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border bg-background text-muted-foreground hover:border-primary/40'
+                }`}
+              >
+                {drawerPin === p && <CheckCircle2 className="w-3.5 h-3.5" />}
+                {p === 'pin2' ? 'Pin 2 (default)' : 'Pin 5 (alt)'}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">Sebagian besar printer menggunakan Pin 2. Coba Pin 5 jika laci tidak terbuka.</p>
+        </div>
 
+        {/* Baud Rate */}
+        <div className="space-y-2">
+          <Label htmlFor="baudRate" className="text-sm font-medium">Baud Rate</Label>
+          <select
+            id="baudRate"
+            value={baudRate}
+            onChange={e => handleBaudRateChange(Number(e.target.value))}
+            className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:border-primary"
+          >
+            {[9600, 19200, 38400, 115200].map(r => (
+              <option key={r} value={r}>{r} bps{r === 9600 ? ' (default)' : ''}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Setup guide */}
+        <div className="flex items-start gap-3 p-3 rounded-lg bg-blue-50 border border-blue-200">
+          <CheckCircle2 className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+          <div className="text-xs text-blue-800 space-y-0.5">
+            <p className="font-semibold">Setup pertama kali:</p>
+            <ol className="list-decimal list-inside space-y-0.5">
+              <li>Hubungkan printer thermal ke PC via USB</li>
+              <li>Sambungkan laci kasir ke printer via kabel RJ-11</li>
+              <li>Klik <strong>Hubungkan Printer</strong>, pilih port di dialog browser</li>
+              <li>Klik <strong>Test Print</strong> untuk verifikasi</li>
+            </ol>
+          </div>
+        </div>
+
+        <Separator />
+
+        {/* Action Buttons */}
+        <div className="grid grid-cols-2 gap-2">
+          {/* Connect / Disconnect */}
+          {!isConnected ? (
+            <Button
+              className="col-span-2 gap-2"
+              onClick={handleConnect}
+              disabled={isConnecting || !serialSupported}
+            >
+              {isConnecting
+                ? <><Loader2 className="w-4 h-4 animate-spin" /> Menghubungkan...</>
+                : <><PlugZap className="w-4 h-4" /> Hubungkan Printer</>
+              }
+            </Button>
+          ) : (
             <Button
               variant="outline"
-              className="w-full gap-2"
-              onClick={handleTestDrawer}
-              disabled={isTestingDrawer}
+              className="col-span-2 gap-2"
+              onClick={handleDisconnect}
             >
-              <Zap className="w-4 h-4 text-orange-500" />
-              {isTestingDrawer ? 'Mengirim perintah...' : 'Test Buka Laci Sekarang'}
+              <WifiOff className="w-4 h-4" /> Putuskan Koneksi
             </Button>
-          </>
-        )}
+          )}
+
+          {/* Reconnect */}
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={handleReconnect}
+            disabled={isConnecting || !serialSupported}
+          >
+            <RefreshCw className="w-4 h-4" /> Reconnect
+          </Button>
+
+          {/* Test Print */}
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={handleTestPrint}
+            disabled={isTesting || !isConnected}
+          >
+            {isTesting
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> Testing...</>
+              : <><Printer className="w-4 h-4" /> Test Print</>
+            }
+          </Button>
+
+          {/* Open Cash Drawer */}
+          <Button
+            variant="outline"
+            className="col-span-2 gap-2"
+            onClick={handleOpenDrawer}
+            disabled={isTesting || !isConnected}
+          >
+            <Zap className="w-4 h-4 text-orange-500" /> Buka Laci Kasir
+          </Button>
+        </div>
       </div>
 
-      {/* ── Backup & Restore Card (Owner Only) ── */}
+      {/* ── Backup & Restore (Owner Only) ── */}
       {user?.role === 'owner' && (
         <div className="bg-card rounded-xl border border-border p-6 space-y-4">
           <div className="flex items-center gap-3">
@@ -338,7 +467,6 @@ export default function Settings() {
           </div>
           <Separator />
 
-          {/* Progress bar during restore */}
           {restoreProgress && (
             <div className="space-y-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <div className="flex justify-between text-xs text-blue-800 font-medium">
@@ -350,23 +478,15 @@ export default function Settings() {
           )}
 
           <div className="grid gap-3">
-            {/* Export Button */}
             <div className="p-4 rounded-lg border border-border bg-muted/20 space-y-2">
               <div className="flex items-start gap-2">
                 <Download className="w-4 h-4 text-emerald-600 mt-0.5 shrink-0" />
                 <div>
                   <p className="text-sm font-medium text-foreground">Export Semua Data</p>
-                  <p className="text-xs text-muted-foreground">
-                    Unduh database lengkap (produk, transaksi, SDM, dll) menjadi satu file Excel multi-sheet untuk arsip.
-                  </p>
+                  <p className="text-xs text-muted-foreground">Unduh database ke file Excel multi-sheet.</p>
                 </div>
               </div>
-              <Button
-                className="w-full gap-2"
-                variant="outline"
-                onClick={handleExport}
-                disabled={isExporting || isImporting}
-              >
+              <Button className="w-full gap-2" variant="outline" onClick={handleExport} disabled={isExporting || isImporting}>
                 {isExporting
                   ? <><Loader2 className="w-4 h-4 animate-spin" /> Mengekspor Data...</>
                   : <><Download className="w-4 h-4" /> Export Semua Data</>
@@ -374,30 +494,18 @@ export default function Settings() {
               </Button>
             </div>
 
-            {/* Restore Button */}
             <div className="p-4 rounded-lg border border-destructive/30 bg-destructive/5 space-y-2">
               <div className="flex items-start gap-2">
                 <ShieldAlert className="w-4 h-4 text-destructive mt-0.5 shrink-0" />
                 <div>
                   <p className="text-sm font-medium text-foreground">Restore Data dari Excel</p>
                   <p className="text-xs text-muted-foreground">
-                    Pulihkan data dari file backup. <strong className="text-destructive">Hati-hati:</strong> data yang ada bisa tertimpa dan hilang selamanya.
+                    <strong className="text-destructive">Hati-hati:</strong> data yang ada bisa tertimpa dan hilang selamanya.
                   </p>
                 </div>
               </div>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".xlsx"
-                className="hidden"
-                onChange={handleFileSelect}
-              />
-              <Button
-                className="w-full gap-2"
-                variant="destructive"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isImporting || isExporting}
-              >
+              <input ref={fileInputRef} type="file" accept=".xlsx" className="hidden" onChange={handleFileSelect} />
+              <Button className="w-full gap-2" variant="destructive" onClick={() => fileInputRef.current?.click()} disabled={isImporting || isExporting}>
                 {isImporting
                   ? <><Loader2 className="w-4 h-4 animate-spin" /> Memulihkan Data...</>
                   : <><Upload className="w-4 h-4" /> Restore Data dari Excel</>
@@ -409,9 +517,7 @@ export default function Settings() {
       )}
 
       {/* ── Dialog: Konfirmasi Restore ── */}
-      <Dialog open={showRestoreDialog} onOpenChange={(open) => {
-        if (!open) { setShowRestoreDialog(false); setPendingRestoreFile(null); }
-      }}>
+      <Dialog open={showRestoreDialog} onOpenChange={open => { if (!open) { setShowRestoreDialog(false); setPendingRestoreFile(null); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-destructive">
@@ -422,31 +528,22 @@ export default function Settings() {
               <span className="inline-flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-red-900 text-sm">
                 <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0 text-red-600" />
                 <span>
-                  <strong>BAHAYA:</strong> Mengembalikan data dari file Excel akan{' '}
-                  <strong>MENIMPA sistem saat ini secara paksa</strong>. Jika ada
-                  transaksi atau data baru yang masuk setelah file Excel ini dibuat,
-                  data baru tersebut berisiko hilang atau tertimpa. Pastikan Anda
-                  sangat yakin!
+                  <strong>BAHAYA:</strong> Data akan <strong>DITIMPA secara paksa</strong>.
+                  Transaksi baru setelah file ini dibuat berisiko hilang.
                 </span>
               </span>
               {pendingRestoreFile && (
                 <span className="block mt-3 text-xs text-muted-foreground">
-                  File dipilih: <strong>{pendingRestoreFile.name}</strong>{' '}
+                  File: <strong>{pendingRestoreFile.name}</strong>{' '}
                   ({(pendingRestoreFile.size / 1024 / 1024).toFixed(2)} MB)
                 </span>
               )}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              variant="ghost"
-              onClick={() => { setShowRestoreDialog(false); setPendingRestoreFile(null); }}
-            >
-              Batal
-            </Button>
+          <DialogFooter className="gap-2">
+            <Button variant="ghost" onClick={() => { setShowRestoreDialog(false); setPendingRestoreFile(null); }}>Batal</Button>
             <Button variant="destructive" className="gap-2" onClick={handleRestoreConfirm}>
-              <Upload className="w-4 h-4" />
-              Ya, Saya Yakin Timpa Data
+              <Upload className="w-4 h-4" /> Ya, Timpa Data
             </Button>
           </DialogFooter>
         </DialogContent>
