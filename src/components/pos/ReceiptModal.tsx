@@ -9,6 +9,7 @@ import { SaleItem } from '@/services/salesService';
 import { printer, PrinterError } from '@/lib/printer';
 import type { PrinterTransaction } from '@/lib/printer';
 import { QRCodeSVG } from 'qrcode.react';
+import { toast } from 'sonner';
 import {
   formatReceiptDate,
   formatReceiptTime,
@@ -65,8 +66,19 @@ export function ReceiptModal({
         await printer.printReceipt(tx);
         return;
       } catch (err) {
-        if (err instanceof PrinterError && err.code === 'NO_PRINTER') {
-          // Fallback browser print
+        if (err instanceof PrinterError) {
+          // Fallback browser print hanya untuk NO_PRINTER
+          if (err.code === 'NO_PRINTER') {
+            // Lanjut ke browser print
+          } else {
+            // Error lain: tampilkan toast dan hentikan
+            toast.error(err.message);
+            return;
+          }
+        } else {
+          // Unknown error
+          toast.error('Gagal mencetak struk. Silakan coba lagi.');
+          return;
         }
       }
     }
