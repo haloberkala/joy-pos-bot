@@ -3,14 +3,16 @@ import { supabase } from '@/lib/supabase';
 export interface Store {
   id: number;
   name: string;
-  address: string;
+  address: string | null;
+  phone: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export interface StoreInput {
   name: string;
-  address: string;
+  address?: string | null;
+  phone?: string | null;
 }
 
 /**
@@ -59,7 +61,8 @@ export async function createStore(input: StoreInput): Promise<Store> {
       .from('stores')
       .insert({
         name: input.name,
-        address: input.address,
+        address: input.address || null,
+        phone: input.phone || null,
       })
       .select()
       .single();

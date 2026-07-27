@@ -1,157 +1,224 @@
 /**
- * lib/printer/escpos.ts — Pure ESC/POS byte generator.
- * Tidak ada browser API, tidak ada side effects.
- * Semua method mengembalikan number[] untuk di-concat via EscPos.build().
+ * ESC/POS Command Generator - Rebuild Total
+ * 
+ * Implementasi baru yang fokus pada:
+ * - Encoding yang benar untuk thermal printer
+ * - State management yang jelas
+ * - Alignment yang konsisten
+ * - Debugging yang mudah
  */
 
-import { Alignment, DrawerPin } from './types';
+import { DrawerPin } from './types';
 
+// ESC/POS Control Codes
 const ESC = 0x1b;
-const GS  = 0x1d;
-const LF  = 0x0a;
+const GS = 0x1d;
+const LF = 0x0a;
 
-const enc = new TextEncoder();
-
-function bytes(str: string): number[] {
-  return Array.from(enc.encode(str));
+/**
+ * Normalisasi string untuk printer thermal
+ * - U+00A0 (NBSP) -> ASCII Space (0x20)
+ * - Whitespace Unicode lain -> ASCII Space
+ * - Karakter di luar ASCII printable -> '?'
+ */
+function normalizePrinterText(str: string): string {
+  return str
+    // Replace NBSP (U+00A0) dengan space biasa
+    .replace(/\u00A0/g, ' ')
+    // Replace semua whitespace Unicode dengan space ASCII
+    .replace(/[\u2000-\u200B\u202F\u205F\u3000]/g, ' ')
+    // Normalize whitespace
+    .trim();
 }
 
-export const EscPos = {
+/**
+ * Konversi string ke bytes menggunakan Latin-1 (ISO-8859-1)
+ * Thermal printer ESC/POS umumnya menggunakan code page ini
+ */
+function toBytes(str: string): number[] {
+  // Normalisasi dulu
+  const normalized = normalizePrinterText(str);
+  const result: number[] = [];
+  
+  for (let i = 0; i < normalized.length; i++) {
+    const code = normalized.charCodeAt(i);
+    // Latin-1 hanya support 0-255
+    result.push(code > 255 ? 0x3f : code); // 0x3f = '?'
+  }
+  return result;
+}
 
-  // ── Printer Init ────────────────────────────────────────────────────────────
-
-  /** ESC @ — Reset printer ke default */
-  init(): number[] {
-    return [ESC, 0x40];
-  },
-
-  // ── Text ────────────────────────────────────────────────────────────────────
-
-  /** Teks + newline */
-  text(str: string): number[] {
-    return [...bytes(str), LF];
-  },
-
-  /** ESC E — Bold on/off */
-  bold(on: boolean): number[] {
-    return [ESC, 0x45, on ? 1 : 0];
-  },
-
-  /** ESC a — Alignment: 0=left 1=center 2=right */
-  align(pos: Alignment): number[] {
-    return [ESC, 0x61, { left: 0, center: 1, right: 2 }[pos]];
-  },
-
-  // ── Layout ──────────────────────────────────────────────────────────────────
+/**
+ * ESC/POS Builder
+ * Setiap fungsi return Uint8Array yang siap dikirim ke printer
+ */
+export class EscPosBuilder {
+  private buffer: number[] = [];
 
   /**
-   * Baris pemisah — diulang sesuai lebar kolom.
-   * 80mm ≈ 48 chars, 58mm ≈ 32 chars.
+   * Reset printer ke state default
    */
-  separator(char = '-', columns = 48): number[] {
-    return EscPos.text(char.repeat(columns));
-  },
+  init(): this {
+    this.buffer.push(ESC, 0x40); // ESC @
+    return this;
+  }
 
   /**
-   * Dua kolom kiri-kanan dengan padding spasi.
-   * Jika total overflow, nilai kanan dicetak di baris baru rata kanan.
+   * Tulis teks dengan newline
    */
-  twoCol(left: string, right: string, columns = 48): number[] {
-    const spaces = columns - left.length - right.length;
-    if (spaces > 0) {
-      return EscPos.text(left + ' '.repeat(spaces) + right);
+  line(text: string): this {
+    this.buffer.push(...toBytes(text), LF);
+    return this;
+  }
+
+  /**
+   * Tulis teks tanpa newline
+   */
+  write(text: string): this {
+    this.buffer.push(...toBytes(text));
+    return this;
+  }
+
+  /**
+   * Newline saja
+   */
+  newline(): this {
+    this.buffer.push(LF);
+    return this;
+  }
+
+  /**
+   * Set bold
+   */
+  bold(enabled: boolean): this {
+    this.buffer.push(ESC, 0x45, enabled ? 1 : 0);
+    return this;
+  }
+
+  /**
+   * Set alignment
+   * 0 = left, 1 = center, 2 = right
+   */
+  align(mode: 'left' | 'center' | 'right'): this {
+    const value = mode === 'left' ? 0 : mode === 'center' ? 1 : 2;
+    this.buffer.push(ESC, 0x61, value);
+    return this;
+  }
+
+  /**
+   * Baris separator
+   */
+  separator(char: string, width: number): this {
+    const line = char.repeat(width);
+    this.buffer.push(...toBytes(line), LF);
+    return this;
+  }
+
+  /**
+   * Dua kolom dengan alignment yang benar
+   * Left: rata kiri, Right: rata kanan
+   */
+  row(left: string, right: string, width: number): this {
+    // Hitung berapa byte sebenarnya (bukan string.length karena multi-byte)
+    const leftBytes = toBytes(left).length;
+    const rightBytes = toBytes(right).length;
+    const totalUsed = leftBytes + rightBytes;
+
+    if (totalUsed >= width) {
+      // Overflow: cetak 2 baris
+      this.buffer.push(...toBytes(left), LF);
+      // Reset alignment, set right, print, reset left
+      this.buffer.push(ESC, 0x61, 2); // align right
+      this.buffer.push(...toBytes(right), LF);
+      this.buffer.push(ESC, 0x61, 0); // align left
+    } else {
+      // Normal: left + spaces + right
+      const spaces = width - totalUsed;
+      this.buffer.push(
+        ...toBytes(left),
+        ...Array(spaces).fill(0x20), // space = 0x20
+        ...toBytes(right),
+        LF
+      );
     }
-    // overflow: 2 baris
-    return [
-      ...EscPos.text(left),
-      ...EscPos.align('right'),
-      ...EscPos.text(right),
-      ...EscPos.align('left'),
-    ];
-  },
+    return this;
+  }
 
   /**
-   * Word-wrap teks panjang ke lebar kolom.
-   * Setiap baris diakhiri newline.
+   * Feed lines
    */
-  wrap(str: string, columns = 48): number[] {
-    if (str.length <= columns) return EscPos.text(str);
-    const result: number[] = [];
-    for (let i = 0; i < str.length; i += columns) {
-      result.push(...EscPos.text(str.slice(i, i + columns)));
+  feed(lines: number): this {
+    for (let i = 0; i < lines; i++) {
+      this.buffer.push(LF);
     }
-    return result;
-  },
-
-  // ── Feed & Cut ───────────────────────────────────────────────────────────────
-
-  /** ESC d n — Feed n blank lines */
-  feed(n = 3): number[] {
-    return [ESC, 0x64, Math.min(n, 255)];
-  },
-
-  /** Spasi palsu untuk feed pada printer yang mengabaikan ESC d */
-  feedFallback(lines = 3): number[] {
-    const out: number[] = [];
-    for (let i = 0; i < lines; i++) out.push(...bytes(' '), LF);
-    return out;
-  },
-
-  /** GS V 42 — Partial cut (paling kompatibel) */
-  cut(): number[] {
-    return [GS, 0x56, 0x42, 0x00];
-  },
-
-  // ── Cash Drawer ───────────────────────────────────────────────────────────────
-
-  /** ESC p — Kick cash drawer */
-  kickDrawer(pin: DrawerPin = 'pin2'): number[] {
-    return [ESC, 0x70, pin === 'pin2' ? 0x00 : 0x01, 0x19, 0x96];
-  },
-
-  // ── QR Code ──────────────────────────────────────────────────────────────────
+    return this;
+  }
 
   /**
-   * GS ( k — QR Code ESC/POS sequence.
-   * size 1–8 (default 5).
+   * QR Code
    */
-  qr(content: string, size = 5): number[] {
-    const data = Array.from(enc.encode(content));
+  qr(content: string, size: number = 5): this {
+    const data = toBytes(content);
     const storeLen = data.length + 3;
     const pL = storeLen & 0xff;
     const pH = (storeLen >> 8) & 0xff;
-    return [
-      // Model 2
-      GS, 0x28, 0x6b, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00,
-      // Module size
-      GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, Math.max(1, Math.min(size, 8)),
-      // Error correction L
-      GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x45, 0x30,
-      // Store data
-      GS, 0x28, 0x6b, pL, pH, 0x31, 0x50, 0x30,
-      ...data,
-      // Print
-      GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30,
-    ];
-  },
-
-  // ── Build ─────────────────────────────────────────────────────────────────────
+    
+    // Model 2
+    this.buffer.push(GS, 0x28, 0x6b, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00);
+    // Module size
+    this.buffer.push(GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, Math.max(1, Math.min(size, 8)));
+    // Error correction L
+    this.buffer.push(GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x45, 0x30);
+    // Store data
+    this.buffer.push(GS, 0x28, 0x6b, pL, pH, 0x31, 0x50, 0x30, ...data);
+    // Print
+    this.buffer.push(GS, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30);
+    
+    return this;
+  }
 
   /**
-   * Gabungkan semua chunks menjadi satu Uint8Array.
-   * @example
-   *   EscPos.build(
-   *     EscPos.init(),
-   *     EscPos.align('center'),
-   *     EscPos.text('Hello'),
-   *     EscPos.cut(),
-   *   )
+   * Cut paper
    */
+  cut(): this {
+    this.buffer.push(GS, 0x56, 0x42, 0x00); // Partial cut
+    return this;
+  }
+
+  /**
+   * Open cash drawer
+   */
+  drawer(pin: DrawerPin): this {
+    const pinValue = pin === 'pin2' ? 0x00 : 0x01;
+    this.buffer.push(ESC, 0x70, pinValue, 0x19, 0x96);
+    return this;
+  }
+
+  /**
+   * Build final Uint8Array
+   */
+  build(): Uint8Array {
+    return new Uint8Array(this.buffer);
+  }
+}
+
+/**
+ * Legacy compatibility - untuk kode yang masih menggunakan EscPos.build()
+ */
+export const EscPos = {
   build(...parts: number[][]): Uint8Array {
     const total = parts.reduce((a, p) => a + p.length, 0);
     const buf = new Uint8Array(total);
     let offset = 0;
-    for (const p of parts) { buf.set(p, offset); offset += p.length; }
+    for (const p of parts) {
+      buf.set(p, offset);
+      offset += p.length;
+    }
     return buf;
   },
+  
+  kickDrawer(pin: DrawerPin): number[] {
+    const pinValue = pin === 'pin2' ? 0x00 : 0x01;
+    return [ESC, 0x70, pinValue, 0x19, 0x96];
+  }
 };

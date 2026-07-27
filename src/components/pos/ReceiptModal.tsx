@@ -1,14 +1,18 @@
 import { useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Sale, SaleDetail, Product } from '@/types/pos';
-import { formatCurrency, formatDate } from '@/lib/format';
-import { Printer, X, AlertTriangle, FileText } from 'lucide-react';
+import { formatCurrency } from '@/lib/format';
+import { Printer, X, FileText } from 'lucide-react';
 import { printInvoice } from '@/components/pos/PrintInvoice';
 import { SaleItem } from '@/services/salesService';
 import { printer, PrinterError } from '@/lib/printer';
 import type { PrinterTransaction } from '@/lib/printer';
 import { QRCodeSVG } from 'qrcode.react';
+import {
+  formatReceiptDate,
+  formatReceiptTime,
+} from '@/lib/printer/receiptTemplate';
 
 interface ReceiptModalProps {
   isOpen: boolean;
@@ -17,7 +21,6 @@ interface ReceiptModalProps {
   saleDetails: (SaleDetail & { product?: Product })[];
   cashierName: string;
   customerName?: string;
-  /** Data toko untuk faktur A4 */
   store?: { name: string; address?: string | null; phone?: string | null } | null;
 }
 
@@ -30,14 +33,10 @@ export function ReceiptModal({
   customerName,
   store,
 }: ReceiptModalProps) {
-  if (!sale) return null;
-
-  const paymentLabel = { cash: 'Tunai', transfer: 'Transfer', qris: 'QRIS' } as Record<string, string>;
-  const isDebt = sale.payment_status === 'debt';
-
   // ─── Handler: Cetak Struk Thermal ─────────────────────────────────────────
   const handlePrintStruk = async () => {
-    // 1. Coba cetak via lib/printer (Web Serial → single ESC/POS stream)
+    if (!sale) return;
+
     if (printer.isSupported()) {
       try {
         const tx: PrinterTransaction = {
@@ -45,12 +44,13 @@ export function ReceiptModal({
           invoiceNumber: sale.invoice_number,
           storeName: store?.name || 'Toko',
           storeAddress: store?.address,
+          storePhone: store?.phone,
           cashierName,
           customerName,
           paymentMethod: sale.payment_method as PrinterTransaction['paymentMethod'],
           paymentStatus: sale.payment_status as PrinterTransaction['paymentStatus'],
           items: saleDetails.map(item => ({
-            name: item.product?.name || `Produk #${item.product_id}`,
+            name: item.product?.short_name || item.product?.name || `Produk #${item.product_id}`,
             quantity: item.quantity,
             unitPrice: item.price_at_sale,
             totalPrice: item.total_price,
@@ -63,139 +63,137 @@ export function ReceiptModal({
         };
 
         await printer.printReceipt(tx);
-        return; // berhasil → tidak perlu fallback
+        return;
       } catch (err) {
         if (err instanceof PrinterError && err.code === 'NO_PRINTER') {
-          // tidak ada printer tersimpan → lanjut ke fallback browser
-          console.info('[ReceiptModal] No printer configured, fallback to browser popup');
-        } else {
-          console.warn('[ReceiptModal] printReceipt error:', err);
+          // Fallback browser print
         }
       }
     }
 
-    // 2. Fallback: browser popup print
+    // Fallback: open print preview in new window
     const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
+    if (!printWindow || !sale) return;
+
+    const dateObj = typeof sale.date === 'string' ? new Date(sale.date) : sale.date;
+    const dateStr = formatReceiptDate(dateObj);
+    const timeStr = formatReceiptTime(dateObj);
+
+    const itemsHtml = saleDetails.map(item => {
+      const displayName = item.product?.short_name || item.product?.name || `Produk #${item.product_id}`;
+      return `
+        <div class="item-name">${displayName}</div>
+        <div class="item-row">
+          <span>${item.quantity}x ${formatCurrency(item.price_at_sale)}</span>
+          <span>${formatCurrency(item.total_price)}</span>
+        </div>
+      `;
+    }).join('');
 
     printWindow.document.write(`
       <!DOCTYPE html>
       <html>
       <head>
         <title>Struk ${sale.invoice_number}</title>
+        <meta charset="UTF-8">
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
-          body { font-family: 'Courier New', monospace; width: 80mm; padding: 4mm; font-size: 12px; color: #000; }
-          .text-center { text-align: center; }
-          .font-bold { font-weight: bold; }
-          .border-dashed { border-top: 1px dashed #000; padding-top: 4px; margin-top: 4px; }
-          .flex-between { display: flex; justify-content: space-between; }
-          .mb-1 { margin-bottom: 2px; }
-          .mb-2 { margin-bottom: 6px; }
-          .store-name { font-size: 16px; font-weight: bold; }
-          .item-name { font-weight: bold; }
-          .total-row { font-size: 14px; font-weight: bold; }
-          .debt-box { border: 1px solid #000; padding: 4px; margin-top: 4px; text-align: center; font-weight: bold; }
+          body { 
+            font-family: 'Courier New', monospace; 
+            width: 80mm; 
+            padding: 4mm; 
+            font-size: 12px; 
+            line-height: 1.4;
+          }
+          .center { text-align: center; }
+          .bold { font-weight: bold; }
+          .separator { border-top: 1px dashed #000; margin: 8px 0; }
+          .row { display: flex; justify-content: space-between; margin: 2px 0; }
+          .item-name { font-weight: bold; margin-top: 4px; }
+          .item-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
           @media print {
-            body { width: 80mm; }
             @page { size: 80mm auto; margin: 0; }
           }
         </style>
       </head>
       <body>
-        <div class="text-center mb-2">
-          <div class="store-name">${store?.name || 'TOKO'}</div>
-          ${store?.address ? `<div>${store.address}</div>` : ''}
+        <div class="center bold">STRUK PEMBAYARAN</div>
+        <div class="center" style="margin-top:8px">
+          <div class="bold" style="font-size:14px">${store?.name || 'Toko'}</div>
+          ${store?.address ? `<div style="margin-top:2px">${store.address}</div>` : ''}
+          ${store?.phone ? `<div style="margin-top:2px">${store.phone}</div>` : ''}
         </div>
-        <div class="border-dashed mb-2">
-          <div class="flex-between mb-1"><span>No. Invoice</span><span>${sale.invoice_number}</span></div>
-          <div class="flex-between mb-1"><span>Tanggal</span><span>${formatDate(sale.date)}</span></div>
-          <div class="flex-between mb-1"><span>Kasir</span><span>${cashierName}</span></div>
-          ${customerName ? `<div class="flex-between mb-1"><span>Pelanggan</span><span>${customerName}</span></div>` : ''}
-        </div>
-        <div class="border-dashed mb-2">
-          ${saleDetails.map(item => `
-            <div class="mb-1">
-              <div class="item-name">${item.product?.name || 'Produk #' + item.product_id}</div>
-              <div class="flex-between">
-                <span>${item.quantity} x ${formatCurrency(item.price_at_sale)}${item.price_mode === 'wholesale' ? ' (Grosir)' : ''}</span>
-                <span>${formatCurrency(item.total_price)}</span>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-        <div class="border-dashed">
-          <div class="flex-between total-row mb-1"><span>TOTAL</span><span>${formatCurrency(sale.grand_total)}</span></div>
-          ${!isDebt ? `
-            <div class="flex-between mb-1"><span>Bayar (${paymentLabel[sale.payment_method]})</span><span>${formatCurrency(sale.amount_received)}</span></div>
-            ${sale.change_amount > 0 ? `<div class="flex-between mb-1"><span>Kembalian</span><span>${formatCurrency(sale.change_amount)}</span></div>` : ''}
-          ` : `
-            <div class="debt-box">STATUS: UTANG${sale.due_date ? '<br/>Jatuh tempo: ' + formatDate(sale.due_date) : ''}</div>
-          `}
-        </div>
-        <div class="border-dashed text-center" style="margin-top:8px;padding-top:8px;">
-          <div>Terima kasih atas kunjungan Anda!</div>
+        <div class="separator"></div>
+        <div class="row"><span>No Invoice</span><span>${sale.invoice_number}</span></div>
+        <div class="row"><span>Tanggal</span><span>${dateStr} ${timeStr}</span></div>
+        <div class="row"><span>Kasir</span><span>${cashierName}</span></div>
+        ${customerName ? `<div class="row"><span>Pelanggan</span><span>${customerName}</span></div>` : ''}
+        <div class="separator"></div>
+        ${itemsHtml}
+        <div class="separator"></div>
+        <div class="row bold"><span>TOTAL</span><span>${formatCurrency(sale.grand_total)}</span></div>
+        <div class="row"><span>Bayar</span><span>${formatCurrency(sale.amount_received || sale.grand_total)}</span></div>
+        <div class="row"><span>Kembali</span><span>${formatCurrency(sale.change_amount || 0)}</span></div>
+        <div class="separator"></div>
+        <div class="center" style="margin-top:8px">
+          <div>Terima kasih sudah berbelanja!</div>
+          <div style="margin-top:4px;font-size:10px">Barang yang telah dibeli dapat dikembalikan</div>
+          <div style="font-size:10px">Syarat & Ketentuan Berlaku</div>
         </div>
       </body>
       </html>
     `);
     printWindow.document.close();
-    printWindow.onload = () => { printWindow.print(); };
+    printWindow.onload = () => printWindow.print();
   };
 
-  // ─── Handler: Cetak Struk + Faktur (berurutan) ────────────────────────────
-  const handlePrintBoth = () => {
-    // Cetak struk thermal terlebih dahulu
-    handlePrintStruk();
+  // ─── Handler: Print Faktur A4 ─────────────────────────────────────────────
+  const handlePrintInvoice = () => {
+    if (!sale || !store) return;
 
-    // Tulis konten faktur ke hidden iframe, setelah delay
-    setTimeout(() => {
-      if (!store) return;
+    const items: SaleItem[] = saleDetails.map(d => ({
+      id: d.id,
+      sale_id: sale.id,
+      product_id: d.product_id,
+      product_name: d.product?.name || `Produk #${d.product_id}`,
+      product_code: null,
+      quantity: d.quantity,
+      price_per_unit: d.price_at_sale,
+      cost_per_unit: 0,
+      total_price: d.total_price,
+      price_mode: (d.price_mode ?? 'retail') as 'retail' | 'wholesale' | 'special',
+      is_service: false,
+      created_at: '',
+    }));
 
-      const items: SaleItem[] = saleDetails.map(d => ({
-        id: d.id,
-        sale_id: sale.id,
-        product_id: d.product_id,
-        product_name: d.product ? (d.product.short_name || d.product.name) : `Produk #${d.product_id}`,
-        product_code: null,
-        quantity: d.quantity,
-        price_per_unit: d.price_at_sale,
-        cost_per_unit: 0,
-        total_price: d.total_price,
-        price_mode: (d.price_mode ?? 'retail') as 'retail' | 'wholesale' | 'special',
-        is_service: false,
-        created_at: '',
-      }));
+    const saleForInvoice = {
+      id: sale.id,
+      invoice_number: sale.invoice_number,
+      sale_date: sale.date,
+      grand_total: sale.grand_total,
+      sub_total: sale.grand_total,
+      discount: 0,
+      tax: 0,
+      amount_received: sale.amount_received,
+      change_amount: sale.change_amount,
+      payment_method: sale.payment_method,
+      payment_status: sale.payment_status ?? 'paid',
+      cashier_name: cashierName,
+      note: null,
+      due_date: sale.due_date ?? null,
+    };
 
-      const saleForInvoice = {
-        id: sale.id,
-        invoice_number: sale.invoice_number,
-        sale_date: sale.date,
-        grand_total: sale.grand_total,
-        sub_total: sale.grand_total,
-        discount: 0,
-        tax: 0,
-        amount_received: sale.amount_received,
-        change_amount: sale.change_amount,
-        payment_method: sale.payment_method,
-        payment_status: sale.payment_status ?? 'paid',
-        cashier_name: cashierName,
-        note: null,
-        due_date: sale.due_date ?? null,
-      };
-
-      printInvoice({
-        sale: saleForInvoice as any,
-        items,
-        store,
-        customerName,
-      });
-    }, 800);
+    printInvoice({
+      sale: saleForInvoice as any,
+      items,
+      store,
+      customerName,
+    });
   };
 
   // ─── Keyboard Shortcuts ───────────────────────────────────────────────────
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen || !sale) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
@@ -205,7 +203,7 @@ export function ReceiptModal({
         onClose();
       } else if (e.key === 'Enter' && e.ctrlKey) {
         e.preventDefault();
-        handlePrintBoth();
+        handlePrintInvoice();
       } else if (e.key === 'Enter' && !e.ctrlKey) {
         e.preventDefault();
         handlePrintStruk();
@@ -216,110 +214,142 @@ export function ReceiptModal({
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
   }, [isOpen, sale]);
 
+  if (!sale) return null;
+
+  const dateObj = typeof sale.date === 'string' ? new Date(sale.date) : sale.date;
+  const dateStr = formatReceiptDate(dateObj);
+  const timeStr = formatReceiptTime(dateObj);
+
   return (
-    <Dialog open={isOpen} onOpenChange={(_open) => {
-      // Tutup hanya via tombol/keyboard shortcut yang kita kelola sendiri
-    }}>
+    <Dialog open={isOpen} onOpenChange={(_open) => {}}>
       <DialogContent
-        className="sm:max-w-sm"
+        className="sm:max-w-md"
         hideCloseButton
         onPointerDownOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => e.preventDefault()}
       >
-        <DialogHeader><DialogTitle className="text-center">Struk Pembayaran</DialogTitle></DialogHeader>
+        <DialogHeader>
+          <DialogTitle className="text-center">Struk Pembayaran</DialogTitle>
+          <DialogDescription className="sr-only">
+            Modal struk pembayaran dengan tombol cetak thermal dan faktur A4
+          </DialogDescription>
+        </DialogHeader>
 
-        {/* ── Area Struk (referensi visual) ── */}
-        <div id="receipt-print-area" className="space-y-4 font-mono text-[12px] pt-4 pb-4">
-          <div className="text-center border-b border-dashed border-border pb-3">
-            <p className="font-bold text-[14px] uppercase tracking-wide text-foreground mb-4">Struk Pembayaran</p>
-            <h3 className="font-bold text-[15px] text-foreground">{store?.name || 'Toko'}</h3>
-            {store?.address && <p className="text-muted-foreground whitespace-pre-wrap mt-1">{store.address}</p>}
+        {/* ── Receipt Preview ── */}
+        <div className="space-y-4 font-mono text-xs py-4">
+          {/* Header */}
+          <div className="text-center border-b border-dashed pb-3">
+            <p className="font-bold text-sm uppercase mb-3">STRUK PEMBAYARAN</p>
+            <h3 className="font-bold text-base">{store?.name || 'Toko'}</h3>
+            {store?.address && <p className="text-muted-foreground mt-1">{store.address}</p>}
+            {store?.phone && <p className="text-muted-foreground mt-0.5">{store.phone}</p>}
           </div>
-          <div className="space-y-1 border-b border-dashed border-border pb-3 pt-1">
-            <div className="flex justify-between"><span className="text-muted-foreground">No. Invoice</span><span className="text-foreground">{sale.invoice_number}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Tanggal</span><span className="text-foreground">{formatDate(sale.date)}</span></div>
-            <div className="flex justify-between"><span className="text-muted-foreground">Kasir</span><span className="text-foreground">{cashierName}</span></div>
-            {customerName && <div className="flex justify-between"><span className="text-muted-foreground">Pelanggan</span><span className="text-foreground">{customerName}</span></div>}
+
+          {/* Transaction Info */}
+          <div className="space-y-1 border-b border-dashed pb-3">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">No Invoice</span>
+              <span className="font-medium">{sale.invoice_number}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Tanggal</span>
+              <span className="font-medium">{dateStr} {timeStr}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Kasir</span>
+              <span className="font-medium">{cashierName}</span>
+            </div>
+            {customerName && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Pelanggan</span>
+                <span className="font-medium">{customerName}</span>
+              </div>
+            )}
           </div>
-          <div className="space-y-2 border-b border-dashed border-border pb-3">
-            {saleDetails.map((item) => (
-              <div key={item.id} className="space-y-0.5">
-                <div className="font-medium text-foreground">{item.product?.name || `Produk #${item.product_id}`}</div>
-                <div className="flex justify-between text-muted-foreground">
-                  <span>{item.quantity} x {formatCurrency(item.price_at_sale)}{item.price_mode === 'wholesale' && <span className="ml-1 text-primary">(Grosir)</span>}</span>
-                  <span className="text-foreground">{formatCurrency(item.total_price)}</span>
+
+          {/* Items */}
+          <div className="space-y-2.5 border-b border-dashed pb-3">
+            {saleDetails.map((item, idx) => {
+              const displayName = item.product?.short_name || item.product?.name || `Produk #${item.product_id}`;
+              return (
+                <div key={idx} className="space-y-0.5">
+                  <div className="font-medium">{displayName}</div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>{item.quantity}x {formatCurrency(item.price_at_sale)}</span>
+                    <span className="font-medium">{formatCurrency(item.total_price)}</span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
-          <div className="space-y-1">
-            <div className="flex justify-between font-medium text-foreground"><span>TOTAL</span><span>{formatCurrency(sale.grand_total)}</span></div>
-            {!isDebt && (
-              <>
-                <div className="flex justify-between text-muted-foreground"><span>Bayar ({paymentLabel[sale.payment_method]})</span><span>{formatCurrency(sale.amount_received)}</span></div>
-                {sale.change_amount > 0 && <div className="flex justify-between text-muted-foreground"><span>Kembalian</span><span>{formatCurrency(sale.change_amount)}</span></div>}
-              </>
-            )}
-            {isDebt && (
-              <div className="mt-2 p-2 bg-[hsl(40,72%,42%)]/10 rounded-lg border border-[hsl(40,72%,42%)]/20">
-                <div className="flex items-center gap-1 text-[hsl(40,72%,42%)] font-medium text-[11px]"><AlertTriangle className="w-3 h-3" /> STATUS: UTANG</div>
-                {sale.due_date && <div className="text-[11px] text-[hsl(40,72%,42%)] mt-1">Jatuh tempo: {formatDate(sale.due_date)}</div>}
-              </div>
-            )}
+
+          {/* Payment */}
+          <div className="space-y-1 border-b border-dashed pb-3">
+            <div className="flex justify-between font-bold text-sm">
+              <span>TOTAL</span>
+              <span>{formatCurrency(sale.grand_total)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Bayar</span>
+              <span className="font-medium">{formatCurrency(sale.amount_received || sale.grand_total)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Kembali</span>
+              <span className="font-medium">{formatCurrency(sale.change_amount || 0)}</span>
+            </div>
           </div>
-          <div className="text-center text-muted-foreground pt-3 border-t border-dashed border-border flex flex-col items-center">
-            <p>Terima kasih sudah berbelanja!</p>
-            <p className="mt-3 px-4 text-[11px]">Barang dapat di-refund/tukar</p>
-            <p className="px-4 text-[11px]">Syarat &amp; Ketentuan Berlaku</p>
-            <div className="mt-4 mb-2">
+
+          {/* Footer */}
+          <div className="text-center text-muted-foreground text-[11px] space-y-1">
+            <p className="font-medium">Terima kasih sudah berbelanja!</p>
+            <div className="h-1"></div>
+            <p>Barang yang telah dibeli dapat dikembalikan</p>
+            <p>Syarat & Ketentuan Berlaku</p>
+            <div className="pt-3 pb-2 flex justify-center">
               <QRCodeSVG
                 value={sale.invoice_number}
                 size={80}
                 bgColor={"#ffffff"}
                 fgColor={"#000000"}
                 level={"L"}
-                includeMargin={false}
               />
             </div>
-            <p className="mt-1">{sale.invoice_number}</p>
+            <p className="text-xs font-medium text-foreground">{sale.invoice_number}</p>
           </div>
         </div>
 
-        {/* ── Keyboard hints ── */}
+        {/* ── Keyboard Hints ── */}
         <div className="flex items-center justify-center gap-3 pt-1 text-[10px] text-muted-foreground">
-          <span><kbd className="px-1 py-0.5 rounded border border-border bg-muted font-mono text-[9px]">Esc</kbd> Tutup</span>
-          <span><kbd className="px-1 py-0.5 rounded border border-border bg-muted font-mono text-[9px]">Enter</kbd> Cetak Struk</span>
-          <span><kbd className="px-1 py-0.5 rounded border border-border bg-muted font-mono text-[9px]">Ctrl Enter</kbd> +Faktur</span>
+          <span><kbd className="px-1 py-0.5 rounded border bg-muted font-mono text-[9px]">Esc</kbd> Tutup</span>
+          <span><kbd className="px-1 py-0.5 rounded border bg-muted font-mono text-[9px]">Enter</kbd> Cetak Struk</span>
+          <span><kbd className="px-1 py-0.5 rounded border bg-muted font-mono text-[9px]">Ctrl+Enter</kbd> Print Faktur</span>
         </div>
 
-        {/* ── Footer: Tiga Tombol ── */}
+        {/* ── Action Buttons ── */}
         <div className="flex items-center gap-2 pt-1">
           <Button
             variant="outline"
-            className="flex-none px-3 h-9 border-slate-300 text-slate-700 hover:bg-slate-50"
+            className="flex-none px-3"
             onClick={onClose}
-            title="Tutup (Esc)"
           >
             <X className="w-4 h-4 mr-1.5" />
             Tutup
           </Button>
 
           <Button
-            className="flex-1 h-9 bg-indigo-600 hover:bg-indigo-700 text-white font-medium transition-colors"
+            className="flex-1 bg-indigo-600 hover:bg-indigo-700"
             onClick={handlePrintStruk}
-            title="Cetak Struk Thermal (Enter)"
           >
             <Printer className="w-4 h-4 mr-1.5" />
             Cetak Struk
           </Button>
 
           <Button
-            className="flex-1 h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-medium transition-colors"
-            onClick={handlePrintBoth}
-            title="Cetak Struk + Faktur A4 (Ctrl+Enter)"
+            className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+            onClick={handlePrintInvoice}
           >
             <FileText className="w-4 h-4 mr-1.5" />
-            +Faktur
+            Print Faktur
           </Button>
         </div>
       </DialogContent>

@@ -43,6 +43,7 @@ export default function Settings() {
   // Store data
   const [storeName,    setStoreName]    = useState('');
   const [storeAddress, setStoreAddress] = useState('');
+  const [storePhone,   setStorePhone]   = useState('');
 
   // Printer status config
   const [paperWidth, setPaperWidth]   = useState<58 | 80>(printer.getPaperWidth());
@@ -67,6 +68,7 @@ export default function Settings() {
       if (store) {
         setStoreName(store.name);
         setStoreAddress(store.address || '');
+        setStorePhone(store.phone || '');
       }
     } catch (err) {
       console.error('Error loading store data:', err);
@@ -83,6 +85,7 @@ export default function Settings() {
       await updateStore(activeStoreId, {
         name: storeName.trim(),
         address: storeAddress.trim() || null,
+        phone: storePhone.trim() || null,
       });
       toast.success('Pengaturan toko berhasil disimpan');
     } catch (err) {
@@ -99,7 +102,7 @@ export default function Settings() {
     setIsConnecting(true);
     try {
       const ok = await printer.connect();
-      if (ok) toast.success('✅ Printer terhubung');
+      if (ok) toast.success('Printer terhubung');
       // jika cancel (ok=false) tidak perlu toast
     } finally {
       setIsConnecting(false);
@@ -110,7 +113,7 @@ export default function Settings() {
     setIsConnecting(true);
     try {
       const ok = await printer.reconnect();
-      if (ok) toast.success('✅ Printer terhubung kembali');
+      if (ok) toast.success('Printer terhubung kembali');
       else toast.warning('Tidak ada printer tersimpan. Klik "Hubungkan Printer".');
     } finally {
       setIsConnecting(false);
@@ -126,7 +129,7 @@ export default function Settings() {
     setIsTesting(true);
     try {
       await printer.testPrint();
-      toast.success('✅ Test print berhasil dikirim');
+      toast.success('Test print berhasil dikirim');
     } catch (err) {
       if (err instanceof PrinterError) {
         toast.error(err.message);
@@ -142,7 +145,7 @@ export default function Settings() {
     setIsTesting(true);
     try {
       await printer.openCashDrawer();
-      toast.success('✅ Perintah terkirim! Laci kasir seharusnya terbuka.');
+      toast.success('Perintah terkirim! Laci kasir seharusnya terbuka.');
     } catch (err) {
       if (err instanceof PrinterError) {
         toast.error(err.message);
@@ -176,7 +179,7 @@ export default function Settings() {
       setIsExporting(true);
       toast.info('Menyiapkan export data, harap tunggu...');
       await exportFullDatabase(activeStoreId, storeName || 'Toko');
-      toast.success('✅ Export berhasil! File Excel telah diunduh.');
+      toast.success('Export berhasil! File Excel telah diunduh.');
     } catch (err: any) {
       console.error('Export error:', err);
       toast.error(`Gagal export: ${err.message ?? 'Error tidak diketahui'}`);
@@ -207,7 +210,7 @@ export default function Settings() {
         console.warn('Restore warnings:', warnings);
         toast.warning(`Restore selesai dengan ${warnings.length} peringatan.`, { duration: 8000 });
       } else {
-        toast.success('✅ Data berhasil dipulihkan dari backup!');
+        toast.success('Data berhasil dipulihkan dari backup!');
       }
     } catch (err: any) {
       console.error('Restore error:', err);
@@ -260,6 +263,10 @@ export default function Settings() {
           <div className="grid gap-2">
             <Label htmlFor="storeAddress">Alamat</Label>
             <Input id="storeAddress" value={storeAddress} onChange={e => setStoreAddress(e.target.value)} placeholder="Masukkan alamat toko" />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="storePhone">Nomor Telepon</Label>
+            <Input id="storePhone" value={storePhone} onChange={e => setStorePhone(e.target.value)} placeholder="Masukkan nomor telepon" />
           </div>
         </div>
         <Button onClick={handleSave} disabled={isSaving}>

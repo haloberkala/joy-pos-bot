@@ -648,13 +648,14 @@ export default function POS() {
           invoiceNumber: sale.invoice_number,
           storeName: activeStore?.name ?? 'Toko',
           storeAddress: activeStore?.address,
+          storePhone: activeStore?.phone,
           cashierName: user?.name ?? 'Kasir',
           customerName: selectedCustomer?.name,
           paymentMethod: sale.payment_method as PrinterTransaction['paymentMethod'],
           paymentStatus: sale.payment_status as PrinterTransaction['paymentStatus'],
           items: [
             ...items.map(item => ({
-              name: item.product.name,
+              name: item.product.short_name || item.product.name,
               quantity: item.quantity,
               unitPrice: item.price_per_unit,
               totalPrice: item.price_per_unit * item.quantity,

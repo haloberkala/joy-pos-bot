@@ -42,7 +42,7 @@ export function CartPanel({ items, total, onUpdateQuantity, onRemoveItem, onChec
             <div key={item.product.id} className="bg-surface rounded-xl p-3">
               <div className="flex justify-between items-start mb-2">
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-medium text-[13px] text-foreground truncate">{item.product.short_name || item.product.name}</h4>
+                  <h4 className="font-medium text-[13px] text-foreground truncate">{item.product.name}</h4>
                   <p className="text-[11px] text-muted-foreground">{formatCurrency(item.price_per_unit)} / item</p>
                 </div>
                 <button onClick={() => onRemoveItem(item.product.id)} className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/5 rounded-lg transition-colors">

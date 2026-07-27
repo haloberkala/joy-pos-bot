@@ -1,188 +1,215 @@
 /**
- * lib/printer/receipt.ts — ReceiptBuilder & KitchenTicketBuilder.
- * Mengambil PrinterTransaction, menghasilkan Uint8Array ESC/POS.
- * Tidak tahu cara mengirim ke printer (tugas webserial.ts).
+ * Thermal Receipt Builder - Rebuild Total
+ * 
+ * Implementasi baru yang fokus pada:
+ * - Hasil cetak fisik yang identik dengan UI
+ * - Struktur yang sederhana dan mudah di-debug
+ * - Alignment yang konsisten
+ * - State management yang jelas
  */
 
-import { EscPos } from './escpos';
+import { EscPosBuilder } from './escpos';
 import { PrinterTransaction, PaperWidth, DrawerPin } from './types';
+import { formatCurrency } from '@/lib/format';
 
-const FMT = (n: number) => `Rp${n.toLocaleString('id-ID')}`;
-
-function columns(w: PaperWidth): number { return w === 80 ? 48 : 32; }
-
-function formatDate(d: Date | string): { date: string; time: string } {
-  const dt = typeof d === 'string' ? new Date(d) : d;
-  return {
-    date: dt.toLocaleDateString('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric' }),
-    time: dt.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }),
-  };
+/**
+ * Lebar karakter untuk setiap ukuran kertas
+ */
+function getWidth(paper: PaperWidth): number {
+  return paper === 80 ? 48 : 32;
 }
 
-const PAYMENT_LABEL: Record<string, string> = {
-  cash: 'Tunai', qris: 'QRIS', transfer: 'Transfer',
-};
+/**
+ * Format tanggal untuk receipt
+ */
+function fmtDate(date: Date | string): string {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  return d.toLocaleDateString('id-ID', { 
+    day: '2-digit', 
+    month: 'short', 
+    year: 'numeric' 
+  });
+}
 
-// ── ReceiptBuilder ────────────────────────────────────────────────────────────
+/**
+ * Format waktu untuk receipt
+ */
+function fmtTime(date: Date | string): string {
+  const d = typeof date === 'string' ? new Date(date) : date;
+  return d.toLocaleTimeString('id-ID', { 
+    hour: '2-digit', 
+    minute: '2-digit',
+    hour12: false
+  });
+}
 
+/**
+ * Build thermal receipt
+ */
 export function buildReceipt(
   tx: PrinterTransaction,
   paperWidth: PaperWidth = 80,
   drawerPin: DrawerPin = 'pin2',
 ): Uint8Array {
-  const col = columns(paperWidth);
-  const { date, time } = formatDate(tx.createdAt);
+  const width = getWidth(paperWidth);
+  const builder = new EscPosBuilder();
 
-  const parts: number[][] = [
-    // ── Init ──────────────────────────────────────────────────────────────────
-    EscPos.init(),
+  // ═══════════════════════════════════════════════════════════════════════════
+  // INIT - Reset printer ke state default
+  // ═══════════════════════════════════════════════════════════════════════════
+  builder
+    .init()
+    .newline(); // Feed kosong setelah reset untuk posisi print head yang aman
 
-    // ── Header Toko ───────────────────────────────────────────────────────────
-    EscPos.align('center'),
-    EscPos.bold(true),
-    EscPos.text(tx.storeName.toUpperCase()),
-    EscPos.bold(false),
-  ];
+  // ═══════════════════════════════════════════════════════════════════════════
+  // HEADER
+  // ═══════════════════════════════════════════════════════════════════════════
+  builder
+    .align('center')
+    .bold(true)
+    .line('STRUK PEMBAYARAN')
+    .bold(false)
+    .newline();
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STORE INFO
+  // ═══════════════════════════════════════════════════════════════════════════
+  builder
+    .bold(true)
+    .line(tx.storeName)
+    .bold(false);
 
   if (tx.storeAddress) {
-    parts.push(EscPos.wrap(tx.storeAddress, col));
+    builder.line(tx.storeAddress);
   }
 
-  parts.push(
-    EscPos.separator('=', col),
+  if (tx.storePhone) {
+    builder.line(tx.storePhone);
+  }
 
-    // ── Info Transaksi ─────────────────────────────────────────────────────────
-    EscPos.align('left'),
-    EscPos.twoCol('No.', tx.invoiceNumber, col),
-    EscPos.twoCol('Tanggal', date, col),
-    EscPos.twoCol('Waktu', time, col),
-    EscPos.twoCol('Kasir', tx.cashierName, col),
-  );
+  builder
+    .newline()
+    .separator('-', width);
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // TRANSACTION INFO
+  // ═══════════════════════════════════════════════════════════════════════════
+  builder.align('left');
+
+  const dateStr = fmtDate(tx.createdAt);
+  const timeStr = fmtTime(tx.createdAt);
+
+  builder
+    .row('No Invoice', tx.invoiceNumber, width)
+    .row('Tanggal', `${dateStr} ${timeStr}`, width)
+    .row('Kasir', tx.cashierName, width);
 
   if (tx.customerName) {
-    parts.push(EscPos.twoCol('Pelanggan', tx.customerName, col));
+    builder.row('Pelanggan', tx.customerName, width);
   }
 
-  parts.push(
-    EscPos.separator('-', col),
+  builder.separator('-', width);
 
-    // ── Item ──────────────────────────────────────────────────────────────────
-    EscPos.align('left'),
-  );
-
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ITEMS
+  // ═══════════════════════════════════════════════════════════════════════════
   for (const item of tx.items) {
-    // Nama produk (potong jika terlalu panjang)
-    parts.push(EscPos.text(item.name.substring(0, col)));
-    // Qty × harga = subtotal
-    const qtyPrice = `  ${item.quantity}x ${FMT(item.unitPrice)}`;
-    parts.push(EscPos.twoCol(qtyPrice, FMT(item.totalPrice), col));
+    // Baris 1: Nama produk
+    builder.line(item.name);
+
+    // Baris 2: Qty x Harga [spaces] Subtotal
+    const qtyPrice = `${item.quantity} x ${formatCurrency(item.unitPrice)}`;
+    const subtotal = formatCurrency(item.totalPrice);
+    builder.row(qtyPrice, subtotal, width);
   }
 
-  parts.push(EscPos.separator('-', col));
+  builder.separator('-', width);
 
-  // ── Summary ───────────────────────────────────────────────────────────────
-  if (tx.discount && tx.discount > 0) {
-    parts.push(
-      EscPos.twoCol('Subtotal', FMT(tx.subtotal), col),
-      EscPos.twoCol('Diskon', `-${FMT(tx.discount)}`, col),
-    );
-  }
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PAYMENT SUMMARY
+  // ═══════════════════════════════════════════════════════════════════════════
+  builder
+    .bold(true)
+    .row('TOTAL', formatCurrency(tx.grandTotal), width)
+    .bold(false)
+    .row('Bayar', formatCurrency(tx.amountReceived || tx.grandTotal), width)
+    .row('Kembali', formatCurrency(tx.change || 0), width)
+    .separator('-', width);
 
-  parts.push(
-    EscPos.bold(true),
-    EscPos.twoCol('TOTAL', FMT(tx.grandTotal), col),
-    EscPos.bold(false),
-    EscPos.twoCol('Metode', PAYMENT_LABEL[tx.paymentMethod] ?? tx.paymentMethod.toUpperCase(), col),
-  );
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FOOTER
+  // ═══════════════════════════════════════════════════════════════════════════
+  builder
+    .align('center')
+    .line('Terima kasih sudah berbelanja!')
+    .newline()
+    .line('Barang yang telah dibeli dapat dikembalikan')
+    .line('Syarat & Ketentuan Berlaku')
+    .newline();
 
-  if (tx.paymentMethod === 'cash' && tx.amountReceived && tx.amountReceived > 0) {
-    parts.push(
-      EscPos.twoCol('Bayar', FMT(tx.amountReceived), col),
-      EscPos.twoCol('Kembali', FMT(tx.change ?? 0), col),
-    );
-  }
+  // ═══════════════════════════════════════════════════════════════════════════
+  // QR CODE
+  // ═══════════════════════════════════════════════════════════════════════════
+  builder
+    .qr(tx.invoiceNumber, 5)
+    .line(tx.invoiceNumber)
+    .newline()
+    .newline();
 
-  if (tx.paymentStatus === 'debt') {
-    parts.push(
-      EscPos.separator('-', col),
-      EscPos.align('center'),
-      EscPos.bold(true),
-      EscPos.text('*** BELUM LUNAS ***'),
-      EscPos.bold(false),
-    );
-  }
+  // ═══════════════════════════════════════════════════════════════════════════
+  // END
+  // ═══════════════════════════════════════════════════════════════════════════
+  builder
+    .feed(3)
+    .cut()
+    .drawer(drawerPin);
 
-  if (tx.note) {
-    parts.push(
-      EscPos.separator('-', col),
-      EscPos.align('left'),
-      EscPos.wrap(`Catatan: ${tx.note}`, col),
-    );
-  }
-
-  parts.push(
-    EscPos.separator('=', col),
-
-    // ── Footer ────────────────────────────────────────────────────────────────
-    EscPos.align('center'),
-    EscPos.text('Terima kasih sudah berbelanja!'),
-    EscPos.text('Barang yang dibeli tidak dapat'),
-    EscPos.text('dikembalikan tanpa nota.'),
-    EscPos.text(''),
-
-    // QR Code invoice number
-    EscPos.qr(tx.invoiceNumber, 5),
-    EscPos.text(tx.invoiceNumber),
-
-    // ── Feed → Cut → Kick Drawer (satu stream, tidak ada race condition) ───────
-    EscPos.feedFallback(5),
-    EscPos.cut(),
-    EscPos.kickDrawer(drawerPin),
-  );
-
-  return EscPos.build(...parts);
+  return builder.build();
 }
 
-// ── KitchenTicketBuilder ──────────────────────────────────────────────────────
-
+/**
+ * Build kitchen ticket
+ */
 export function buildKitchenTicket(
   tx: PrinterTransaction,
   paperWidth: PaperWidth = 80,
 ): Uint8Array {
-  const col = columns(paperWidth);
-  const { date, time } = formatDate(tx.createdAt);
+  const width = getWidth(paperWidth);
+  const builder = new EscPosBuilder();
 
-  const parts: number[][] = [
-    EscPos.init(),
-    EscPos.align('center'),
-    EscPos.bold(true),
-    EscPos.text('ORDER TICKET'),
-    EscPos.bold(false),
-    EscPos.separator('=', col),
-    EscPos.align('left'),
-    EscPos.twoCol('No.', tx.invoiceNumber, col),
-    EscPos.twoCol('Waktu', `${date} ${time}`, col),
-  ];
+  builder
+    .init()
+    .align('center')
+    .bold(true)
+    .line('ORDER TICKET')
+    .bold(false)
+    .separator('=', width)
+    .align('left');
+
+  const dateStr = fmtDate(tx.createdAt);
+  const timeStr = fmtTime(tx.createdAt);
+
+  builder
+    .row('No.', tx.invoiceNumber, width)
+    .row('Waktu', `${dateStr} ${timeStr}`, width);
 
   if (tx.customerName) {
-    parts.push(EscPos.twoCol('Pelanggan', tx.customerName, col));
+    builder.row('Pelanggan', tx.customerName, width);
   }
 
-  parts.push(EscPos.separator('-', col));
+  builder.separator('-', width);
 
   for (const item of tx.items) {
-    parts.push(
-      EscPos.bold(true),
-      EscPos.text(`${item.quantity}x ${item.name}`),
-      EscPos.bold(false),
-    );
+    builder
+      .bold(true)
+      .line(`${item.quantity}x ${item.name}`)
+      .bold(false);
   }
 
-  parts.push(
-    EscPos.separator('=', col),
-    EscPos.feedFallback(4),
-    EscPos.cut(),
-  );
+  builder
+    .separator('=', width)
+    .feed(3)
+    .cut();
 
-  return EscPos.build(...parts);
+  return builder.build();
 }

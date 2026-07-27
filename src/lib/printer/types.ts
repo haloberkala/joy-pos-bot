@@ -58,6 +58,7 @@ export interface PrinterTransaction {
   invoiceNumber: string;
   storeName: string;
   storeAddress?: string | null;
+  storePhone?: string | null;
   cashierName: string;
   customerName?: string | null;
   paymentMethod: 'cash' | 'qris' | 'transfer';

@@ -217,7 +217,7 @@ function findPrinterInterface(device: USBDevice): number | null {
  * Kirim raw ESC/POS bytes ke printer melalui WebUSB.
  * Device dibuka per-job (open/close) untuk mencegah "device already open" error.
  */
-export async function writeToDevice(data: Uint8Array, config: PrinterConfig): Promise<void> {
+export async function writeToDevice(data: Uint8Array, _config?: PrinterConfig): Promise<void> {
   if (!isWebUSBSupported()) {
     throw new PrinterError(
       'UNSUPPORTED_BROWSER',
@@ -250,48 +250,17 @@ export async function writeToDevice(data: Uint8Array, config: PrinterConfig): Pr
   try {
     // Buka device jika belum terbuka
     if (!device.opened) {
-      console.log('[WebUSB DEBUG] OPEN - Opening device...');
       await device.open();
       opened = true;
-      console.log('[WebUSB DEBUG] OPEN - Device opened successfully');
-
-      // Debug: tampilkan configuration sebelum selectConfiguration
-      console.log('[WebUSB DEBUG] Configuration before select:', device.configuration);
 
       // Pilih konfigurasi pertama (biasanya configuration 1)
       if (device.configuration === null) {
-        console.log('[WebUSB DEBUG] SELECT - Selecting configuration 1...');
         await device.selectConfiguration(1);
-        console.log('[WebUSB DEBUG] SELECT - Configuration selected');
-      }
-
-      // Debug: tampilkan configuration setelah selectConfiguration
-      console.log('[WebUSB DEBUG] Configuration after select:', device.configuration);
-
-      // Debug: tampilkan semua interfaces dan endpoints
-      if (device.configuration) {
-        console.log('[WebUSB DEBUG] Interfaces:', device.configuration.interfaces);
-        device.configuration.interfaces.forEach((iface: any, idx: number) => {
-          console.log(`[WebUSB DEBUG] Interface ${idx}:`, {
-            interfaceNumber: iface.interfaceNumber,
-            alternates: iface.alternates.map((alt: any) => ({
-              interfaceClass: alt.interfaceClass,
-              interfaceSubclass: alt.interfaceSubclass,
-              interfaceProtocol: alt.interfaceProtocol,
-              endpoints: alt.endpoints.map((ep: any) => ({
-                endpointNumber: ep.endpointNumber,
-                direction: ep.direction,
-                type: ep.type,
-              })),
-            })),
-          });
-        });
       }
     }
 
     // Cari interface printer
     interfaceNumber = findPrinterInterface(device);
-    console.log('[WebUSB DEBUG] Found interface number:', interfaceNumber);
     if (interfaceNumber === null) {
       throw new PrinterError(
         'NO_PRINTER',
@@ -301,21 +270,16 @@ export async function writeToDevice(data: Uint8Array, config: PrinterConfig): Pr
 
     // Claim interface
     try {
-      console.log('[WebUSB DEBUG] CLAIM - Claiming interface', interfaceNumber, '...');
       await device.claimInterface(interfaceNumber);
-      console.log('[WebUSB DEBUG] CLAIM - Interface claimed successfully');
     } catch (err: any) {
-      console.log('[WebUSB DEBUG] CLAIM - Error:', err);
       // Jika interface sudah di-claim, ignore error
       if (!err?.message?.includes('claimed')) {
         throw err;
       }
-      console.log('[WebUSB DEBUG] CLAIM - Interface already claimed, continuing...');
     }
 
     // Cari endpoint OUT
     const endpoint = findPrinterEndpoint(device);
-    console.log('[WebUSB DEBUG] Found endpoint:', endpoint);
     if (endpoint === null) {
       throw new PrinterError(
         'NO_PRINTER',
@@ -326,22 +290,12 @@ export async function writeToDevice(data: Uint8Array, config: PrinterConfig): Pr
     // Transfer data ke printer
     // Split data menjadi chunk jika terlalu besar (max 64KB per transfer untuk keamanan)
     const CHUNK_SIZE = 64 * 1024; // 64KB
-    console.log('[WebUSB DEBUG] TRANSFER - Starting data transfer, total bytes:', data.length);
     for (let offset = 0; offset < data.length; offset += CHUNK_SIZE) {
       const chunk = data.slice(offset, Math.min(offset + CHUNK_SIZE, data.length));
-      console.log(`[WebUSB DEBUG] TRANSFER - Sending chunk ${offset}-${offset + chunk.length} to endpoint ${endpoint}...`);
       await device.transferOut(endpoint, chunk);
-      console.log(`[WebUSB DEBUG] TRANSFER - Chunk sent successfully`);
     }
-    console.log('[WebUSB DEBUG] DONE - All data transferred successfully');
 
   } catch (err) {
-    console.log('[WebUSB DEBUG] ERROR - Caught error:', err);
-    console.log('[WebUSB DEBUG] ERROR - Error type:', (err as any)?.constructor?.name);
-    console.log('[WebUSB DEBUG] ERROR - Error message:', (err as any)?.message);
-    console.log('[WebUSB DEBUG] ERROR - Error name:', (err as any)?.name);
-    console.log('[WebUSB DEBUG] ERROR - Full error:', JSON.stringify(err, null, 2));
-
     if (err instanceof PrinterError) throw err;
 
     const msg = (err as any)?.message ?? '';

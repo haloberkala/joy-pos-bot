@@ -127,10 +127,7 @@ class PrinterManager {
     } catch (err) {
       this._status = 'disconnected';
       this._notify();
-      if (err instanceof PrinterError && err.code !== 'NO_PERMISSION') {
-        // NO_PERMISSION = user cancel, tidak perlu log
-        console.error('[Printer] connect:', err.code, err.message);
-      }
+      // User cancel tidak perlu penanganan khusus
       return false;
     }
   }

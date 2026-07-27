@@ -7,8 +7,8 @@ export type UserRole = 'owner' | 'admin' | 'cashier';
 export interface Store {
   id: number;
   name: string;
-  address: string;
-  phone: string;
+  address: string | null;
+  phone: string | null;
   created_at: Date;
   updated_at: Date;
 }

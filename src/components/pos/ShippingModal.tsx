@@ -111,7 +111,7 @@ export function ShippingModal({ isOpen, onClose, items, total, invoiceNumber, sa
             <div className="space-y-0.5">
               {items.map(item => (
                 <div key={item.product.id} className="flex justify-between text-[13px]">
-                  <span className="text-foreground">{item.product.short_name || item.product.name} x{item.quantity}</span>
+                  <span className="text-foreground">{item.product.name} x{item.quantity}</span>
                   <span className="font-medium">{formatCurrency(item.price_per_unit * item.quantity)}</span>
                 </div>
               ))}

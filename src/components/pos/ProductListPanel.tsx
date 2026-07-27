@@ -31,7 +31,7 @@ export function ProductListPanel({ products, onAddProduct, selectedIndex = -1 }:
                 isOut && 'opacity-40 cursor-not-allowed'
               )}>
               <div className="flex-1 min-w-0 mr-2">
-                <p className="text-[13px] font-medium text-foreground truncate">{product.short_name || product.name}</p>
+                <p className="text-[13px] font-medium text-foreground truncate">{product.name}</p>
                 <div className="flex items-center gap-2 mt-0.5">
                   <span className="text-[10px] font-mono text-muted-foreground">{product.code}</span>
                   <span className={cn('text-[10px] font-medium px-1.5 py-0.5 rounded',
