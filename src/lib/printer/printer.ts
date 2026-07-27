@@ -1,13 +1,13 @@
 /**
  * lib/printer/printer.ts — PrinterManager singleton.
  *
- * Satu-satunya file yang di-import oleh komponen React.
- * UI cukup memanggil:
+ * Entry point tunggal untuk seluruh UI.
+ * Transport: WebUSB (via webusb.ts).
+ *
+ * Usage:
  *   printer.connect()
  *   printer.printReceipt(tx)
  *   printer.openCashDrawer()
- *
- * Semua detail (ESC/POS, Web Serial, error codes) tersembunyi di sini.
  */
 
 import { toast } from 'sonner';
@@ -19,14 +19,15 @@ import {
 import { EscPos } from './escpos';
 import { buildReceipt, buildKitchenTicket } from './receipt';
 import {
-  isWebSerialSupported,
+  isWebUSBSupported,
   connectViaRequest,
   reconnectViaCache,
-  disconnectPort,
-  writeToPort,
-  loadPortInfo,
-  getCachedPort,
-} from './webserial';
+  disconnectDevice,
+  writeToDevice,
+  loadDeviceInfo,
+  getDeviceLabel,
+  getCachedDevice,
+} from './webusb';
 
 // ── Config persistence ────────────────────────────────────────────────────────
 
@@ -44,7 +45,7 @@ function saveConfig(cfg: PrinterConfig): void {
   localStorage.setItem(CONFIG_KEY, JSON.stringify(cfg));
 }
 
-// ── Spin-lock mutex ───────────────────────────────────────────────────────────
+// ── Mutex ─────────────────────────────────────────────────────────────────────
 
 let _isPrinting = false;
 
@@ -53,27 +54,26 @@ let _isPrinting = false;
 class PrinterManager {
   private _config: PrinterConfig = loadConfig();
   private _status: PrinterStatus = 'disconnected';
-  private _listeners: Set<(info: PrinterInfo) => void> = new Set();
+  private _listeners = new Set<(info: PrinterInfo) => void>();
 
-  // ── Status ──────────────────────────────────────────────────────────────────
+  // ── Info & Status ────────────────────────────────────────────────────────────
 
   getInfo(): PrinterInfo {
     return {
       status: this._status,
-      portName: loadPortInfo()?.label ?? null,
+      portName: getDeviceLabel() ?? loadDeviceInfo()?.label ?? null,
       paperWidth: this._config.paperWidth,
     };
   }
 
   isConnected(): boolean {
-    return this._status === 'connected' && getCachedPort() !== null;
+    return this._status === 'connected' && getCachedDevice() !== null;
   }
 
   isSupported(): boolean {
-    return isWebSerialSupported();
+    return isWebUSBSupported();
   }
 
-  /** Subscribe ke perubahan status printer */
   onStatusChange(cb: (info: PrinterInfo) => void): () => void {
     this._listeners.add(cb);
     return () => this._listeners.delete(cb);
@@ -84,9 +84,11 @@ class PrinterManager {
     this._listeners.forEach(cb => cb(info));
   }
 
-  // ── Config ──────────────────────────────────────────────────────────────────
+  // ── Config ───────────────────────────────────────────────────────────────────
 
   getConfig(): PrinterConfig { return { ...this._config }; }
+
+  getPaperWidth(): 58 | 80 { return this._config.paperWidth; }
 
   setPaperWidth(w: 58 | 80): void {
     this._config = { ...this._config, paperWidth: w };
@@ -100,21 +102,17 @@ class PrinterManager {
   }
 
   setBaudRate(rate: number): void {
+    // Dipertahankan untuk API compatibility — WebUSB tidak menggunakan baud rate
     this._config = { ...this._config, baudRate: rate };
     saveConfig(this._config);
   }
 
-  getPaperWidth(): 58 | 80 { return this._config.paperWidth; }
+  // ── Connection ────────────────────────────────────────────────────────────────
 
-  // ── Connection ──────────────────────────────────────────────────────────────
-
-  /**
-   * Hubungkan printer — muncul dialog pilih port.
-   * Gunakan di Settings atau tombol connect di POS header.
-   */
+  /** Hubungkan printer — muncul dialog WebUSB requestDevice. */
   async connect(): Promise<boolean> {
-    if (!isWebSerialSupported()) {
-      toast.error('Browser tidak mendukung Web Serial API. Gunakan Chrome atau Edge.');
+    if (!isWebUSBSupported()) {
+      toast.error('Browser tidak mendukung WebUSB. Gunakan Chrome atau Edge.');
       return false;
     }
 
@@ -129,28 +127,26 @@ class PrinterManager {
     } catch (err) {
       this._status = 'disconnected';
       this._notify();
-      if (err instanceof PrinterError) {
-        if (err.code !== 'NO_PERMISSION') {
-          // NO_PERMISSION = user batal = tidak perlu toast
-          console.error('[Printer] connect error:', err);
-        }
+      if (err instanceof PrinterError && err.code !== 'NO_PERMISSION') {
+        // NO_PERMISSION = user cancel, tidak perlu log
+        console.error('[Printer] connect:', err.code, err.message);
       }
       return false;
     }
   }
 
   /**
-   * Reconnect ke port tersimpan — TANPA dialog.
-   * Panggil saat app startup atau setelah port terputus.
+   * Reconnect ke device tersimpan tanpa dialog.
+   * Dipanggil otomatis saat app dibuka.
    */
   async reconnect(): Promise<boolean> {
-    if (!isWebSerialSupported()) return false;
+    if (!isWebUSBSupported()) return false;
 
     this._status = 'connecting';
     this._notify();
 
-    const port = await reconnectViaCache();
-    if (port) {
+    const device = await reconnectViaCache();
+    if (device) {
       this._status = 'connected';
       this._notify();
       return true;
@@ -162,28 +158,26 @@ class PrinterManager {
   }
 
   async disconnect(): Promise<void> {
-    disconnectPort();
+    await disconnectDevice();
     this._status = 'disconnected';
     this._notify();
   }
 
-  // ── Print Operations ─────────────────────────────────────────────────────────
+  // ── Print ─────────────────────────────────────────────────────────────────────
 
   /**
-   * Cetak struk transaksi.
-   * Satu ESC/POS stream: Init → Header → Items → Total → Footer → Cut → Kick Drawer.
-   * Melempar PrinterError dengan kode yang jelas jika gagal.
+   * Cetak struk + kick cash drawer dalam satu ESC/POS stream.
+   * Init → Header → Items → Summary → Footer → Feed → Cut → KickDrawer
    */
   async printReceipt(tx: PrinterTransaction): Promise<void> {
     if (_isPrinting) {
       toast.warning('Printer sedang sibuk, harap tunggu...');
       return;
     }
-
     _isPrinting = true;
     try {
       const bytes = buildReceipt(tx, this._config.paperWidth, this._config.drawerPin);
-      await writeToPort(bytes, this._config);
+      await writeToDevice(bytes, this._config);
     } finally {
       _isPrinting = false;
     }
@@ -194,57 +188,76 @@ class PrinterManager {
       toast.warning('Printer sedang sibuk, harap tunggu...');
       return;
     }
-
     _isPrinting = true;
     try {
       const bytes = buildKitchenTicket(tx, this._config.paperWidth);
-      await writeToPort(bytes, this._config);
+      await writeToDevice(bytes, this._config);
     } finally {
       _isPrinting = false;
     }
   }
 
-  /**
-   * Buka cash drawer saja (tanpa cetak struk).
-   * Mengirim ESC/POS kick command via printer yang terhubung.
-   */
+  /** Buka cash drawer saja — tanpa mencetak struk. */
   async openCashDrawer(): Promise<void> {
-    const bytes = EscPos.build(EscPos.kickDrawer(this._config.drawerPin));
-    await writeToPort(bytes, this._config);
+    if (_isPrinting) {
+      toast.warning('Printer sedang sibuk, harap tunggu...');
+      return;
+    }
+    _isPrinting = true;
+    try {
+      const bytes = EscPos.build(EscPos.kickDrawer(this._config.drawerPin));
+      await writeToDevice(bytes, this._config);
+    } finally {
+      _isPrinting = false;
+    }
   }
 
-  /**
-   * Test print sederhana untuk verifikasi koneksi.
-   */
+  /** Test print sederhana untuk verifikasi koneksi dan konfigurasi. */
   async testPrint(): Promise<void> {
-    const now = new Date().toLocaleString('id-ID');
-    const col = this._config.paperWidth === 80 ? 48 : 32;
-    const bytes = EscPos.build(
-      EscPos.init(),
-      EscPos.align('center'),
-      EscPos.bold(true),
-      EscPos.text('=== TEST PRINT ==='),
-      EscPos.bold(false),
-      EscPos.text(''),
-      EscPos.align('left'),
-      EscPos.twoCol('Waktu', now, col),
-      EscPos.twoCol('Paper', `${this._config.paperWidth}mm`, col),
-      EscPos.twoCol('Status', 'OK', col),
-      EscPos.separator('=', col),
-      EscPos.align('center'),
-      EscPos.text('Printer berfungsi dengan baik!'),
-      EscPos.feedFallback(5),
-      EscPos.cut(),
-    );
-    await writeToPort(bytes, this._config);
+    if (_isPrinting) {
+      toast.warning('Printer sedang sibuk, harap tunggu...');
+      return;
+    }
+    _isPrinting = true;
+    try {
+      const now = new Date().toLocaleString('id-ID');
+      const col = this._config.paperWidth === 80 ? 48 : 32;
+      const bytes = EscPos.build(
+        EscPos.init(),
+        EscPos.align('center'),
+        EscPos.bold(true),
+        EscPos.text('=== TEST PRINT ==='),
+        EscPos.bold(false),
+        EscPos.text(''),
+        EscPos.align('left'),
+        EscPos.twoCol('Transport', 'WebUSB', col),
+        EscPos.twoCol('Waktu', now, col),
+        EscPos.twoCol('Paper', `${this._config.paperWidth}mm`, col),
+        EscPos.twoCol('Drawer Pin', this._config.drawerPin, col),
+        EscPos.separator('=', col),
+        EscPos.align('center'),
+        EscPos.text('Printer berfungsi dengan baik!'),
+        EscPos.feedFallback(5),
+        EscPos.cut(),
+      );
+      await writeToDevice(bytes, this._config);
+    } finally {
+      _isPrinting = false;
+    }
   }
 
-  /**
-   * Kirim raw bytes langsung ke printer.
-   * Untuk use-case khusus di luar ReceiptBuilder.
-   */
+  /** Kirim raw bytes langsung. Untuk keperluan khusus. */
   async printRaw(data: Uint8Array): Promise<void> {
-    await writeToPort(data, this._config);
+    if (_isPrinting) {
+      toast.warning('Printer sedang sibuk, harap tunggu...');
+      return;
+    }
+    _isPrinting = true;
+    try {
+      await writeToDevice(data, this._config);
+    } finally {
+      _isPrinting = false;
+    }
   }
 }
 
@@ -252,6 +265,5 @@ class PrinterManager {
 
 export const printer = new PrinterManager();
 
-// ── Auto-reconnect saat modul pertama kali dimuat ─────────────────────────────
-// (fire-and-forget, jangan block app startup)
+// Auto-reconnect saat modul dimuat (fire-and-forget)
 printer.reconnect().catch(() => { /* silent */ });

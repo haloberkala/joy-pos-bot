@@ -3,7 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getStoreById, updateStore } from '@/services/storesService';
 import { exportFullDatabase } from '@/services/backupService';
 import { importFullDatabase } from '@/services/restoreService';
-import { printer, PrinterError, isWebSerialSupported } from '@/lib/printer';
+import { printer, PrinterError, isWebUSBSupported } from '@/lib/printer';
 import type { PrinterInfo } from '@/lib/printer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,7 +30,7 @@ export default function Settings() {
   const [printerInfo, setPrinterInfo]   = useState<PrinterInfo>(printer.getInfo());
   const [isConnecting, setIsConnecting] = useState(false);
   const [isTesting, setIsTesting]       = useState(false);
-  const serialSupported = isWebSerialSupported();
+  const serialSupported = isWebUSBSupported();
 
   // Backup / Restore state
   const [isExporting, setIsExporting] = useState(false);
@@ -275,7 +275,7 @@ export default function Settings() {
           </div>
           <div>
             <h2 className="font-semibold text-foreground">Printer Thermal</h2>
-            <p className="text-sm text-muted-foreground">Koneksi via USB Serial (Web Serial API)</p>
+            <p className="text-sm text-muted-foreground">Koneksi via WebUSB API</p>
           </div>
         </div>
         <Separator />
@@ -285,7 +285,7 @@ export default function Settings() {
           <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
             <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
             <div className="text-sm text-amber-800">
-              <p className="font-semibold">Browser tidak mendukung Web Serial API</p>
+              <p className="font-semibold">Browser tidak mendukung WebUSB API</p>
               <p className="mt-0.5">Gunakan <strong>Google Chrome</strong> atau <strong>Microsoft Edge</strong>. Firefox dan Safari tidak didukung.</p>
             </div>
           </div>
@@ -314,7 +314,7 @@ export default function Settings() {
 
           <div className="flex items-center justify-between px-3 py-2.5">
             <span className="text-muted-foreground">Transport</span>
-            <span className="font-medium text-blue-600">USB Serial (Web Serial)</span>
+            <span className="font-medium text-blue-600">WebUSB</span>
           </div>
         </div>
 

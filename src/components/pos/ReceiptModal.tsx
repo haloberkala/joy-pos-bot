@@ -6,7 +6,8 @@ import { formatCurrency, formatDate } from '@/lib/format';
 import { Printer, X, AlertTriangle, FileText } from 'lucide-react';
 import { printInvoice } from '@/components/pos/PrintInvoice';
 import { SaleItem } from '@/services/salesService';
-import { printReceiptAndOpenDrawer, isThermalPrinterSupported } from '@/services/thermalPrinterService';
+import { printer, PrinterError } from '@/lib/printer';
+import type { PrinterTransaction } from '@/lib/printer';
 import { QRCodeSVG } from 'qrcode.react';
 
 interface ReceiptModalProps {
@@ -34,41 +35,46 @@ export function ReceiptModal({
   const paymentLabel = { cash: 'Tunai', transfer: 'Transfer', qris: 'QRIS' } as Record<string, string>;
   const isDebt = sale.payment_status === 'debt';
 
-  // ─── Handler: Cetak Struk Thermal 80mm ───────────────────────────────────
+  // ─── Handler: Cetak Struk Thermal ─────────────────────────────────────────
   const handlePrintStruk = async () => {
-    // 1. Coba cetak langsung via Web Serial API tanpa pop-up
-    if (isThermalPrinterSupported()) {
+    // 1. Coba cetak via lib/printer (Web Serial → single ESC/POS stream)
+    if (printer.isSupported()) {
       try {
-        const receiptData = {
+        const tx: PrinterTransaction = {
+          id: String(sale.id),
+          invoiceNumber: sale.invoice_number,
           storeName: store?.name || 'Toko',
-          storeAddress: store?.address || undefined,
+          storeAddress: store?.address,
+          cashierName,
+          customerName,
+          paymentMethod: sale.payment_method as PrinterTransaction['paymentMethod'],
+          paymentStatus: sale.payment_status as PrinterTransaction['paymentStatus'],
           items: saleDetails.map(item => ({
-            name: item.product?.name || 'Produk #' + item.product_id,
-            qty: item.quantity,
-            price: item.price_at_sale,
+            name: item.product?.name || `Produk #${item.product_id}`,
+            quantity: item.quantity,
+            unitPrice: item.price_at_sale,
+            totalPrice: item.total_price,
           })),
-          total: sale.grand_total,
-          amountReceived: sale.amount_received,
-          change: sale.change_amount,
-          paymentMethod: paymentLabel[sale.payment_method] || sale.payment_method,
-          cashierName: cashierName,
-          transactionId: sale.invoice_number,
-          customerName: customerName,
+          subtotal: sale.grand_total,
+          grandTotal: sale.grand_total,
+          amountReceived: sale.amount_received || undefined,
+          change: sale.change_amount || undefined,
+          createdAt: sale.date,
         };
-        
-        const success = await printReceiptAndOpenDrawer(receiptData);
-        if (success) {
-          return; // Berhasil cetak langsung ke thermal, batalkan proses browser popup
-        }
+
+        await printer.printReceipt(tx);
+        return; // berhasil → tidak perlu fallback
       } catch (err) {
-        console.warn('Gagal cetak via Web Serial:', err);
+        if (err instanceof PrinterError && err.code === 'NO_PRINTER') {
+          // tidak ada printer tersimpan → lanjut ke fallback browser
+          console.info('[ReceiptModal] No printer configured, fallback to browser popup');
+        } else {
+          console.warn('[ReceiptModal] printReceipt error:', err);
+        }
       }
     }
 
-    // 2. Fallback: Cetak via browser pop-up
-    const receiptContent = document.getElementById('receipt-print-area');
-    if (!receiptContent) return;
-
+    // 2. Fallback: browser popup print
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
@@ -81,7 +87,6 @@ export function ReceiptModal({
           * { margin: 0; padding: 0; box-sizing: border-box; }
           body { font-family: 'Courier New', monospace; width: 80mm; padding: 4mm; font-size: 12px; color: #000; }
           .text-center { text-align: center; }
-          .text-right { text-align: right; }
           .font-bold { font-weight: bold; }
           .border-dashed { border-top: 1px dashed #000; padding-top: 4px; margin-top: 4px; }
           .flex-between { display: flex; justify-content: space-between; }
@@ -99,8 +104,8 @@ export function ReceiptModal({
       </head>
       <body>
         <div class="text-center mb-2">
-          <div class="store-name">TOKO BERKAH</div>
-          <div>Banjarmasin</div>
+          <div class="store-name">${store?.name || 'TOKO'}</div>
+          ${store?.address ? `<div>${store.address}</div>` : ''}
         </div>
         <div class="border-dashed mb-2">
           <div class="flex-between mb-1"><span>No. Invoice</span><span>${sale.invoice_number}</span></div>
@@ -137,7 +142,6 @@ export function ReceiptModal({
     printWindow.document.close();
     printWindow.onload = () => { printWindow.print(); };
   };
-
 
   // ─── Handler: Cetak Struk + Faktur (berurutan) ────────────────────────────
   const handlePrintBoth = () => {
@@ -194,7 +198,6 @@ export function ReceiptModal({
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Abaikan jika user sedang mengetik di input/textarea
       if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
 
       if (e.key === 'Escape') {
@@ -214,8 +217,8 @@ export function ReceiptModal({
   }, [isOpen, sale]);
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => {
-      // Hanya izinkan tutup via tombol/keyboard shortcut yang kita kelola sendiri
+    <Dialog open={isOpen} onOpenChange={(_open) => {
+      // Tutup hanya via tombol/keyboard shortcut yang kita kelola sendiri
     }}>
       <DialogContent
         className="sm:max-w-sm"
@@ -225,7 +228,7 @@ export function ReceiptModal({
       >
         <DialogHeader><DialogTitle className="text-center">Struk Pembayaran</DialogTitle></DialogHeader>
 
-        {/* ── Area Struk (hanya untuk referensi visual) ── */}
+        {/* ── Area Struk (referensi visual) ── */}
         <div id="receipt-print-area" className="space-y-4 font-mono text-[12px] pt-4 pb-4">
           <div className="text-center border-b border-dashed border-border pb-3">
             <p className="font-bold text-[14px] uppercase tracking-wide text-foreground mb-4">Struk Pembayaran</p>
@@ -267,10 +270,10 @@ export function ReceiptModal({
           <div className="text-center text-muted-foreground pt-3 border-t border-dashed border-border flex flex-col items-center">
             <p>Terima kasih sudah berbelanja!</p>
             <p className="mt-3 px-4 text-[11px]">Barang dapat di-refund/tukar</p>
-            <p className="px-4 text-[11px]">Syarat & Ketentuan Berlaku</p>
+            <p className="px-4 text-[11px]">Syarat &amp; Ketentuan Berlaku</p>
             <div className="mt-4 mb-2">
-              <QRCodeSVG 
-                value={sale.invoice_number} 
+              <QRCodeSVG
+                value={sale.invoice_number}
                 size={80}
                 bgColor={"#ffffff"}
                 fgColor={"#000000"}
@@ -291,7 +294,6 @@ export function ReceiptModal({
 
         {/* ── Footer: Tiga Tombol ── */}
         <div className="flex items-center gap-2 pt-1">
-          {/* Tombol 1: Tutup (secondary/outline) */}
           <Button
             variant="outline"
             className="flex-none px-3 h-9 border-slate-300 text-slate-700 hover:bg-slate-50"
@@ -302,7 +304,6 @@ export function ReceiptModal({
             Tutup
           </Button>
 
-          {/* Tombol 2: Cetak Struk (primary solid ungu) */}
           <Button
             className="flex-1 h-9 bg-indigo-600 hover:bg-indigo-700 text-white font-medium transition-colors"
             onClick={handlePrintStruk}
@@ -312,11 +313,10 @@ export function ReceiptModal({
             Cetak Struk
           </Button>
 
-          {/* Tombol 3: Cetak Struk + Faktur (emerald) */}
           <Button
             className="flex-1 h-9 bg-emerald-600 hover:bg-emerald-700 text-white font-medium transition-colors"
             onClick={handlePrintBoth}
-            title="Cetak Struk + Faktur A4 (Shift+Enter)"
+            title="Cetak Struk + Faktur A4 (Ctrl+Enter)"
           >
             <FileText className="w-4 h-4 mr-1.5" />
             +Faktur

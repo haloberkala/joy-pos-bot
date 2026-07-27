@@ -5,7 +5,7 @@
 
 export { printer }          from './printer';
 export { PrinterError }     from './types';
-export { isWebSerialSupported } from './webserial';
+export { isWebUSBSupported } from './webusb';
 export { EscPos }           from './escpos';
 export { buildReceipt, buildKitchenTicket } from './receipt';
 
