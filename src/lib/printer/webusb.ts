@@ -129,6 +129,45 @@ function debugUSBDevice(device: USBDevice, context: string = '') {
   logGroupEnd();
 }
 
+/**
+ * Helper: enumerate interfaces dengan format yang jelas
+ */
+function enumerateInterfaces(device: USBDevice) {
+  logGroup('STEP 3: ENUMERATE INTERFACES');
+  
+  if (!device.configuration) {
+    log('No active configuration');
+    logGroupEnd();
+    return;
+  }
+  
+  log('Total interfaces:', device.configuration.interfaces.length);
+  
+  device.configuration.interfaces.forEach((iface) => {
+    log('─────────────────────────────────────');
+    log(`Interface ${iface.interfaceNumber}:`);
+    log(`  Alternates: ${iface.alternates.length}`);
+    
+    iface.alternates.forEach((alt, altIdx) => {
+      log(`  Alternate ${altIdx}:`);
+      log(`    interfaceClass: ${alt.interfaceClass}`);
+      log(`    interfaceSubclass: ${alt.interfaceSubclass}`);
+      log(`    interfaceProtocol: ${alt.interfaceProtocol}`);
+      log(`    Endpoints: ${alt.endpoints.length}`);
+      
+      alt.endpoints.forEach((ep) => {
+        log(`      Endpoint ${ep.endpointNumber}:`);
+        log(`        direction: ${ep.direction}`);
+        log(`        type: ${ep.type}`);
+        log(`        packetSize: ${ep.packetSize}`);
+      });
+    });
+  });
+  
+  log('─────────────────────────────────────');
+  logGroupEnd();
+}
+
 // ── Cached device (in-memory untuk satu sesi browser) ────────────────────────
 
 let _cachedDevice: USBDevice | null = null;
@@ -304,7 +343,7 @@ export async function disconnectDevice(): Promise<void> {
  * Biasanya endpoint 0x01 atau 0x02.
  */
 function findPrinterEndpoint(device: USBDevice): number | null {
-  logGroup('FIND ENDPOINT');
+  logGroup('STEP 6: FIND ENDPOINT');
   
   if (!device.configuration) {
     log('No active configuration');
@@ -315,6 +354,7 @@ function findPrinterEndpoint(device: USBDevice): number | null {
   // Cari di Printer Class interface dulu
   for (const iface of device.configuration.interfaces) {
     for (const alt of iface.alternates) {
+      log('─────────────────────────────────────');
       log(`Checking interface ${iface.interfaceNumber}, alternate ${iface.alternates.indexOf(alt)}`);
       log(`  Class: ${alt.interfaceClass}, Subclass: ${alt.interfaceSubclass}`);
       
@@ -322,9 +362,15 @@ function findPrinterEndpoint(device: USBDevice): number | null {
         log('  → Printer Class interface found');
         const endpoint = alt.endpoints.find(ep => ep.direction === 'out');
         if (endpoint) {
-          log(`  → Endpoint OUT found: ${endpoint.endpointNumber} (${endpoint.type})`);
+          log(`  → Endpoint OUT found:`);
+          log(`     endpointNumber: ${endpoint.endpointNumber}`);
+          log(`     direction: ${endpoint.direction}`);
+          log(`     type: ${endpoint.type}`);
+          log(`     packetSize: ${endpoint.packetSize}`);
           logGroupEnd();
           return endpoint.endpointNumber;
+        } else {
+          log('  → No OUT endpoint found in this interface');
         }
       } else {
         log('  → Not printer class, skipping');
@@ -332,6 +378,7 @@ function findPrinterEndpoint(device: USBDevice): number | null {
     }
   }
 
+  log('─────────────────────────────────────');
   log('Printer Class endpoint not found, trying fallback');
 
   // Fallback: cari endpoint OUT pertama
@@ -339,7 +386,11 @@ function findPrinterEndpoint(device: USBDevice): number | null {
     for (const alt of iface.alternates) {
       const endpoint = alt.endpoints.find(ep => ep.direction === 'out');
       if (endpoint) {
-        log(`Fallback endpoint found: ${endpoint.endpointNumber} on interface ${iface.interfaceNumber}`);
+        log(`Fallback endpoint found:`);
+        log(`  endpointNumber: ${endpoint.endpointNumber}`);
+        log(`  interface: ${iface.interfaceNumber}`);
+        log(`  direction: ${endpoint.direction}`);
+        log(`  type: ${endpoint.type}`);
         logGroupEnd();
         return endpoint.endpointNumber;
       }
@@ -356,7 +407,7 @@ function findPrinterEndpoint(device: USBDevice): number | null {
  * Biasanya interface 0.
  */
 function findPrinterInterface(device: USBDevice): number | null {
-  logGroup('FIND INTERFACE');
+  logGroup('STEP 4: FIND INTERFACE');
   
   if (!device.configuration) {
     log('No active configuration');
@@ -366,19 +417,24 @@ function findPrinterInterface(device: USBDevice): number | null {
 
   for (const iface of device.configuration.interfaces) {
     for (const alt of iface.alternates) {
+      log('─────────────────────────────────────');
       log(`Checking interface ${iface.interfaceNumber}`);
-      log(`  Class: ${alt.interfaceClass}, Subclass: ${alt.interfaceSubclass}, Protocol: ${alt.interfaceProtocol}`);
+      log(`  Class: ${alt.interfaceClass}`);
+      log(`  Subclass: ${alt.interfaceSubclass}`);
+      log(`  Protocol: ${alt.interfaceProtocol}`);
       
       if (alt.interfaceClass === 7 && alt.interfaceSubclass === 1) {
-        log(`  → Printer Class interface accepted: ${iface.interfaceNumber}`);
+        log(`  → MATCH: Printer Class interface accepted`);
+        log(`Selected interface: ${iface.interfaceNumber}`);
         logGroupEnd();
         return iface.interfaceNumber;
       } else {
-        log(`  → Not printer class, rejected`);
+        log(`  → SKIP: Not printer class (expected Class 7, Subclass 1)`);
       }
     }
   }
 
+  log('─────────────────────────────────────');
   log('Printer Class interface not found, using fallback');
   
   // Fallback: interface 0
@@ -462,7 +518,10 @@ export async function writeToDevice(data: Uint8Array, _config?: PrinterConfig): 
         throw openErr;
       }
 
-      // Pilih konfigurasi pertama (biasanya configuration 1)
+      // ═══ STEP 2: SELECT CONFIGURATION ═══
+      logGroup('STEP 2: SELECT CONFIGURATION');
+      log('Current configuration:', device.configuration?.configurationValue || 'null');
+      
       if (device.configuration === null) {
         log('No active configuration, selecting configuration 1...');
         try {
@@ -471,18 +530,24 @@ export async function writeToDevice(data: Uint8Array, _config?: PrinterConfig): 
           log('Active configuration:', device.configuration?.configurationValue);
         } catch (configErr: any) {
           logError('✗ selectConfiguration(1) failed');
-          logError('Error:', configErr);
+          logError('Error name:', configErr.name);
+          logError('Error message:', configErr.message);
+          console.dir(configErr);
           throw configErr;
         }
       } else {
         log('Configuration already active:', device.configuration.configurationValue);
       }
+      logGroupEnd();
     } else {
       log('Device already opened');
     }
     logGroupEnd();
 
-    // ═══ STEP 2: FIND INTERFACE ═══
+    // Enumerate interfaces
+    enumerateInterfaces(device);
+
+    // ═══ STEP 4: FIND INTERFACE ═══
     interfaceNumber = findPrinterInterface(device);
     if (interfaceNumber === null) {
       logError('Interface not found');
@@ -492,10 +557,10 @@ export async function writeToDevice(data: Uint8Array, _config?: PrinterConfig): 
         'Interface printer tidak ditemukan pada device USB.',
       );
     }
-    log('Using interface:', interfaceNumber);
+    log('Selected interface number:', interfaceNumber);
 
-    // ═══ STEP 3: CLAIM INTERFACE ═══
-    logGroup('STEP 3: CLAIM INTERFACE');
+    // ═══ STEP 5: CLAIM INTERFACE ═══
+    logGroup('STEP 5: CLAIM INTERFACE');
     log('Claiming interface:', interfaceNumber);
     
     try {
@@ -506,12 +571,13 @@ export async function writeToDevice(data: Uint8Array, _config?: PrinterConfig): 
       logError('✗ claimInterface() failed');
       logError('Error name:', claimErr.name);
       logError('Error message:', claimErr.message);
+      logError('Error stack:', claimErr.stack);
       console.dir(claimErr);
       throw claimErr;
     }
     logGroupEnd();
 
-    // ═══ STEP 4: FIND ENDPOINT ═══
+    // ═══ STEP 6: FIND ENDPOINT ═══
     const endpoint = findPrinterEndpoint(device);
     if (endpoint === null) {
       logError('Endpoint not found');
@@ -521,32 +587,40 @@ export async function writeToDevice(data: Uint8Array, _config?: PrinterConfig): 
         'Endpoint OUT tidak ditemukan pada printer USB.',
       );
     }
-    log('Using endpoint:', endpoint);
+    log('Selected endpoint:', endpoint);
 
-    // ═══ STEP 5: TRANSFER DATA ═══
-    logGroup('STEP 5: TRANSFER DATA');
+    // ═══ STEP 7: TRANSFER DATA ═══
+    logGroup('STEP 7: TRANSFER DATA');
     const CHUNK_SIZE = 64 * 1024; // 64KB
     const numChunks = Math.ceil(data.length / CHUNK_SIZE);
-    log('Chunk size:', CHUNK_SIZE);
+    log('Endpoint:', endpoint);
+    log('Total data size:', data.length, 'bytes');
+    log('Chunk size:', CHUNK_SIZE, 'bytes');
     log('Number of chunks:', numChunks);
     
     for (let offset = 0; offset < data.length; offset += CHUNK_SIZE) {
       const chunk = data.slice(offset, Math.min(offset + CHUNK_SIZE, data.length));
       const chunkNum = Math.floor(offset / CHUNK_SIZE) + 1;
-      log(`Transferring chunk ${chunkNum}/${numChunks} (${chunk.length} bytes)...`);
+      log(`─────────────────────────────────────`);
+      log(`Chunk ${chunkNum}/${numChunks}:`);
+      log(`  offset: ${offset}`);
+      log(`  size: ${chunk.length} bytes`);
+      log(`  Transferring to endpoint ${endpoint}...`);
       
       try {
         await device.transferOut(endpoint, chunk);
-        log(`✓ Chunk ${chunkNum} sent successfully`);
+        log(`  ✓ Transfer success`);
       } catch (transferErr: any) {
         logError(`✗ transferOut() failed on chunk ${chunkNum}`);
         logError('Error name:', transferErr.name);
         logError('Error message:', transferErr.message);
+        logError('Error stack:', transferErr.stack);
         console.dir(transferErr);
         throw transferErr;
       }
     }
     
+    log('─────────────────────────────────────');
     log('✓ All data transferred successfully');
     logGroupEnd();
 
@@ -588,8 +662,8 @@ export async function writeToDevice(data: Uint8Array, _config?: PrinterConfig): 
     throw new PrinterError('PRINT_FAILED', `Gagal mengirim data ke printer: ${msg}`, err);
 
   } finally {
-    // ═══ CLEANUP: RELEASE & CLOSE ═══
-    logGroup('CLEANUP');
+    // ═══ STEP 8: CLEANUP - RELEASE & CLOSE ═══
+    logGroup('STEP 8: CLEANUP');
     
     if (interfaceClaimed && device && interfaceNumber !== null) {
       log('Releasing interface:', interfaceNumber);
