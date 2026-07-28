@@ -3,8 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getStoreById, updateStore } from '@/services/storesService';
 import { exportFullDatabase } from '@/services/backupService';
 import { importFullDatabase } from '@/services/restoreService';
-import { printer, PrinterError, isWebUSBSupported } from '@/lib/printer';
-import type { PrinterInfo } from '@/lib/printer';
+import { printerManager, PrinterError } from '@/lib/printer';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -26,11 +25,17 @@ export default function Settings() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving]   = useState(false);
 
-  // Printer state
-  const [printerInfo, setPrinterInfo]   = useState<PrinterInfo>(printer.getInfo());
+  // Printer state - using PrinterManager as single source of truth
+  const [printerState, setPrinterState] = useState({
+    connected: printerManager.isConnected(),
+    transportId: printerManager.getActiveTransportId(),
+    deviceLabel: printerManager.getDeviceLabel(),
+    config: printerManager.getConfig(),
+  });
   const [isConnecting, setIsConnecting] = useState(false);
   const [isTesting, setIsTesting]       = useState(false);
-  const serialSupported = isWebUSBSupported();
+  const availableTransports = printerManager.getAvailableTransports();
+  const hasTransportSupport = availableTransports.length > 0;
 
   // Backup / Restore state
   const [isExporting, setIsExporting] = useState(false);
@@ -45,20 +50,21 @@ export default function Settings() {
   const [storeAddress, setStoreAddress] = useState('');
   const [storePhone,   setStorePhone]   = useState('');
 
-  // Printer status config
-  const [paperWidth, setPaperWidth]   = useState<58 | 80>(printer.getPaperWidth());
-  const [drawerPin, setDrawerPin]     = useState(printer.getConfig().drawerPin);
-  const [baudRate, setBaudRate]       = useState(printer.getConfig().baudRate);
-
   useEffect(() => { loadStoreData(); }, [activeStoreId]);
 
-  // Subscribe ke perubahan status printer
+  // Subscribe to PrinterManager changes
   useEffect(() => {
-    const unsub = printer.onStatusChange((info) => {
-      setPrinterInfo(info);
-      setPaperWidth(info.paperWidth);
-    });
-    return unsub;
+    const refresh = () => {
+      setPrinterState({
+        connected: printerManager.isConnected(),
+        transportId: printerManager.getActiveTransportId(),
+        deviceLabel: printerManager.getDeviceLabel(),
+        config: printerManager.getConfig(),
+      });
+    };
+
+    refresh();
+    return printerManager.onChange(refresh);
   }, []);
 
   const loadStoreData = async () => {
@@ -101,9 +107,10 @@ export default function Settings() {
   const handleConnect = async () => {
     setIsConnecting(true);
     try {
-      const ok = await printer.connect();
-      if (ok) toast.success('Printer terhubung');
-      // jika cancel (ok=false) tidak perlu toast
+      await printerManager.connect();
+      toast.success('Printer terhubung');
+    } catch (err) {
+      // Error sudah ditangani oleh printerManager
     } finally {
       setIsConnecting(false);
     }
@@ -112,23 +119,30 @@ export default function Settings() {
   const handleReconnect = async () => {
     setIsConnecting(true);
     try {
-      const ok = await printer.reconnect();
-      if (ok) toast.success('Printer terhubung kembali');
-      else toast.warning('Tidak ada printer tersimpan. Klik "Hubungkan Printer".');
+      // Try to reconnect to last device
+      const wasConnected = printerManager.isConnected();
+      if (!wasConnected) {
+        await printerManager.connect();
+        toast.success('Printer terhubung kembali');
+      } else {
+        toast.info('Printer sudah terhubung');
+      }
+    } catch (err) {
+      toast.warning('Tidak ada printer tersimpan. Klik "Hubungkan Printer".');
     } finally {
       setIsConnecting(false);
     }
   };
 
   const handleDisconnect = async () => {
-    await printer.disconnect();
+    await printerManager.disconnect();
     toast.info('Printer diputus.');
   };
 
   const handleTestPrint = async () => {
     setIsTesting(true);
     try {
-      await printer.testPrint();
+      await printerManager.testPrint();
       toast.success('Test print berhasil dikirim');
     } catch (err) {
       if (err instanceof PrinterError) {
@@ -144,7 +158,7 @@ export default function Settings() {
   const handleOpenDrawer = async () => {
     setIsTesting(true);
     try {
-      await printer.openCashDrawer();
+      await printerManager.openCashDrawer();
       toast.success('Perintah terkirim! Laci kasir seharusnya terbuka.');
     } catch (err) {
       if (err instanceof PrinterError) {
@@ -158,18 +172,42 @@ export default function Settings() {
   };
 
   const handlePaperWidthChange = (w: 58 | 80) => {
-    setPaperWidth(w);
-    printer.setPaperWidth(w);
+    printerManager.setPaperWidth(w);
   };
 
   const handleDrawerPinChange = (p: 'pin2' | 'pin5') => {
-    setDrawerPin(p);
-    printer.setDrawerPin(p);
+    printerManager.setDrawerPin(p);
   };
 
   const handleBaudRateChange = (r: number) => {
-    setBaudRate(r);
-    printer.setBaudRate(r);
+    const config = printerManager.getConfig();
+    config.baudRate = r;
+    // Config will auto-save via printerManager
+  };
+
+  const handleTransportChange = async (transportId: string) => {
+    if (transportId === printerState.transportId) return;
+
+    try {
+      // Disconnect jika sedang terhubung
+      if (printerState.connected) {
+        await printerManager.disconnect();
+        toast.info('Printer diputus.');
+      }
+
+      // Set transport baru
+      printerManager.setActiveTransport(transportId);
+      
+      // Auto reconnect
+      toast.info('Transport berubah, mencoba koneksi ulang...');
+      try {
+        await printerManager.connect();
+      } catch {
+        toast.warning('Silakan klik "Hubungkan Printer" untuk koneksi ulang.');
+      }
+    } catch (err) {
+      console.error('Error changing transport:', err);
+    }
   };
 
   // ── Backup Handlers ──────────────────────────────────────────────────────────
@@ -233,7 +271,7 @@ export default function Settings() {
     );
   }
 
-  const isConnected = printerInfo.status === 'connected';
+  const isConnected = printerState.connected;
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -282,17 +320,19 @@ export default function Settings() {
           </div>
           <div>
             <h2 className="font-semibold text-foreground">Printer Thermal</h2>
-            <p className="text-sm text-muted-foreground">Koneksi via WebUSB API</p>
+            <p className="text-sm text-muted-foreground">
+              Pilih transport di header POS: USB atau Bluetooth
+            </p>
           </div>
         </div>
         <Separator />
 
         {/* API support warning */}
-        {!serialSupported && (
+        {!hasTransportSupport && (
           <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 border border-amber-200">
             <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
             <div className="text-sm text-amber-800">
-              <p className="font-semibold">Browser tidak mendukung WebUSB API</p>
+              <p className="font-semibold">Browser tidak mendukung printer API</p>
               <p className="mt-0.5">Gunakan <strong>Google Chrome</strong> atau <strong>Microsoft Edge</strong>. Firefox dan Safari tidak didukung.</p>
             </div>
           </div>
@@ -308,7 +348,7 @@ export default function Settings() {
               <span className="font-medium">Status</span>
             </div>
             <span className={isConnected ? 'text-emerald-600 font-semibold' : 'text-muted-foreground'}>
-              {printerInfo.status === 'connecting'
+              {isConnecting
                 ? '🔄 Menghubungkan...'
                 : isConnected ? '🟢 Terhubung' : '🔴 Tidak Terhubung'}
             </span>
@@ -316,13 +356,42 @@ export default function Settings() {
 
           <div className="flex items-center justify-between px-3 py-2.5">
             <span className="text-muted-foreground">Printer</span>
-            <span className="font-medium">{printerInfo.portName ?? '—'}</span>
+            <span className="font-medium">{printerState.deviceLabel ?? '—'}</span>
           </div>
 
           <div className="flex items-center justify-between px-3 py-2.5">
             <span className="text-muted-foreground">Transport</span>
-            <span className="font-medium text-blue-600">WebUSB</span>
+            <span className="font-medium text-blue-600">
+              {printerState.transportId 
+                ? availableTransports.find(t => t.id === printerState.transportId)?.name || printerState.transportId.toUpperCase()
+                : '—'}
+            </span>
           </div>
+        </div>
+
+        {/* Transport Printer */}
+        <div className="space-y-2">
+          <Label className="text-sm font-medium">Transport Printer</Label>
+          <div className="grid grid-cols-2 gap-2">
+            {availableTransports.map(transport => (
+              <button
+                key={transport.id}
+                onClick={() => handleTransportChange(transport.id)}
+                disabled={isConnecting}
+                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                  printerState.transportId === transport.id
+                    ? 'border-primary bg-primary/10 text-primary'
+                    : 'border-border bg-background text-muted-foreground hover:border-primary/40'
+                } ${isConnecting ? 'opacity-50 cursor-wait' : ''}`}
+              >
+                {printerState.transportId === transport.id && <CheckCircle2 className="w-3.5 h-3.5" />}
+                {transport.name}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            USB untuk koneksi langsung. Bluetooth/Serial untuk printer nirkabel atau Windows.
+          </p>
         </div>
 
         {/* Paper Width */}
@@ -334,12 +403,12 @@ export default function Settings() {
                 key={w}
                 onClick={() => handlePaperWidthChange(w)}
                 className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                  paperWidth === w
+                  printerState.config.paperWidth === w
                     ? 'border-primary bg-primary/10 text-primary'
                     : 'border-border bg-background text-muted-foreground hover:border-primary/40'
                 }`}
               >
-                {paperWidth === w && <CheckCircle2 className="w-3.5 h-3.5" />}
+                {printerState.config.paperWidth === w && <CheckCircle2 className="w-3.5 h-3.5" />}
                 {w}mm
               </button>
             ))}
@@ -355,12 +424,12 @@ export default function Settings() {
                 key={p}
                 onClick={() => handleDrawerPinChange(p)}
                 className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                  drawerPin === p
+                  printerState.config.drawerPin === p
                     ? 'border-primary bg-primary/10 text-primary'
                     : 'border-border bg-background text-muted-foreground hover:border-primary/40'
                 }`}
               >
-                {drawerPin === p && <CheckCircle2 className="w-3.5 h-3.5" />}
+                {printerState.config.drawerPin === p && <CheckCircle2 className="w-3.5 h-3.5" />}
                 {p === 'pin2' ? 'Pin 2 (default)' : 'Pin 5 (alt)'}
               </button>
             ))}
@@ -373,7 +442,7 @@ export default function Settings() {
           <Label htmlFor="baudRate" className="text-sm font-medium">Baud Rate</Label>
           <select
             id="baudRate"
-            value={baudRate}
+            value={printerState.config.baudRate}
             onChange={e => handleBaudRateChange(Number(e.target.value))}
             className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:border-primary"
           >
@@ -406,7 +475,7 @@ export default function Settings() {
             <Button
               className="col-span-2 gap-2"
               onClick={handleConnect}
-              disabled={isConnecting || !serialSupported}
+              disabled={isConnecting || !hasTransportSupport}
             >
               {isConnecting
                 ? <><Loader2 className="w-4 h-4 animate-spin" /> Menghubungkan...</>
@@ -428,7 +497,7 @@ export default function Settings() {
             variant="outline"
             className="gap-2"
             onClick={handleReconnect}
-            disabled={isConnecting || !serialSupported}
+            disabled={isConnecting || !hasTransportSupport}
           >
             <RefreshCw className="w-4 h-4" /> Reconnect
           </Button>

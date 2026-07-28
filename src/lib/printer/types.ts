@@ -6,6 +6,7 @@
 export type PaperWidth = 58 | 80;
 export type Alignment  = 'left' | 'center' | 'right';
 export type DrawerPin  = 'pin2' | 'pin5';
+export type PrinterTransport = 'webusb' | 'serial';
 
 export type PrinterErrorCode =
   | 'UNSUPPORTED_BROWSER'

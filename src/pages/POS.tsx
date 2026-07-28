@@ -4,12 +4,13 @@ import { useAuth } from "@/contexts/AuthContext";
 import { PaymentModal } from "@/components/pos/PaymentModal";
 import { ReceiptModal } from "@/components/pos/ReceiptModal";
 import { RefundModal } from "@/components/pos/RefundModal";
+import { DebtModal } from "@/components/pos/DebtModal";
 import { getProductsByStore, getProductByCode, Product } from "@/services/productsService";
 import { getCustomersByStore, Customer } from "@/services/customersService";
 import { getAllStores, Store } from "@/services/storesService";
 import { createSale, processRefund as processRefundService, Sale as DBSale, SaleItem as DBSaleItem } from "@/services/salesService";
 import { createShipment } from "@/services/shipmentsService";
-import { printer, PrinterError } from "@/lib/printer";
+import { printerManager, PrinterError } from "@/lib/printer";
 import type { PrinterTransaction } from "@/lib/printer";
 import {
   PaymentMethod,
@@ -37,7 +38,6 @@ import {
   RotateCcw,
   FileText,
   Info,
-  Printer,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -47,7 +47,7 @@ import { formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ProductListPanel } from "@/components/pos/ProductListPanel";
 import { ShippingModal } from "@/components/pos/ShippingModal";
-import { DebtModal } from "@/components/pos/DebtModal";
+import { TransportSelector } from "@/components/pos/TransportSelector";
 
 // ========== OPEN BILL TYPES ==========
 interface Bill {
@@ -675,7 +675,7 @@ export default function POS() {
           createdAt: sale.created_at,
         };
 
-        printer.printReceipt(tx).catch(err => {
+        printerManager.printReceipt(tx).catch(err => {
           if (err instanceof PrinterError) {
             if (err.code === 'NO_PRINTER') {
               toast.warning('Struk tidak tercetak. Hubungkan printer di menu Pengaturan.');
@@ -923,16 +923,6 @@ export default function POS() {
               <span className="hidden sm:inline">Refund</span>
             </button>
           )}
-          <button
-            onClick={async () => {
-              const ok = await printer.connect();
-              if (ok) toast.success('Printer terhubung!');
-            }}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-accent active:bg-accent active:text-foreground text-[12px] font-medium transition-colors touch-manipulation"
-            title="Hubungkan Printer Thermal"
-          >
-            <Printer className="w-3.5 h-3.5" />
-          </button>
           {canAccessMenu(user?.role, "dashboard") && (
             <Link
               to="/backoffice"
@@ -942,6 +932,10 @@ export default function POS() {
               <span className="hidden sm:inline">Office</span>
             </Link>
           )}
+
+          {/* Transport Selector */}
+          <TransportSelector />
+
           <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-surface text-foreground text-[12px]">
             {user?.role === "owner" ? (
               <ShieldCheck className="w-3.5 h-3.5 text-primary" />
@@ -955,6 +949,7 @@ export default function POS() {
               <span className="text-[10px] text-muted-foreground mt-0.5 capitalize">{user?.role === 'admin' ? 'Admin' : user?.role || "user"}</span>
             </div>
           </div>
+
           <button
             onClick={() => {
               logout();

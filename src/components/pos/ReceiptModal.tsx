@@ -6,7 +6,7 @@ import { formatCurrency } from '@/lib/format';
 import { Printer, X, FileText } from 'lucide-react';
 import { printInvoice } from '@/components/pos/PrintInvoice';
 import { SaleItem } from '@/services/salesService';
-import { printer, PrinterError } from '@/lib/printer';
+import { printerManager, PrinterError } from '@/lib/printer';
 import type { PrinterTransaction } from '@/lib/printer';
 import { QRCodeSVG } from 'qrcode.react';
 import { toast } from 'sonner';
@@ -38,7 +38,8 @@ export function ReceiptModal({
   const handlePrintStruk = async () => {
     if (!sale) return;
 
-    if (printer.isSupported()) {
+    const transport = printerManager.getActiveTransport();
+    if (transport && transport.isSupported()) {
       try {
         const tx: PrinterTransaction = {
           id: String(sale.id),
@@ -63,7 +64,7 @@ export function ReceiptModal({
           createdAt: sale.date,
         };
 
-        await printer.printReceipt(tx);
+        await printerManager.printReceipt(tx);
         return;
       } catch (err) {
         if (err instanceof PrinterError) {

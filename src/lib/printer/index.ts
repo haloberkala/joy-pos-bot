@@ -1,21 +1,21 @@
 /**
- * lib/printer/index.ts — Public API.
- * Komponen React hanya import dari '@/lib/printer'.
+ * Printer Module Exports
  */
 
-export { printer }          from './printer';
-export { PrinterError }     from './types';
-export { isWebUSBSupported } from './webusb';
-export { EscPos }           from './escpos';
-export { buildReceipt, buildKitchenTicket } from './receipt';
+// Main API
+export { printerManager } from './printerManager';
+export { printer, PrinterError } from './printer';
 
-export type {
-  PrinterTransaction,
-  PrinterTransactionItem,
-  PrinterConfig,
-  PrinterInfo,
-  PrinterStatus,
-  PrinterErrorCode,
-  PaperWidth,
-  DrawerPin,
-} from './types';
+// Types
+export type { PrinterTransaction, PrinterConfig, PrinterTransport as PrinterTransportType, PrinterInfo } from './types';
+export type { PrinterTransport } from './transport';
+
+// Transports (for advanced usage)
+export { WebUSBTransport } from './transports/webusb';
+export { WebSerialTransport } from './transports/webserial';
+
+// Helper function for backward compatibility
+export function isWebUSBSupported(): boolean {
+  return 'usb' in navigator;
+}
+
