@@ -14,11 +14,78 @@ interface PrintInvoiceProps {
   customerName?: string;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// CONFIGURATION
+// ═══════════════════════════════════════════════════════════════════════════
+
+const ITEMS_PER_HALF = 12; // Maximum items per half-page
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TYPES
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface HalfPageData {
+  items: SaleItem[];
+  startIndex: number; // Global item index (0-based)
+}
+
+interface SheetData {
+  topHalf: HalfPageData;
+  bottomHalf: HalfPageData | null;
+}
+
+interface InvoiceContext {
+  sale: Sale;
+  store: Store;
+  customer: string;
+  status: string;
+  payMethod: string;
+  subTotal: number;
+  discount: number;
+  tax: number;
+  grandTotal: number;
+  amountReceived: number;
+  changeAmount: number;
+  safeDate: (v: string | null | undefined) => string;
+  safeDateShort: (v: string | null | undefined) => string;
+  paymentLabel: Record<string, string>;
+  statusLabel: Record<string, string>;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN ENTRY POINT
+// ═══════════════════════════════════════════════════════════════════════════
+
 /**
- * Faktur Industri — Landscape A4, dua kolom header, tabel profesional,
- * blok tanda tangan, kompatibel dengan printer laser/inkjet toko.
+ * Print Invoice - Continuous Form 9.5 x 11 inch
+ * REFACTORED FOR EPSON LX-310 DOT MATRIX
+ * 
+ * Each sheet contains TWO half-pages (5.5 inch each)
+ * Each half-page is self-contained and can stand alone
  */
 export function printInvoice({ sale, items, store, customerName }: PrintInvoiceProps) {
+  // Build invoice context
+  const context = buildInvoiceContext(sale, store, customerName);
+  
+  // Create pagination structure
+  const sheets = buildPagination(items);
+  
+  // Generate HTML
+  const html = generatePrintHTML(context, sheets);
+  
+  // Execute print
+  executePrint(html);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONTEXT BUILDER
+// ═══════════════════════════════════════════════════════════════════════════
+
+function buildInvoiceContext(
+  sale: Sale, 
+  store: Store, 
+  customerName?: string
+): InvoiceContext {
   const safeDate = (v: string | null | undefined) => {
     try {
       return new Intl.DateTimeFormat('id-ID', {
@@ -36,546 +103,811 @@ export function printInvoice({ sale, items, store, customerName }: PrintInvoiceP
   };
 
   const paymentLabel: Record<string, string> = {
-    cash: 'Tunai', transfer: 'Transfer Bank', qris: 'QRIS', debt: 'Kredit / Cicilan',
+    cash: 'Tunai', 
+    transfer: 'Transfer', 
+    qris: 'QRIS', 
+    debt: 'Kredit',
   };
 
   const statusLabel: Record<string, string> = {
-    paid: 'LUNAS', debt: 'BELUM LUNAS', partial: 'SEBAGIAN LUNAS', refunded: 'REFUND',
+    paid: 'LUNAS', 
+    debt: 'BELUM LUNAS', 
+    partial: 'SEBAGIAN', 
+    refunded: 'REFUND',
   };
 
-  const customer = customerName || 'Umum';
-  const status = sale.payment_status ?? 'paid';
-  const payMethod = sale.payment_method ?? 'cash';
+  return {
+    sale,
+    store,
+    customer: customerName || 'Umum',
+    status: sale.payment_status ?? 'paid',
+    payMethod: sale.payment_method ?? 'cash',
+    subTotal: sale.sub_total ?? 0,
+    discount: sale.discount ?? 0,
+    tax: sale.tax ?? 0,
+    grandTotal: sale.grand_total ?? 0,
+    amountReceived: sale.amount_received ?? 0,
+    changeAmount: sale.change_amount ?? 0,
+    safeDate,
+    safeDateShort,
+    paymentLabel,
+    statusLabel,
+  };
+}
 
-  const subTotal   = sale.sub_total    ?? 0;
-  const discount   = sale.discount     ?? 0;
-  const tax        = sale.tax          ?? 0;
-  const grandTotal = sale.grand_total  ?? 0;
-  const amountReceived = sale.amount_received ?? 0;
-  const changeAmount   = sale.change_amount   ?? 0;
+// ═══════════════════════════════════════════════════════════════════════════
+// PAGINATION ENGINE
+// ═══════════════════════════════════════════════════════════════════════════
 
-  const rowsHtml = items.map((item, i) => {
-    const unitPrice = item.price_per_unit ?? 0;
-    const qty       = item.quantity       ?? 0;
-    const total     = item.total_price    ?? (unitPrice * qty);
-    const modeTag   = item.price_mode === 'wholesale'
-      ? '<span style="font-size:8px;border:1px solid #000;color:#000;border-radius:2px;padding:0 3px;margin-left:3px">GROSIR</span>'
-      : item.price_mode === 'special'
-        ? '<span style="font-size:8px;border:1px solid #000;color:#000;border-radius:2px;padding:0 3px;margin-left:3px">SPESIAL</span>'
-        : '';
-    const isEven = i % 2 === 1;
-    return `
-      <tr style="${isEven ? 'background:#f8f9fc;' : ''}">
-        <td style="text-align:center;color:#000;font-size:10px">${i + 1}</td>
-        <td>
-          <div style="font-weight:500">${item.product_name ?? '-'}${modeTag}</div>
-          ${item.product_code ? `<div style="font-size:9px;color:#000;margin-top:1px">${item.product_code}</div>` : ''}
-        </td>
-        <td style="text-align:center">${qty}</td>
-        <td style="text-align:center;color:#000;font-size:10px">${item.price_mode === 'wholesale' ? 'GRS' : item.price_mode === 'special' ? 'SPL' : 'ECR'}</td>
-        <td style="text-align:right">${formatCurrency(unitPrice)}</td>
-        <td style="text-align:right;font-weight:600">${formatCurrency(total)}</td>
-      </tr>`;
-  }).join('');
+function buildPagination(items: SaleItem[]): SheetData[] {
+  const halfPages = splitItems(items);
+  const sheets: SheetData[] = [];
+  
+  for (let i = 0; i < halfPages.length; i += 2) {
+    const topHalf = halfPages[i];
+    const bottomHalf = halfPages[i + 1] || null;
+    
+    sheets.push({
+      topHalf,
+      bottomHalf,
+    });
+  }
+  
+  return sheets;
+}
 
-  // Blank padding rows so table has at least 8 rows
-  const MIN_ROWS = 8;
-  const blankRows = Math.max(0, MIN_ROWS - items.length);
-  const blankHtml = Array.from({ length: blankRows }).map((_, i) => {
-    const isEven = (items.length + i) % 2 === 1;
-    return `<tr style="height:26px;${isEven ? 'background:#f8f9fc;' : ''}">
-      <td></td><td></td><td></td><td></td><td></td><td></td>
-    </tr>`;
-  }).join('');
+function splitItems(items: SaleItem[]): HalfPageData[] {
+  const halfPages: HalfPageData[] = [];
+  
+  if (items.length === 0) {
+    halfPages.push({
+      items: [],
+      startIndex: 0,
+    });
+    return halfPages;
+  }
+  
+  for (let i = 0; i < items.length; i += ITEMS_PER_HALF) {
+    const chunk = items.slice(i, i + ITEMS_PER_HALF);
+    halfPages.push({
+      items: chunk,
+      startIndex: i,
+    });
+  }
+  
+  return halfPages;
+}
 
-  const printContent = `<!DOCTYPE html>
+// ═══════════════════════════════════════════════════════════════════════════
+// HTML GENERATOR
+// ═══════════════════════════════════════════════════════════════════════════
+
+function generatePrintHTML(context: InvoiceContext, sheets: SheetData[]): string {
+  const styles = generateStyles();
+  const sheetsHTML = sheets.map(sheet => renderSheet(context, sheet)).join('');
+  
+  return `<!DOCTYPE html>
 <html lang="id">
 <head>
   <meta charset="UTF-8"/>
-  <title>Faktur ${sale.invoice_number}</title>
-  <style>
-    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
-
-    html, body {
-      width: 210mm;
-      font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
-      font-size: 11px;
-      color: #000;
-      background: #fff;
-    }
-
-    body { padding: 12mm 15mm 12mm 15mm; }
-
-    /* ── TOP HEADER ── */
-    .top-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      margin-bottom: 14px;
-      gap: 20px;
-    }
-
-    .company-block { flex: 1; }
-    .company-name {
-      font-size: 20px;
-      font-weight: 800;
-      color: #000;
-      letter-spacing: -0.3px;
-      margin-bottom: 3px;
-    }
-    .company-detail {
-      font-size: 10px;
-      color: #000;
-      line-height: 1.6;
-    }
-    .company-detail strong { color: #000; }
-
-    /* ── FAKTUR TITLE BLOCK (kanan atas) ── */
-    .title-block {
-      text-align: right;
-      min-width: 210px;
-    }
-    .faktur-label {
-      font-size: 26px;
-      font-weight: 900;
-      color: #000;
-      letter-spacing: 3px;
-      text-transform: uppercase;
-    }
-    .inv-no {
-      font-size: 12px;
-      font-weight: 700;
-      color: #000;
-      margin-top: 4px;
-      letter-spacing: 0.3px;
-    }
-    .status-stamp {
-      display: inline-block;
-      margin-top: 6px;
-      padding: 3px 14px;
-      border-radius: 3px;
-      font-size: 10px;
-      font-weight: 800;
-      letter-spacing: 1.5px;
-      text-transform: uppercase;
-    }
-
-    /* ── SEPARATOR ── */
-    .separator {
-      border: none;
-      border-top: 2.5px solid #000;
-      margin: 10px 0 12px 0;
-    }
-    .separator-thin {
-      border: none;
-      border-top: 1px solid #e5e7eb;
-      margin: 8px 0;
-    }
-
-    /* ── INFO ROW (tanggal, pembeli, kasir, dll) ── */
-    .info-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr 1fr;
-      gap: 8px;
-      margin-bottom: 14px;
-    }
-    .info-cell {}
-    .info-cell .info-label {
-      font-size: 8.5px;
-      text-transform: uppercase;
-      letter-spacing: 0.7px;
-      color: #000;
-      font-weight: 700;
-      margin-bottom: 2px;
-    }
-    .info-cell .info-value {
-      font-size: 11.5px;
-      font-weight: 600;
-      color: #000;
-    }
-    .info-cell .info-value.big {
-      font-size: 13px;
-    }
-    .info-cell .info-sub {
-      font-size: 9.5px;
-      color: #000;
-      margin-top: 1px;
-    }
-
-    /* ── BILL TO BOX ── */
-    .bill-to-box {
-      background: #f3f4f6;
-      border-left: 3px solid #000;
-      border-radius: 0 6px 6px 0;
-      padding: 7px 12px;
-    }
-    .bill-to-label {
-      font-size: 8px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: #000;
-      margin-bottom: 3px;
-    }
-    .bill-to-name {
-      font-size: 13px;
-      font-weight: 700;
-      color: #000;
-    }
-
-    /* ── ITEMS TABLE ── */
-    table.items-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 11px;
-      margin-bottom: 0;
-    }
-    table.items-table thead tr {
-      background: #111827;
-      color: #fff;
-    }
-    table.items-table thead th {
-      padding: 7px 10px;
-      font-size: 9.5px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-    table.items-table thead th:first-child { width: 30px; text-align: center; }
-    table.items-table thead th:nth-child(3) { width: 46px; text-align: center; }
-    table.items-table thead th:nth-child(4) { width: 44px; text-align: center; }
-    table.items-table thead th:nth-child(5) { width: 110px; text-align: right; }
-    table.items-table thead th:nth-child(6) { width: 110px; text-align: right; }
-
-    table.items-table tbody td {
-      padding: 6px 10px;
-      vertical-align: middle;
-      border-bottom: 1px solid #000;
-      color: #000;
-      font-weight: 500;
-    }
-
-    /* ── BOTTOM SECTION ── */
-    .bottom-section {
-      display: flex;
-      justify-content: space-between;
-      gap: 20px;
-      margin-top: 14px;
-    }
-
-    /* Catatan & TTD kiri */
-    .left-bottom { flex: 1; }
-    .note-label {
-      font-size: 9px;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 0.6px;
-      color: #000;
-      margin-bottom: 4px;
-    }
-    .note-box {
-      border: 1px dashed #000;
-      border-radius: 4px;
-      padding: 6px 10px;
-      min-height: 44px;
-      font-size: 10.5px;
-      color: #000;
-    }
-
-    /* Signature section */
-    .sig-row {
-      display: flex;
-      gap: 20px;
-      margin-top: 12px;
-    }
-    .sig-block {
-      flex: 1;
-      text-align: center;
-    }
-    .sig-title {
-      font-size: 9.5px;
-      font-weight: 600;
-      color: #000;
-      margin-bottom: 44px;
-    }
-    .sig-line {
-      border-top: 1px solid #000;
-      padding-top: 4px;
-      font-size: 10px;
-      font-weight: 600;
-      color: #000;
-    }
-
-    /* Totals kanan */
-    .totals-block {
-      min-width: 240px;
-    }
-    .totals-table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 11px;
-    }
-    .totals-table td {
-      padding: 4px 10px;
-      color: #000;
-      font-weight: 500;
-    }
-    .totals-table td:last-child { text-align: right; font-weight: 600; }
-    .totals-table .label-col { color: #000; }
-
-    .totals-table tr.grand-total {
-      background: #111827;
-      color: #fff;
-      font-size: 13px;
-      font-weight: 800;
-    }
-    .totals-table tr.grand-total td {
-      padding: 8px 10px;
-      border-radius: 0;
-    }
-    .totals-table tr.paid-row td:last-child { color: #000; font-weight: 700; }
-    .totals-table tr.change-row td:last-child { color: #000; font-weight: 700; }
-    .totals-table tr.debt-row { background:#f3f4f6; }
-    .totals-table tr.debt-row td { color: #000; font-weight: 700; }
-
-    .totals-wrapper {
-      border: 1px solid #e5e7eb;
-      border-radius: 6px;
-      overflow: hidden;
-    }
-    .totals-header {
-      background: #f8fafc;
-      padding: 5px 10px;
-      font-size: 9px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 0.8px;
-      color: #000;
-      border-bottom: 1px solid #e5e7eb;
-    }
-
-    /* ── PRINT ── */
-    @media print {
-      html, body { width: 210mm; }
-      body { padding: 10mm 12mm 10mm 12mm; }
-      @page {
-        size: A4 portrait;
-        margin: 0;
-      }
-      tr { page-break-inside: avoid; }
-      
-      /* HIGH CONTRAST PRINT STYLES */
-      * {
-        color: #000 !important;
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-      }
-      
-      /* Force all text to pure black */
-      body, td, th, p, span, div, h1, h2, h3, h4, h5, h6 {
-        color: #000 !important;
-        font-weight: 500 !important;
-      }
-      
-      /* Force headings and important text to be darker */
-      .company-name, .faktur-label, .inv-no, .info-value, .bill-to-name, .sig-line {
-        color: #000 !important;
-        font-weight: 700 !important;
-      }
-      
-      /* Table headers must be pure black on white for thermal printers */
-      table.items-table thead th {
-        background: #000 !important;
-        color: #fff !important;
-        font-weight: 700 !important;
-      }
-      
-      /* Borders must be dark and visible */
-      .separator {
-        border-top: 2px solid #000 !important;
-      }
-      
-      /* Grand total row */
-      .totals-table tr.grand-total {
-        background: #000 !important;
-        color: #fff !important;
-        font-weight: 800 !important;
-      }
-      
-      .totals-table tr.grand-total td {
-        color: #fff !important;
-      }
-      
-      /* Remove any opacity or transparency */
-      * {
-        opacity: 1 !important;
-      }
-      
-      /* Ensure minimum font size for readability */
-      body { font-size: 11pt !important; }
-      .items-table tbody td { font-size: 10pt !important; }
-      .items-table thead th { font-size: 10pt !important; }
-    }
-  </style>
+  <title>Faktur ${context.sale.invoice_number}</title>
+  ${styles}
 </head>
 <body>
-
-  <!-- ══ TOP HEADER ══ -->
-  <div class="top-header">
-    <!-- Kiri: Info Perusahaan -->
-    <div class="company-block">
-      <div class="company-name">${store.name}</div>
-      <div class="company-detail">
-        ${store.address ? `<div><strong>Alamat:</strong> ${store.address}</div>` : ''}
-        ${store.phone   ? `<div><strong>Telp:</strong> ${store.phone}</div>` : ''}
-      </div>
-    </div>
-
-    <!-- Kanan: Label Faktur -->
-    <div class="title-block">
-      <div class="faktur-label">Faktur</div>
-      <div class="inv-no">No. ${sale.invoice_number}</div>
-      <div>
-        <span class="status-stamp" style="border:2px solid #000;color:#000;background:#f3f4f6"
-        >${statusLabel[status] ?? status.toUpperCase()}</span>
-      </div>
-    </div>
-  </div>
-
-  <hr class="separator" />
-
-  <!-- ══ INFO ROW ══ -->
-  <div class="info-row">
-    <!-- Bill To -->
-    <div class="info-cell">
-      <div class="bill-to-box">
-        <div class="bill-to-label">Kepada / Bill To</div>
-        <div class="bill-to-name">${customer}</div>
-      </div>
-    </div>
-
-    <!-- Tanggal -->
-    <div class="info-cell">
-      <div class="info-label">Tanggal Faktur</div>
-      <div class="info-value big">${safeDate(sale.sale_date)}</div>
-    </div>
-
-    <!-- Pembayaran -->
-    <div class="info-cell">
-      <div class="info-label">Metode Pembayaran</div>
-      <div class="info-value">${paymentLabel[payMethod] ?? payMethod}</div>
-      ${status === 'debt' && sale.due_date ? `<div class="info-sub">Jatuh Tempo: <strong>${safeDateShort(sale.due_date)}</strong></div>` : ''}
-    </div>
-
-    <!-- Kasir -->
-    <div class="info-cell">
-      <div class="info-label">Kasir / Dibuat Oleh</div>
-      <div class="info-value">${sale.cashier_name ?? '-'}</div>
-    </div>
-  </div>
-
-  <!-- ══ ITEMS TABLE ══ -->
-  <table class="items-table">
-    <thead>
-      <tr>
-        <th style="text-align:center">No</th>
-        <th style="text-align:left">Nama Barang / Deskripsi</th>
-        <th style="text-align:center">Qty</th>
-        <th style="text-align:center">Tipe</th>
-        <th style="text-align:right">Harga Satuan</th>
-        <th style="text-align:right">Jumlah</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${rowsHtml || `<tr><td colspan="6" style="text-align:center;padding:20px;color:#9ca3af">— Tidak ada item —</td></tr>`}
-      ${blankHtml}
-    </tbody>
-  </table>
-
-  <hr class="separator" style="margin-top:0;margin-bottom:14px"/>
-
-  <!-- ══ BOTTOM SECTION ══ -->
-  <div class="bottom-section">
-
-    <!-- Kiri: Catatan + TTD -->
-    <div class="left-bottom">
-      <div class="note-label">Catatan / Keterangan</div>
-      <div class="note-box">${sale.note ?? ''}</div>
-
-      <div class="sig-row" style="margin-top:16px">
-        <div class="sig-block">
-          <div class="sig-title">Penerima,</div>
-          <div class="sig-line">( _____________________ )</div>
-        </div>
-        <div class="sig-block">
-          <div class="sig-title">Hormat Kami,</div>
-          <div class="sig-line">( _____________________ )</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Kanan: Ringkasan Total -->
-    <div class="totals-block">
-      <div class="totals-wrapper">
-        <div class="totals-header">Ringkasan Pembayaran</div>
-        <table class="totals-table">
-          <tbody>
-            <tr>
-              <td class="label-col">Subtotal</td>
-              <td>${formatCurrency(subTotal)}</td>
-            </tr>
-            ${discount > 0 ? `
-            <tr>
-              <td class="label-col">Diskon</td>
-              <td style="font-weight:600">− ${formatCurrency(discount)}</td>
-            </tr>` : ''}
-            ${tax > 0 ? `
-            <tr>
-              <td class="label-col">Pajak / Tax</td>
-              <td>${formatCurrency(tax)}</td>
-            </tr>` : ''}
-            <tr class="grand-total">
-              <td>TOTAL</td>
-              <td>${formatCurrency(grandTotal)}</td>
-            </tr>
-            ${status !== 'debt' ? `
-            <tr class="paid-row">
-              <td class="label-col">Dibayar</td>
-              <td>${formatCurrency(amountReceived)}</td>
-            </tr>
-            ${changeAmount > 0 ? `
-            <tr class="change-row">
-              <td class="label-col">Kembalian</td>
-              <td>${formatCurrency(changeAmount)}</td>
-            </tr>` : ''}
-            ` : `
-            <tr class="debt-row">
-              <td>Sisa Piutang</td>
-              <td>${formatCurrency(grandTotal - amountReceived)}</td>
-            </tr>
-            ${sale.due_date ? `
-            <tr class="debt-row">
-              <td>Jatuh Tempo</td>
-              <td style="font-size:10px">${safeDateShort(sale.due_date)}</td>
-            </tr>` : ''}
-            `}
-          </tbody>
-        </table>
-      </div>
-
-      <!-- Footer note -->
-      <div style="margin-top:10px;font-size:9.5px;color:#000;text-align:center;line-height:1.6">
-        Terima kasih atas kepercayaan Anda.<br/>
-        Dokumen ini adalah faktur resmi dari <strong>${store.name}</strong>.
-      </div>
-    </div>
-
-  </div>
-
+  ${sheetsHTML}
 </body>
 </html>`;
+}
 
-  // Membuat hidden iframe untuk mencetak tanpa membuka tab baru
+// ═══════════════════════════════════════════════════════════════════════════
+// CSS STYLES - REFACTORED FOR EPSON LX-310
+// ═══════════════════════════════════════════════════════════════════════════
+
+function generateStyles(): string {
+  return `<style>
+    /*
+    ════════════════════════════════════════════════════════════════════════
+    EPSON LX-310 DOT MATRIX PRINTER STYLESHEET
+    TOTAL REFACTOR - Production Ready
+    
+    Target: Windows 10/11 + Chrome + Epson LX-310 ESC/P Driver
+    Paper: Continuous Form 9.5 × 11 inch
+    Layout: TWO half-pages per sheet (5.5 inch each)
+    
+    KEY PRINCIPLES:
+    1. @page controls paper size, NOT html/body width
+    2. Each half-page EXACTLY 50% of sheet height
+    3. Larger fonts (10-12pt) for dot matrix readability
+    4. Thicker borders (1.5pt+) for ribbon visibility
+    5. Table-based layout (not flexbox) for stability
+    6. Pure black (#000) text only
+    7. No backgrounds (won't print anyway)
+    8. Monospace fonts for dot matrix clarity
+    9. Compact spacing (no wasted space)
+    10. Matches Windows Test Page quality
+    ════════════════════════════════════════════════════════════════════════
+    */
+
+    /* ═══ RESET ═══ */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    /* ═══ BASE - No fixed widths! ═══ */
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 10pt;
+      line-height: 1.2;
+      color: #000;
+      background: #fff;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    /* ═══ SHEET STRUCTURE ═══ */
+    .sheet {
+      width: 100%;
+      height: 100%;
+      page-break-after: always;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sheet:last-child {
+      page-break-after: auto;
+    }
+
+    /* ═══ HALF-PAGE - FIXED 50% HEIGHT ═══ */
+    .half-page {
+      width: 100%;
+      height: 50%;
+      padding: 0.15in 0.25in;
+      display: flex;
+      flex-direction: column;
+      page-break-inside: avoid;
+      position: relative;
+    }
+
+    /* Visual separator on screen only */
+    .half-page:first-child {
+      border-bottom: 1pt dashed #ccc;
+    }
+
+    /* ═══ HEADER ═══ */
+    .header-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 6pt;
+    }
+
+    .header-table td {
+      vertical-align: top;
+      padding: 0;
+    }
+
+    .header-table td:first-child {
+      width: 58%;
+    }
+
+    .header-table td:last-child {
+      width: 42%;
+      text-align: right;
+    }
+
+    .company-name {
+      font-size: 13pt;
+      font-weight: bold;
+      color: #000;
+      line-height: 1.1;
+      margin-bottom: 2pt;
+    }
+
+    .company-detail {
+      font-size: 9pt;
+      line-height: 1.3;
+      color: #000;
+    }
+
+    .faktur-title {
+      font-size: 15pt;
+      font-weight: bold;
+      color: #000;
+      letter-spacing: 1.5pt;
+    }
+
+    .inv-number {
+      font-size: 9pt;
+      font-weight: bold;
+      color: #000;
+      margin-top: 2pt;
+    }
+
+    .status-badge {
+      display: inline-block;
+      border: 2pt solid #000;
+      padding: 1pt 6pt;
+      font-size: 8pt;
+      font-weight: bold;
+      color: #000;
+      margin-top: 3pt;
+      letter-spacing: 0.8pt;
+    }
+
+    /* ═══ SEPARATOR ═══ */
+    .separator {
+      border: none;
+      border-top: 1.5pt solid #000;
+      margin: 5pt 0;
+      height: 0;
+    }
+
+    /* ═══ INFO GRID ═══ */
+    .info-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 6pt;
+    }
+
+    .info-table td {
+      vertical-align: top;
+      padding: 0 4pt 0 0;
+      width: 25%;
+    }
+
+    .info-table td:first-child {
+      width: 28%;
+    }
+
+    .info-label {
+      font-size: 7pt;
+      font-weight: bold;
+      text-transform: uppercase;
+      color: #000;
+      display: block;
+      margin-bottom: 1pt;
+    }
+
+    .info-value {
+      font-size: 9pt;
+      font-weight: bold;
+      color: #000;
+      line-height: 1.2;
+    }
+
+    .bill-to {
+      border-left: 2.5pt solid #000;
+      padding-left: 6pt;
+    }
+
+    /* ═══ ITEMS TABLE ═══ */
+    .items-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 6pt;
+      font-size: 9pt;
+    }
+
+    .items-table thead th {
+      padding: 4pt 4pt;
+      font-size: 8pt;
+      font-weight: bold;
+      text-transform: uppercase;
+      color: #000;
+      border-top: 1.5pt solid #000;
+      border-bottom: 1.5pt solid #000;
+      text-align: left;
+    }
+
+    .items-table thead th:nth-child(1) { width: 5%; text-align: center; }
+    .items-table thead th:nth-child(2) { width: 48%; }
+    .items-table thead th:nth-child(3) { width: 7%; text-align: center; }
+    .items-table thead th:nth-child(4) { width: 7%; text-align: center; }
+    .items-table thead th:nth-child(5) { width: 16%; text-align: right; }
+    .items-table thead th:nth-child(6) { width: 17%; text-align: right; }
+
+    .items-table tbody td {
+      padding: 3pt 4pt;
+      vertical-align: top;
+      color: #000;
+      border-bottom: 0.75pt solid #000;
+    }
+
+    .item-name {
+      font-weight: bold;
+      font-size: 9pt;
+      color: #000;
+    }
+
+    .item-code {
+      font-size: 7pt;
+      color: #000;
+      margin-top: 1pt;
+    }
+
+    .price-badge {
+      font-size: 6pt;
+      border: 0.75pt solid #000;
+      padding: 0 2pt;
+      margin-left: 2pt;
+      font-weight: bold;
+    }
+
+    /* ═══ BOTTOM SECTION ═══ */
+    .bottom-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 4pt;
+    }
+
+    .bottom-table td {
+      vertical-align: top;
+      padding: 0;
+    }
+
+    .bottom-table td:first-child {
+      width: 54%;
+      padding-right: 10pt;
+    }
+
+    .bottom-table td:last-child {
+      width: 46%;
+    }
+
+    /* Notes */
+    .note-label {
+      font-size: 7pt;
+      font-weight: bold;
+      text-transform: uppercase;
+      color: #000;
+      margin-bottom: 2pt;
+    }
+
+    .note-content {
+      border: 1pt solid #000;
+      padding: 4pt 6pt;
+      min-height: 25pt;
+      font-size: 8pt;
+      color: #000;
+    }
+
+    /* Signature */
+    .signature-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 8pt;
+    }
+
+    .signature-table td {
+      width: 50%;
+      text-align: center;
+      vertical-align: top;
+    }
+
+    .sig-label {
+      font-size: 7pt;
+      font-weight: bold;
+      color: #000;
+      margin-bottom: 20pt;
+      display: block;
+    }
+
+    .sig-name {
+      border-top: 1pt solid #000;
+      padding-top: 2pt;
+      font-size: 8pt;
+      font-weight: bold;
+      color: #000;
+    }
+
+    /* Summary */
+    .summary-box {
+      border: 2pt solid #000;
+    }
+
+    .summary-title {
+      padding: 3pt 6pt;
+      font-size: 7pt;
+      font-weight: bold;
+      text-transform: uppercase;
+      color: #000;
+      border-bottom: 1pt solid #000;
+    }
+
+    .summary-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 9pt;
+    }
+
+    .summary-table td {
+      padding: 3pt 6pt;
+      color: #000;
+    }
+
+    .summary-table td:last-child {
+      text-align: right;
+      font-weight: bold;
+    }
+
+    .summary-table tr.total td {
+      padding: 5pt 6pt;
+      font-size: 11pt;
+      font-weight: bold;
+      border-top: 2pt solid #000;
+      border-bottom: 2pt solid #000;
+    }
+
+    .summary-table tr.debt td {
+      font-weight: bold;
+    }
+
+    /* Footer */
+    .footer-text {
+      margin-top: 6pt;
+      font-size: 7pt;
+      color: #000;
+      text-align: center;
+      line-height: 1.3;
+    }
+
+    /* ═══════════════════════════════════════════════════════════════════════
+       PRINT MEDIA QUERY
+       
+       CRITICAL: This is where Epson LX-310 gets configured
+       @page tells Windows driver the paper size
+       Everything else follows printable area
+    ════════════════════════════════════════════════════════════════════════ */
+    @media print {
+      @page {
+        size: 9.5in 11in;
+        margin: 0.2in 0.25in;
+      }
+
+      html, body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-size: 10pt;
+      }
+
+      .sheet {
+        width: 100%;
+        height: 100%;
+        page-break-after: always;
+        margin: 0;
+        padding: 0;
+      }
+
+      .sheet:last-child {
+        page-break-after: auto;
+      }
+
+      .half-page {
+        height: 50%;
+        padding: 0.1in 0.15in;
+        page-break-inside: avoid;
+      }
+
+      /* Remove screen-only separator */
+      .half-page:first-child {
+        border-bottom: none !important;
+      }
+
+      /* Force pure black for all elements */
+      * {
+        color: #000 !important;
+        background: transparent !important;
+        opacity: 1 !important;
+      }
+
+      /* Ensure borders print clearly */
+      .separator,
+      .items-table thead th,
+      .summary-table tr.total td {
+        border-color: #000 !important;
+      }
+
+      /* Remove any CSS effects that cause blur */
+      * {
+        text-shadow: none !important;
+        box-shadow: none !important;
+        filter: none !important;
+        transform: none !important;
+      }
+
+      /* Bold elements for ribbon impact */
+      .company-name,
+      .faktur-title,
+      .inv-number,
+      .info-value,
+      .item-name,
+      .sig-name,
+      .summary-table tr.total td {
+        font-weight: bold !important;
+      }
+    }
+
+    /* ═══ SCREEN PREVIEW ONLY ═══ */
+    @media screen {
+      body {
+        background: #eee;
+        padding: 20px;
+      }
+
+      .sheet {
+        max-width: 9.5in;
+        height: 11in;
+        margin: 0 auto 20px;
+        background: white;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      }
+    }
+  </style>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RENDERERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+function renderSheet(context: InvoiceContext, sheet: SheetData): string {
+  const topHTML = renderHalfPage(context, sheet.topHalf);
+  const bottomHTML = sheet.bottomHalf 
+    ? renderHalfPage(context, sheet.bottomHalf)
+    : '';
+  
+  return `<div class="sheet">${topHTML}${bottomHTML}</div>`;
+}
+
+function renderHalfPage(context: InvoiceContext, halfPage: HalfPageData): string {
+  return `
+    <div class="half-page">
+      ${renderHeader(context)}
+      <hr class="separator" />
+      ${renderInfo(context)}
+      ${renderItems(halfPage)}
+      <hr class="separator" />
+      ${renderBottom(context)}
+    </div>
+  `;
+}
+
+function renderHeader(context: InvoiceContext): string {
+  const { store, sale, status, statusLabel } = context;
+  
+  return `
+    <table class="header-table">
+      <tr>
+        <td>
+          <div class="company-name">${store.name}</div>
+          <div class="company-detail">
+            ${store.address ? `<div>${store.address}</div>` : ''}
+            ${store.phone ? `<div>Telp: ${store.phone}</div>` : ''}
+          </div>
+        </td>
+        <td>
+          <div class="faktur-title">FAKTUR</div>
+          <div class="inv-number">${sale.invoice_number}</div>
+          <span class="status-badge">${statusLabel[status] ?? status.toUpperCase()}</span>
+        </td>
+      </tr>
+    </table>
+  `;
+}
+
+function renderInfo(context: InvoiceContext): string {
+  const { customer, sale, safeDate, safeDateShort, paymentLabel, payMethod, status } = context;
+  
+  return `
+    <table class="info-table">
+      <tr>
+        <td>
+          <div class="bill-to">
+            <div class="info-label">Kepada</div>
+            <div class="info-value">${customer}</div>
+          </div>
+        </td>
+        <td>
+          <div class="info-label">Tanggal</div>
+          <div class="info-value">${safeDate(sale.sale_date)}</div>
+        </td>
+        <td>
+          <div class="info-label">Pembayaran</div>
+          <div class="info-value">${paymentLabel[payMethod] ?? payMethod}</div>
+          ${status === 'debt' && sale.due_date ? `<div style="font-size:6pt;margin-top:1pt">JT: ${safeDateShort(sale.due_date)}</div>` : ''}
+        </td>
+        <td>
+          <div class="info-label">Kasir</div>
+          <div class="info-value">${sale.cashier_name ?? '-'}</div>
+        </td>
+      </tr>
+    </table>
+  `;
+}
+
+function renderItems(halfPage: HalfPageData): string {
+  const { items, startIndex } = halfPage;
+  
+  if (!items || items.length === 0) {
+    return `
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th>No</th>
+            <th>Nama Barang</th>
+            <th>Qty</th>
+            <th>Tipe</th>
+            <th style="text-align:right">Harga</th>
+            <th style="text-align:right">Jumlah</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td colspan="6" style="text-align:center;padding:10pt">— Tidak ada item —</td>
+          </tr>
+        </tbody>
+      </table>
+    `;
+  }
+  
+  const rows = items.map((item, idx) => {
+    const itemNum = startIndex + idx + 1;
+    const unitPrice = item.price_per_unit ?? 0;
+    const qty = item.quantity ?? 0;
+    const total = item.total_price ?? (unitPrice * qty);
+    
+    const badge = item.price_mode === 'wholesale' ? '<span class="price-badge">GRS</span>'
+      : item.price_mode === 'special' ? '<span class="price-badge">SPL</span>'
+      : '';
+    
+    const typeLabel = item.price_mode === 'wholesale' ? 'GRS'
+      : item.price_mode === 'special' ? 'SPL'
+      : 'ECR';
+    
+    return `
+      <tr>
+        <td style="text-align:center">${itemNum}</td>
+        <td>
+          <div class="item-name">${item.product_name ?? '-'}${badge}</div>
+          ${item.product_code ? `<div class="item-code">${item.product_code}</div>` : ''}
+        </td>
+        <td style="text-align:center">${qty}</td>
+        <td style="text-align:center;font-size:7pt">${typeLabel}</td>
+        <td style="text-align:right">${formatCurrency(unitPrice)}</td>
+        <td style="text-align:right;font-weight:bold">${formatCurrency(total)}</td>
+      </tr>
+    `;
+  }).join('');
+  
+  return `
+    <table class="items-table">
+      <thead>
+        <tr>
+          <th>No</th>
+          <th>Nama Barang</th>
+          <th>Qty</th>
+          <th>Tipe</th>
+          <th style="text-align:right">Harga</th>
+          <th style="text-align:right">Jumlah</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+function renderBottom(context: InvoiceContext): string {
+  return `
+    <table class="bottom-table">
+      <tr>
+        <td>${renderNote(context)}${renderSignature()}</td>
+        <td>${renderSummary(context)}${renderFooter(context)}</td>
+      </tr>
+    </table>
+  `;
+}
+
+function renderNote(context: InvoiceContext): string {
+  return `
+    <div class="note-label">Catatan</div>
+    <div class="note-content">${context.sale.note ?? ''}</div>
+  `;
+}
+
+function renderSignature(): string {
+  return `
+    <table class="signature-table">
+      <tr>
+        <td>
+          <span class="sig-label">Penerima,</span>
+          <div class="sig-name">( __________ )</div>
+        </td>
+        <td>
+          <span class="sig-label">Hormat Kami,</span>
+          <div class="sig-name">( __________ )</div>
+        </td>
+      </tr>
+    </table>
+  `;
+}
+
+function renderSummary(context: InvoiceContext): string {
+  const { subTotal, discount, tax, grandTotal, amountReceived, changeAmount, status, sale, safeDateShort } = context;
+  
+  return `
+    <div class="summary-box">
+      <div class="summary-title">Ringkasan</div>
+      <table class="summary-table">
+        <tbody>
+          <tr>
+            <td>Subtotal</td>
+            <td>${formatCurrency(subTotal)}</td>
+          </tr>
+          ${discount > 0 ? `
+          <tr>
+            <td>Diskon</td>
+            <td>− ${formatCurrency(discount)}</td>
+          </tr>` : ''}
+          ${tax > 0 ? `
+          <tr>
+            <td>Pajak</td>
+            <td>${formatCurrency(tax)}</td>
+          </tr>` : ''}
+          <tr class="total">
+            <td>TOTAL</td>
+            <td>${formatCurrency(grandTotal)}</td>
+          </tr>
+          ${status !== 'debt' ? `
+          <tr>
+            <td>Dibayar</td>
+            <td>${formatCurrency(amountReceived)}</td>
+          </tr>
+          ${changeAmount > 0 ? `
+          <tr>
+            <td>Kembalian</td>
+            <td>${formatCurrency(changeAmount)}</td>
+          </tr>` : ''}` : `
+          <tr class="debt">
+            <td>Sisa</td>
+            <td>${formatCurrency(grandTotal - amountReceived)}</td>
+          </tr>
+          ${sale.due_date ? `
+          <tr class="debt">
+            <td>JT</td>
+            <td style="font-size:7pt">${safeDateShort(sale.due_date)}</td>
+          </tr>` : ''}`}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderFooter(context: InvoiceContext): string {
+  return `
+    <div class="footer-text">
+      Terima kasih atas kepercayaan Anda.<br/>
+      <strong>${context.store.name}</strong>
+    </div>
+  `;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PRINT EXECUTOR
+// ═══════════════════════════════════════════════════════════════════════════
+
+function executePrint(htmlContent: string): void {
   const iframe = document.createElement('iframe');
   iframe.style.display = 'none';
   document.body.appendChild(iframe);
@@ -583,15 +915,13 @@ export function printInvoice({ sale, items, store, customerName }: PrintInvoiceP
   const iframeDoc = iframe.contentWindow?.document;
   if (iframeDoc) {
     iframeDoc.open();
-    iframeDoc.write(printContent);
+    iframeDoc.write(htmlContent);
     iframeDoc.close();
 
-    // Tunggu iframe selesai memuat resource sebelum memanggil print
     iframe.onload = () => {
       iframe.contentWindow?.focus();
       iframe.contentWindow?.print();
       
-      // Hapus iframe dari DOM setelah proses selesai
       setTimeout(() => {
         if (document.body.contains(iframe)) {
           document.body.removeChild(iframe);
