@@ -8,11 +8,9 @@ const BLACK: [number, number, number] = [0, 0, 0];
 /** Creates a 9.5 × 5.5 inch PDF page for each half of the continuous form. */
 export function generateInvoicePDF(data: InvoiceData): jsPDF {
   const doc = new jsPDF({
-    // jsPDF swaps custom dimensions in portrait mode when width > height.
-    // Keep the physical PDF page at 241.3 × 139.7 mm for the half-form.
-    orientation: 'landscape',
+    orientation: 'portrait',
     unit: 'mm',
-    format: [241.3, 139.7],
+    format: [LAYOUT.pageWidth, LAYOUT.pageHeight],
     putOnlyUsedFonts: true,
     compress: false,
   });
@@ -34,10 +32,10 @@ export function generateInvoicePDF(data: InvoiceData): jsPDF {
     rowPageBreak: 'avoid',
     styles: {
       font: 'courier', fontStyle: 'normal', fontSize: 8.5, textColor: BLACK,
-      lineColor: BLACK, lineWidth: 0.2, cellPadding: { top: 1.2, right: 1, bottom: 1.2, left: 1 },
+      lineWidth: 0, cellPadding: { top: 1.2, right: 1, bottom: 1.2, left: 1 },
       minCellHeight: 7, valign: 'middle', overflow: 'ellipsize',
     },
-    headStyles: { font: 'courier', fontStyle: 'bold', fontSize: 8, textColor: BLACK, fillColor: [255, 255, 255], lineColor: BLACK, lineWidth: 0.3, halign: 'center' },
+    headStyles: { font: 'courier', fontStyle: 'bold', fontSize: 8, textColor: BLACK, fillColor: [255, 255, 255], lineWidth: 0, halign: 'center' },
     columnStyles: {
       0: { cellWidth: 10, halign: 'center' },
       1: { cellWidth: 82, halign: 'left' },
