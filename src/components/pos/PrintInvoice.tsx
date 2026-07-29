@@ -59,20 +59,20 @@ export function printInvoice({ sale, items, store, customerName }: PrintInvoiceP
     const qty       = item.quantity       ?? 0;
     const total     = item.total_price    ?? (unitPrice * qty);
     const modeTag   = item.price_mode === 'wholesale'
-      ? '<span style="font-size:8px;border:1px solid #374151;color:#374151;border-radius:2px;padding:0 3px;margin-left:3px">GROSIR</span>'
+      ? '<span style="font-size:8px;border:1px solid #000;color:#000;border-radius:2px;padding:0 3px;margin-left:3px">GROSIR</span>'
       : item.price_mode === 'special'
-        ? '<span style="font-size:8px;border:1px solid #374151;color:#374151;border-radius:2px;padding:0 3px;margin-left:3px">SPESIAL</span>'
+        ? '<span style="font-size:8px;border:1px solid #000;color:#000;border-radius:2px;padding:0 3px;margin-left:3px">SPESIAL</span>'
         : '';
     const isEven = i % 2 === 1;
     return `
       <tr style="${isEven ? 'background:#f8f9fc;' : ''}">
-        <td style="text-align:center;color:#6b7280;font-size:10px">${i + 1}</td>
+        <td style="text-align:center;color:#000;font-size:10px">${i + 1}</td>
         <td>
           <div style="font-weight:500">${item.product_name ?? '-'}${modeTag}</div>
-          ${item.product_code ? `<div style="font-size:9px;color:#9ca3af;margin-top:1px">${item.product_code}</div>` : ''}
+          ${item.product_code ? `<div style="font-size:9px;color:#000;margin-top:1px">${item.product_code}</div>` : ''}
         </td>
         <td style="text-align:center">${qty}</td>
-        <td style="text-align:center;color:#6b7280;font-size:10px">${item.price_mode === 'wholesale' ? 'GRS' : item.price_mode === 'special' ? 'SPL' : 'ECR'}</td>
+        <td style="text-align:center;color:#000;font-size:10px">${item.price_mode === 'wholesale' ? 'GRS' : item.price_mode === 'special' ? 'SPL' : 'ECR'}</td>
         <td style="text-align:right">${formatCurrency(unitPrice)}</td>
         <td style="text-align:right;font-weight:600">${formatCurrency(total)}</td>
       </tr>`;
@@ -97,14 +97,14 @@ export function printInvoice({ sale, items, store, customerName }: PrintInvoiceP
     *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
 
     html, body {
-      width: 297mm;
+      width: 210mm;
       font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
       font-size: 11px;
-      color: #111827;
+      color: #000;
       background: #fff;
     }
 
-    body { padding: 10mm 12mm 10mm 12mm; }
+    body { padding: 12mm 15mm 12mm 15mm; }
 
     /* ── TOP HEADER ── */
     .top-header {
@@ -125,10 +125,10 @@ export function printInvoice({ sale, items, store, customerName }: PrintInvoiceP
     }
     .company-detail {
       font-size: 10px;
-      color: #6b7280;
+      color: #000;
       line-height: 1.6;
     }
-    .company-detail strong { color: #374151; }
+    .company-detail strong { color: #000; }
 
     /* ── FAKTUR TITLE BLOCK (kanan atas) ── */
     .title-block {
@@ -145,7 +145,7 @@ export function printInvoice({ sale, items, store, customerName }: PrintInvoiceP
     .inv-no {
       font-size: 12px;
       font-weight: 700;
-      color: #374151;
+      color: #000;
       margin-top: 4px;
       letter-spacing: 0.3px;
     }
@@ -184,21 +184,21 @@ export function printInvoice({ sale, items, store, customerName }: PrintInvoiceP
       font-size: 8.5px;
       text-transform: uppercase;
       letter-spacing: 0.7px;
-      color: #9ca3af;
+      color: #000;
       font-weight: 700;
       margin-bottom: 2px;
     }
     .info-cell .info-value {
       font-size: 11.5px;
       font-weight: 600;
-      color: #111827;
+      color: #000;
     }
     .info-cell .info-value.big {
       font-size: 13px;
     }
     .info-cell .info-sub {
       font-size: 9.5px;
-      color: #6b7280;
+      color: #000;
       margin-top: 1px;
     }
 
@@ -214,7 +214,7 @@ export function printInvoice({ sale, items, store, customerName }: PrintInvoiceP
       font-weight: 800;
       text-transform: uppercase;
       letter-spacing: 1px;
-      color: #64748b;
+      color: #000;
       margin-bottom: 3px;
     }
     .bill-to-name {
@@ -250,7 +250,9 @@ export function printInvoice({ sale, items, store, customerName }: PrintInvoiceP
     table.items-table tbody td {
       padding: 6px 10px;
       vertical-align: middle;
-      border-bottom: 1px solid #e5e7eb;
+      border-bottom: 1px solid #000;
+      color: #000;
+      font-weight: 500;
     }
 
     /* ── BOTTOM SECTION ── */
@@ -268,16 +270,16 @@ export function printInvoice({ sale, items, store, customerName }: PrintInvoiceP
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.6px;
-      color: #9ca3af;
+      color: #000;
       margin-bottom: 4px;
     }
     .note-box {
-      border: 1px dashed #d1d5db;
+      border: 1px dashed #000;
       border-radius: 4px;
       padding: 6px 10px;
       min-height: 44px;
       font-size: 10.5px;
-      color: #374151;
+      color: #000;
     }
 
     /* Signature section */
@@ -293,15 +295,15 @@ export function printInvoice({ sale, items, store, customerName }: PrintInvoiceP
     .sig-title {
       font-size: 9.5px;
       font-weight: 600;
-      color: #374151;
+      color: #000;
       margin-bottom: 44px;
     }
     .sig-line {
-      border-top: 1px solid #374151;
+      border-top: 1px solid #000;
       padding-top: 4px;
       font-size: 10px;
       font-weight: 600;
-      color: #111827;
+      color: #000;
     }
 
     /* Totals kanan */
@@ -315,9 +317,11 @@ export function printInvoice({ sale, items, store, customerName }: PrintInvoiceP
     }
     .totals-table td {
       padding: 4px 10px;
+      color: #000;
+      font-weight: 500;
     }
-    .totals-table td:last-child { text-align: right; font-weight: 500; }
-    .totals-table .label-col { color: #6b7280; }
+    .totals-table td:last-child { text-align: right; font-weight: 600; }
+    .totals-table .label-col { color: #000; }
 
     .totals-table tr.grand-total {
       background: #111827;
@@ -330,7 +334,7 @@ export function printInvoice({ sale, items, store, customerName }: PrintInvoiceP
       border-radius: 0;
     }
     .totals-table tr.paid-row td:last-child { color: #000; font-weight: 700; }
-    .totals-table tr.change-row td:last-child { color: #374151; font-weight: 700; }
+    .totals-table tr.change-row td:last-child { color: #000; font-weight: 700; }
     .totals-table tr.debt-row { background:#f3f4f6; }
     .totals-table tr.debt-row td { color: #000; font-weight: 700; }
 
@@ -346,19 +350,71 @@ export function printInvoice({ sale, items, store, customerName }: PrintInvoiceP
       font-weight: 800;
       text-transform: uppercase;
       letter-spacing: 0.8px;
-      color: #64748b;
+      color: #000;
       border-bottom: 1px solid #e5e7eb;
     }
 
     /* ── PRINT ── */
     @media print {
-      html, body { width: 297mm; }
-      body { padding: 8mm 10mm 8mm 10mm; }
+      html, body { width: 210mm; }
+      body { padding: 10mm 12mm 10mm 12mm; }
       @page {
-        size: A4 landscape;
+        size: A4 portrait;
         margin: 0;
       }
       tr { page-break-inside: avoid; }
+      
+      /* HIGH CONTRAST PRINT STYLES */
+      * {
+        color: #000 !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      
+      /* Force all text to pure black */
+      body, td, th, p, span, div, h1, h2, h3, h4, h5, h6 {
+        color: #000 !important;
+        font-weight: 500 !important;
+      }
+      
+      /* Force headings and important text to be darker */
+      .company-name, .faktur-label, .inv-no, .info-value, .bill-to-name, .sig-line {
+        color: #000 !important;
+        font-weight: 700 !important;
+      }
+      
+      /* Table headers must be pure black on white for thermal printers */
+      table.items-table thead th {
+        background: #000 !important;
+        color: #fff !important;
+        font-weight: 700 !important;
+      }
+      
+      /* Borders must be dark and visible */
+      .separator {
+        border-top: 2px solid #000 !important;
+      }
+      
+      /* Grand total row */
+      .totals-table tr.grand-total {
+        background: #000 !important;
+        color: #fff !important;
+        font-weight: 800 !important;
+      }
+      
+      .totals-table tr.grand-total td {
+        color: #fff !important;
+      }
+      
+      /* Remove any opacity or transparency */
+      * {
+        opacity: 1 !important;
+      }
+      
+      /* Ensure minimum font size for readability */
+      body { font-size: 11pt !important; }
+      .items-table tbody td { font-size: 10pt !important; }
+      .items-table thead th { font-size: 10pt !important; }
     }
   </style>
 </head>
@@ -508,7 +564,7 @@ export function printInvoice({ sale, items, store, customerName }: PrintInvoiceP
       </div>
 
       <!-- Footer note -->
-      <div style="margin-top:10px;font-size:9.5px;color:#9ca3af;text-align:center;line-height:1.6">
+      <div style="margin-top:10px;font-size:9.5px;color:#000;text-align:center;line-height:1.6">
         Terima kasih atas kepercayaan Anda.<br/>
         Dokumen ini adalah faktur resmi dari <strong>${store.name}</strong>.
       </div>

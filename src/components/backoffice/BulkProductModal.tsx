@@ -16,6 +16,7 @@ import {
   ProductMaster 
 } from "@/services/productMasterService";
 import { generateProductName, generateShortName } from "@/lib/productUtils";
+import { generateUniqueBarcode, processNullablePlaceholder } from "@/lib/barcodeUtils";
 
 interface MasterItem { id: number; name: string; }
 
@@ -40,9 +41,27 @@ interface RowData {
 }
 
 interface RowErrors {
-  name?: boolean; // We still track name generation error
+  // Master data
+  category_id?: boolean;
+  main_product_id?: boolean;
+  unit_id?: boolean;
+  
+  // Barcode
+  code?: boolean;
+  
+  // Inventory
+  quantity?: boolean;
+  min_stock_alert?: boolean;
+  
+  // Prices
   cost_price?: boolean;
   selling_price_retail?: boolean;
+  selling_price_wholesale?: boolean;
+  selling_price_special?: boolean;
+  
+  // Min quantities
+  wholesale_min_qty?: boolean;
+  special_min_qty?: boolean;
 }
 
 interface BulkProductModalProps {
@@ -234,12 +253,15 @@ export function BulkProductModal({ isOpen, onClose, storeId, onProductsAdded }: 
 
   const updateRow = (rowId: string, field: keyof RowData, value: any) => {
     setRows((prev) => prev.map((r) => (r.id === rowId ? { ...r, [field]: value } : r)));
-    if (field === "cost_price" || field === "selling_price_retail" || field.toString().includes("_id")) {
+    // Clear error for the field being updated
+    if (field === "category_id" || field === "main_product_id" || field === "unit_id" ||
+        field === "code" || field === "quantity" || field === "min_stock_alert" ||
+        field === "cost_price" || field === "selling_price_retail" || 
+        field === "selling_price_wholesale" || field === "selling_price_special" ||
+        field === "wholesale_min_qty" || field === "special_min_qty") {
       setErrors((prev) => {
         const rowErr = { ...(prev[rowId] || {}) };
-        if (field === "cost_price") delete rowErr.cost_price;
-        if (field === "selling_price_retail") delete rowErr.selling_price_retail;
-        if (field.toString().includes("_id")) delete rowErr.name;
+        delete rowErr[field as keyof RowErrors];
         return { ...prev, [rowId]: rowErr };
       });
     }
@@ -267,63 +289,111 @@ export function BulkProductModal({ isOpen, onClose, storeId, onProductsAdded }: 
     for (const row of filledRows) {
       const rowErr: RowErrors = {};
       
-      const generatedName = generateProductName({
-        brandName: brands.find(b => b.id === row.brand_id)?.name,
-        mainProductName: mainProducts.find(m => m.id === row.main_product_id)?.name,
-        variantName: variants.find(v => v.id === row.variant_id)?.name,
-        specificationName: specifications.find(s => s.id === row.specification_id)?.name,
-        sizeName: sizes.find(s => s.id === row.size_id)?.name,
-      });
-
-      if (!generatedName.trim()) { rowErr.name = true; hasError = true; }
+      // Validate REQUIRED master data fields
+      if (!row.category_id) { rowErr.category_id = true; hasError = true; }
+      if (!row.main_product_id) { rowErr.main_product_id = true; hasError = true; }
+      if (!row.unit_id) { rowErr.unit_id = true; hasError = true; }
+      
+      // Validate barcode
+      if (!row.code || !row.code.trim()) { rowErr.code = true; hasError = true; }
+      
+      // Validate inventory fields
+      // quantity: required but CAN BE NEGATIVE (overselling allowed)
+      const qty = parseInt(row.quantity);
+      if (row.quantity === "" || isNaN(qty)) { rowErr.quantity = true; hasError = true; }
+      
+      // min_stock_alert: required and must be >= 0
+      const minStock = parseInt(row.min_stock_alert);
+      if (row.min_stock_alert === "" || isNaN(minStock) || minStock < 0) { rowErr.min_stock_alert = true; hasError = true; }
+      
+      // Validate price fields (all must be >= 0)
       const cost = parseFloat(row.cost_price);
-      if (!row.cost_price || isNaN(cost) || cost <= 0) { rowErr.cost_price = true; hasError = true; }
+      if (!row.cost_price || isNaN(cost) || cost < 0) { rowErr.cost_price = true; hasError = true; }
+      
       const retail = parseFloat(row.selling_price_retail);
-      if (!row.selling_price_retail || isNaN(retail) || retail <= 0) { rowErr.selling_price_retail = true; hasError = true; }
+      if (!row.selling_price_retail || isNaN(retail) || retail < 0) { rowErr.selling_price_retail = true; hasError = true; }
+      
+      const wholesale = parseFloat(row.selling_price_wholesale);
+      if (!row.selling_price_wholesale || isNaN(wholesale) || wholesale < 0) { rowErr.selling_price_wholesale = true; hasError = true; }
+      
+      const special = parseFloat(row.selling_price_special);
+      if (!row.selling_price_special || isNaN(special) || special < 0) { rowErr.selling_price_special = true; hasError = true; }
+      
+      // Validate min quantity fields (all must be >= 0)
+      const wholesaleMinQty = parseInt(row.wholesale_min_qty);
+      if (row.wholesale_min_qty === "" || isNaN(wholesaleMinQty) || wholesaleMinQty < 0) { rowErr.wholesale_min_qty = true; hasError = true; }
+      
+      const specialMinQty = parseInt(row.special_min_qty);
+      if (row.special_min_qty === "" || isNaN(specialMinQty) || specialMinQty < 0) { rowErr.special_min_qty = true; hasError = true; }
       
       if (Object.keys(rowErr).length > 0) newErrors[row.id] = rowErr;
     }
     
-    if (hasError) { setErrors(newErrors); toast.error("Perbaiki data yang ditandai merah terlebih dahulu (Pastikan minimal 1 master data terpilih untuk nama produk)"); return; }
+    if (hasError) { 
+      setErrors(newErrors); 
+      toast.error("Lengkapi semua field wajib yang ditandai merah"); 
+      return; 
+    }
 
     setIsSaving(true);
     try {
-      const products: CreateProductInput[] = filledRows.map((r) => {
-        const cost = parseFloat(r.cost_price) || 0;
-        const retail = parseFloat(r.selling_price_retail) || 0;
+      const products: CreateProductInput[] = [];
+      
+      for (const r of filledRows) {
+        // Process barcode: if "-", generate unique barcode
+        let processedBarcode = r.code.trim();
+        if (processedBarcode === '-') {
+          processedBarcode = await generateUniqueBarcode(storeId);
+        }
+        
+        // Get master data names, processing nullable fields
+        const brandName = processNullablePlaceholder(brands.find(b => b.id === r.brand_id)?.name);
+        const variantName = processNullablePlaceholder(variants.find(v => v.id === r.variant_id)?.name);
+        const specificationName = processNullablePlaceholder(specifications.find(s => s.id === r.specification_id)?.name);
+        const sizeName = processNullablePlaceholder(sizes.find(s => s.id === r.size_id)?.name);
         
         const generatedName = generateProductName({
-          brandName: brands.find(b => b.id === r.brand_id)?.name,
+          brandName: brandName || undefined,
           mainProductName: mainProducts.find(m => m.id === r.main_product_id)?.name,
-          variantName: variants.find(v => v.id === r.variant_id)?.name,
-          specificationName: specifications.find(s => s.id === r.specification_id)?.name,
-          sizeName: sizes.find(s => s.id === r.size_id)?.name,
+          variantName: variantName || undefined,
+          specificationName: specificationName || undefined,
+          sizeName: sizeName || undefined,
         });
 
         const shortName = generateShortName(generatedName);
 
-        return {
+        products.push({
           store_id: storeId,
-          code: r.code.trim() || `SKU-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          code: processedBarcode,
           name: generatedName,
           short_name: shortName,
-          category_id: r.category_id || undefined,
-          brand_id: r.brand_id || undefined,
-          main_product_id: r.main_product_id || undefined,
-          variant_id: r.variant_id || undefined,
-          specification_id: r.specification_id || undefined,
-          size_id: r.size_id || undefined,
-          unit_id: r.unit_id || undefined,
-          quantity: parseInt(r.quantity) || 0,
-          min_stock_alert: parseInt(r.min_stock_alert) || 5,
-          cost_price: cost,
-          selling_price_retail: retail,
-          selling_price_wholesale: parseFloat(r.selling_price_wholesale) || retail,
-          wholesale_min_qty: parseInt(r.wholesale_min_qty) || 0,
-          selling_price_special: parseFloat(r.selling_price_special) || retail,
-          special_min_qty: parseInt(r.special_min_qty) || 0,
-        };
-      });
+          
+          // Required master data
+          category_id: r.category_id!,
+          main_product_id: r.main_product_id!,
+          unit_id: r.unit_id!,
+          
+          // Optional master data (nullable)
+          brand_id: r.brand_id,
+          variant_id: r.variant_id,
+          specification_id: r.specification_id,
+          size_id: r.size_id,
+          
+          // Required inventory (quantity can be negative)
+          quantity: parseInt(r.quantity),
+          min_stock_alert: parseInt(r.min_stock_alert),
+          
+          // Required prices (all must be >= 0)
+          cost_price: parseFloat(r.cost_price),
+          selling_price_retail: parseFloat(r.selling_price_retail),
+          selling_price_wholesale: parseFloat(r.selling_price_wholesale),
+          selling_price_special: parseFloat(r.selling_price_special),
+          
+          // Required min quantities (all must be >= 0)
+          wholesale_min_qty: parseInt(r.wholesale_min_qty),
+          special_min_qty: parseInt(r.special_min_qty),
+        });
+      }
 
       const result = await bulkCreateProducts(products);
       if (result.success > 0) { toast.success(`${result.success} produk berhasil disimpan`); onProductsAdded?.(); }
@@ -337,22 +407,22 @@ export function BulkProductModal({ isOpen, onClose, storeId, onProductsAdded }: 
   const filledCount = rows.filter(isRowFilled).length;
 
   const COLS = [
-    { label: "Kategori", width: "w-[110px] min-w-[110px]" },
+    { label: "Kategori *", width: "w-[110px] min-w-[110px]" },
     { label: "Brand", width: "w-[100px] min-w-[100px]" },
-    { label: "Produk Utama", width: "w-[110px] min-w-[110px]" },
+    { label: "Produk Utama *", width: "w-[110px] min-w-[110px]" },
     { label: "Varian", width: "w-[100px] min-w-[100px]" },
     { label: "Spesifikasi", width: "w-[100px] min-w-[100px]" },
     { label: "Ukuran/Isi", width: "w-[100px] min-w-[100px]" },
-    { label: "SKU/Barcode", width: "w-[110px] min-w-[110px]" },
-    { label: "Satuan", width: "w-[90px] min-w-[90px]" },
-    { label: "Stok Awal", width: "w-[80px] min-w-[80px]" },
-    { label: "Stok Min", width: "w-[80px] min-w-[80px]" },
-    { label: "Harga Modal", width: "w-[100px] min-w-[100px]" },
-    { label: "Harga Eceran", width: "w-[100px] min-w-[100px]" },
-    { label: "Harga Grosir", width: "w-[100px] min-w-[100px]" },
-    { label: "Min Qty Grosir", width: "w-[100px] min-w-[100px]" },
-    { label: "Harga Spesial", width: "w-[100px] min-w-[100px]" },
-    { label: "Min Qty Spesial", width: "w-[100px] min-w-[100px]" },
+    { label: "SKU/Barcode *", width: "w-[110px] min-w-[110px]" },
+    { label: "Satuan *", width: "w-[90px] min-w-[90px]" },
+    { label: "Stok Awal *", width: "w-[80px] min-w-[80px]" },
+    { label: "Stok Min *", width: "w-[80px] min-w-[80px]" },
+    { label: "Harga Modal *", width: "w-[100px] min-w-[100px]" },
+    { label: "Harga Eceran *", width: "w-[100px] min-w-[100px]" },
+    { label: "Harga Grosir *", width: "w-[100px] min-w-[100px]" },
+    { label: "Min Qty Grosir *", width: "w-[100px] min-w-[100px]" },
+    { label: "Harga Spesial *", width: "w-[100px] min-w-[100px]" },
+    { label: "Min Qty Spesial *", width: "w-[100px] min-w-[100px]" },
   ];
 
   if (!isOpen) return null;
@@ -398,22 +468,22 @@ export function BulkProductModal({ isOpen, onClose, storeId, onProductsAdded }: 
                   return (
                     <tr key={row.id} className={`group border-b border-border/60 transition-colors ${isEmpty ? "bg-transparent hover:bg-muted/20" : "bg-white hover:bg-blue-50/30"}`}>
                       <td className="w-8 text-center text-[10px] text-muted-foreground/50 border-r border-border/40 py-1 select-none">{idx + 1}</td>
-                      <td className="border-r border-border/40 py-0.5 px-0.5"><MasterDropdown items={categories} value={row.category_id} onChange={(id) => updateRow(row.id, "category_id", id)} placeholder="Pilih..." onRequestAdd={() => setQuickAdd({ type: "category", rowId: row.id, field: "category_id" })} /></td>
-                      <td className="border-r border-border/40 py-0.5 px-0.5"><MasterDropdown items={brands} value={row.brand_id} onChange={(id) => updateRow(row.id, "brand_id", id)} placeholder="Pilih..." onRequestAdd={() => setQuickAdd({ type: "brand", rowId: row.id, field: "brand_id" })} hasError={!!rowErr.name} /></td>
-                      <td className="border-r border-border/40 py-0.5 px-0.5"><MasterDropdown items={mainProducts} value={row.main_product_id} onChange={(id) => updateRow(row.id, "main_product_id", id)} placeholder="Pilih..." onRequestAdd={() => setQuickAdd({ type: "main_product", rowId: row.id, field: "main_product_id" })} hasError={!!rowErr.name} /></td>
-                      <td className="border-r border-border/40 py-0.5 px-0.5"><MasterDropdown items={variants} value={row.variant_id} onChange={(id) => updateRow(row.id, "variant_id", id)} placeholder="Pilih..." onRequestAdd={() => setQuickAdd({ type: "variant", rowId: row.id, field: "variant_id" })} hasError={!!rowErr.name} /></td>
-                      <td className="border-r border-border/40 py-0.5 px-0.5"><MasterDropdown items={specifications} value={row.specification_id} onChange={(id) => updateRow(row.id, "specification_id", id)} placeholder="Pilih..." onRequestAdd={() => setQuickAdd({ type: "specification", rowId: row.id, field: "specification_id" })} hasError={!!rowErr.name} /></td>
-                      <td className="border-r border-border/40 py-0.5 px-0.5"><MasterDropdown items={sizes} value={row.size_id} onChange={(id) => updateRow(row.id, "size_id", id)} placeholder="Pilih..." onRequestAdd={() => setQuickAdd({ type: "size", rowId: row.id, field: "size_id" })} hasError={!!rowErr.name} /></td>
-                      <td className="border-r border-border/40 py-0.5 px-0.5"><CellInput value={row.code} onChange={(v) => updateRow(row.id, "code", v)} placeholder="Scan/ketik..." /></td>
-                      <td className="border-r border-border/40 py-0.5 px-0.5"><MasterDropdown items={units} value={row.unit_id} onChange={(id) => updateRow(row.id, "unit_id", id)} placeholder="Pilih..." onRequestAdd={() => setQuickAdd({ type: "unit", rowId: row.id, field: "unit_id" })} /></td>
-                      <td className="border-r border-border/40 py-0.5 px-0.5"><CellInput value={row.quantity} onChange={(v) => updateRow(row.id, "quantity", v)} placeholder="0" type="number" /></td>
-                      <td className="border-r border-border/40 py-0.5 px-0.5"><CellInput value={row.min_stock_alert} onChange={(v) => updateRow(row.id, "min_stock_alert", v)} placeholder="5" type="number" /></td>
+                      <td className="border-r border-border/40 py-0.5 px-0.5"><MasterDropdown items={categories} value={row.category_id} onChange={(id) => updateRow(row.id, "category_id", id)} placeholder="Pilih..." onRequestAdd={() => setQuickAdd({ type: "category", rowId: row.id, field: "category_id" })} hasError={!!rowErr.category_id} /></td>
+                      <td className="border-r border-border/40 py-0.5 px-0.5"><MasterDropdown items={brands} value={row.brand_id} onChange={(id) => updateRow(row.id, "brand_id", id)} placeholder="Pilih..." onRequestAdd={() => setQuickAdd({ type: "brand", rowId: row.id, field: "brand_id" })} /></td>
+                      <td className="border-r border-border/40 py-0.5 px-0.5"><MasterDropdown items={mainProducts} value={row.main_product_id} onChange={(id) => updateRow(row.id, "main_product_id", id)} placeholder="Pilih..." onRequestAdd={() => setQuickAdd({ type: "main_product", rowId: row.id, field: "main_product_id" })} hasError={!!rowErr.main_product_id} /></td>
+                      <td className="border-r border-border/40 py-0.5 px-0.5"><MasterDropdown items={variants} value={row.variant_id} onChange={(id) => updateRow(row.id, "variant_id", id)} placeholder="Pilih..." onRequestAdd={() => setQuickAdd({ type: "variant", rowId: row.id, field: "variant_id" })} /></td>
+                      <td className="border-r border-border/40 py-0.5 px-0.5"><MasterDropdown items={specifications} value={row.specification_id} onChange={(id) => updateRow(row.id, "specification_id", id)} placeholder="Pilih..." onRequestAdd={() => setQuickAdd({ type: "specification", rowId: row.id, field: "specification_id" })} /></td>
+                      <td className="border-r border-border/40 py-0.5 px-0.5"><MasterDropdown items={sizes} value={row.size_id} onChange={(id) => updateRow(row.id, "size_id", id)} placeholder="Pilih..." onRequestAdd={() => setQuickAdd({ type: "size", rowId: row.id, field: "size_id" })} /></td>
+                      <td className="border-r border-border/40 py-0.5 px-0.5"><CellInput value={row.code} onChange={(v) => updateRow(row.id, "code", v)} placeholder="Scan/ketik..." hasError={!!rowErr.code} /></td>
+                      <td className="border-r border-border/40 py-0.5 px-0.5"><MasterDropdown items={units} value={row.unit_id} onChange={(id) => updateRow(row.id, "unit_id", id)} placeholder="Pilih..." onRequestAdd={() => setQuickAdd({ type: "unit", rowId: row.id, field: "unit_id" })} hasError={!!rowErr.unit_id} /></td>
+                      <td className="border-r border-border/40 py-0.5 px-0.5"><CellInput value={row.quantity} onChange={(v) => updateRow(row.id, "quantity", v)} placeholder="0" type="number" hasError={!!rowErr.quantity} /></td>
+                      <td className="border-r border-border/40 py-0.5 px-0.5"><CellInput value={row.min_stock_alert} onChange={(v) => updateRow(row.id, "min_stock_alert", v)} placeholder="0" type="number" hasError={!!rowErr.min_stock_alert} /></td>
                       <td className="border-r border-border/40 py-0.5 px-0.5"><CellInput value={row.cost_price} onChange={(v) => updateRow(row.id, "cost_price", v)} placeholder="0" type="number" hasError={!!rowErr.cost_price} /></td>
                       <td className="border-r border-border/40 py-0.5 px-0.5"><CellInput value={row.selling_price_retail} onChange={(v) => updateRow(row.id, "selling_price_retail", v)} placeholder="0" type="number" hasError={!!rowErr.selling_price_retail} /></td>
-                      <td className="border-r border-border/40 py-0.5 px-0.5"><CellInput value={row.selling_price_wholesale} onChange={(v) => updateRow(row.id, "selling_price_wholesale", v)} placeholder="0" type="number" /></td>
-                      <td className="border-r border-border/40 py-0.5 px-0.5"><CellInput value={row.wholesale_min_qty} onChange={(v) => updateRow(row.id, "wholesale_min_qty", v)} placeholder="0" type="number" /></td>
-                      <td className="border-r border-border/40 py-0.5 px-0.5"><CellInput value={row.selling_price_special} onChange={(v) => updateRow(row.id, "selling_price_special", v)} placeholder="0" type="number" /></td>
-                      <td className="border-r border-border/40 py-0.5 px-0.5"><CellInput value={row.special_min_qty} onChange={(v) => updateRow(row.id, "special_min_qty", v)} placeholder="0" type="number" /></td>
+                      <td className="border-r border-border/40 py-0.5 px-0.5"><CellInput value={row.selling_price_wholesale} onChange={(v) => updateRow(row.id, "selling_price_wholesale", v)} placeholder="0" type="number" hasError={!!rowErr.selling_price_wholesale} /></td>
+                      <td className="border-r border-border/40 py-0.5 px-0.5"><CellInput value={row.wholesale_min_qty} onChange={(v) => updateRow(row.id, "wholesale_min_qty", v)} placeholder="0" type="number" hasError={!!rowErr.wholesale_min_qty} /></td>
+                      <td className="border-r border-border/40 py-0.5 px-0.5"><CellInput value={row.selling_price_special} onChange={(v) => updateRow(row.id, "selling_price_special", v)} placeholder="0" type="number" hasError={!!rowErr.selling_price_special} /></td>
+                      <td className="border-r border-border/40 py-0.5 px-0.5"><CellInput value={row.special_min_qty} onChange={(v) => updateRow(row.id, "special_min_qty", v)} placeholder="0" type="number" hasError={!!rowErr.special_min_qty} /></td>
                       <td className="w-10 py-0.5 text-center"><button onClick={() => removeRow(row.id)} className="opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive" title="Hapus baris"><Trash2 className="w-3.5 h-3.5" /></button></td>
                     </tr>
                   );
@@ -428,8 +498,8 @@ export function BulkProductModal({ isOpen, onClose, storeId, onProductsAdded }: 
           </div>
           <div className="px-6 py-3 border-t border-border bg-muted/30 flex-shrink-0">
             <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
-              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded border border-destructive bg-red-50 inline-block" /> Kolom wajib: Master Name (salah satu), Harga Modal, Eceran</span>
-              <span>• SKU kosong → auto-generate</span>
+              <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded border border-destructive bg-red-50 inline-block" /> Kolom wajib diisi (ditandai *)</span>
+              <span>• Gunakan "-" pada kolom SKU/Barcode untuk generate barcode otomatis</span>
             </div>
           </div>
           </div>

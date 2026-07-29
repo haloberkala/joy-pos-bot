@@ -15,7 +15,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Barcode, X } from "lucide-react";
+import { Plus, Barcode, X, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { 
   createProduct, 
@@ -34,6 +34,7 @@ import {
   ProductMaster 
 } from "@/services/productMasterService";
 import { generateProductName, generateShortName } from "@/lib/productUtils";
+import { generateUniqueBarcode } from "@/lib/barcodeUtils";
 
 interface AddProductModalProps {
   isOpen: boolean;
@@ -64,6 +65,7 @@ export function AddProductModal({
   } | null>(null);
   const [quickAddName, setQuickAddName] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isGeneratingBarcode, setIsGeneratingBarcode] = useState(false);
 
   // Auto-generate name preview
   const generatedName = useMemo(() => {
@@ -204,21 +206,82 @@ export function AddProductModal({
     }
   };
 
+  const handleGenerateBarcode = async () => {
+    try {
+      setIsGeneratingBarcode(true);
+      const barcode = await generateUniqueBarcode(storeId);
+      setFormData(p => ({ ...p, code: barcode }));
+      toast.success("Barcode berhasil digenerate");
+    } catch (error: any) {
+      console.error('Error generating barcode:', error);
+      toast.error(error.message || "Gagal generate barcode");
+    } finally {
+      setIsGeneratingBarcode(false);
+    }
+  };
+
   const handleSave = async () => {
-    if (!generatedName.trim()) {
-      toast.error("Nama produk belum terbentuk. Pilih minimal satu master data (Brand/Produk Utama/dll)");
+    // Validate ALL REQUIRED fields
+    // Master data
+    if (!formData.category_id) {
+      toast.error("Kategori wajib dipilih");
       return;
     }
+    if (!formData.main_product_id) {
+      toast.error("Produk Utama wajib dipilih");
+      return;
+    }
+    if (!formData.unit_id) {
+      toast.error("Satuan wajib dipilih");
+      return;
+    }
+    
+    // Barcode
     if (!formData.code?.trim()) {
-      toast.error("Kode/Barcode wajib diisi");
+      toast.error("Barcode/SKU wajib diisi");
       return;
     }
-    if ((formData.cost_price || 0) <= 0) {
-      toast.error("Harga modal harus > 0");
+    
+    // Inventory - quantity is required but CAN BE NEGATIVE (overselling allowed)
+    // Only validate on ADD mode, not EDIT (stock is managed separately)
+    if (!editingProduct) {
+      if (formData.quantity === undefined || formData.quantity === null) {
+        toast.error("Stok Awal wajib diisi");
+        return;
+      }
+    }
+    
+    // min_stock_alert is always required and must be >= 0
+    if (formData.min_stock_alert === undefined || formData.min_stock_alert < 0) {
+      toast.error("Stok Minimum wajib diisi (minimal 0)");
       return;
     }
-    if ((formData.selling_price_retail || 0) <= 0) {
-      toast.error("Harga jual eceran harus > 0");
+    
+    // Prices - all required and must be >= 0
+    if (!formData.cost_price || formData.cost_price < 0) {
+      toast.error("Harga Modal wajib diisi dan tidak boleh negatif");
+      return;
+    }
+    if (!formData.selling_price_retail || formData.selling_price_retail < 0) {
+      toast.error("Harga Jual Eceran wajib diisi dan tidak boleh negatif");
+      return;
+    }
+    if (!formData.selling_price_wholesale || formData.selling_price_wholesale < 0) {
+      toast.error("Harga Jual Grosir wajib diisi dan tidak boleh negatif");
+      return;
+    }
+    if (!formData.selling_price_special || formData.selling_price_special < 0) {
+      toast.error("Harga Jual Spesial wajib diisi dan tidak boleh negatif");
+      return;
+    }
+    
+    // Min quantities - all required and must be >= 0
+    if (formData.wholesale_min_qty === undefined || formData.wholesale_min_qty < 0) {
+      toast.error("Min. Qty Grosir wajib diisi (minimal 0)");
+      return;
+    }
+    if (formData.special_min_qty === undefined || formData.special_min_qty < 0) {
+      toast.error("Min. Qty Spesial wajib diisi (minimal 0)");
       return;
     }
 
@@ -236,14 +299,15 @@ export function AddProductModal({
         specification_id: formData.specification_id,
         size_id: formData.size_id,
         unit_id: formData.unit_id,
-        cost_price: formData.cost_price || 0,
-        selling_price_retail: formData.selling_price_retail || 0,
-        selling_price_wholesale: formData.selling_price_wholesale || 0,
-        selling_price_special: formData.selling_price_special || 0,
-        wholesale_min_qty: formData.wholesale_min_qty || 0,
-        special_min_qty: formData.special_min_qty || 0,
-        min_stock_alert: formData.min_stock_alert || 0,
-        quantity: formData.quantity || 0,
+        cost_price: formData.cost_price!,
+        selling_price_retail: formData.selling_price_retail!,
+        selling_price_wholesale: formData.selling_price_wholesale!,
+        selling_price_special: formData.selling_price_special!,
+        wholesale_min_qty: formData.wholesale_min_qty!,
+        special_min_qty: formData.special_min_qty!,
+        min_stock_alert: formData.min_stock_alert!,
+        // quantity only for create, not for update (stock managed separately)
+        ...(editingProduct ? {} : { quantity: formData.quantity! }),
       };
 
       if (editingProduct) {
@@ -253,6 +317,17 @@ export function AddProductModal({
         await createProduct({
           store_id: storeId,
           code: formData.code!,
+          category_id: formData.category_id!,
+          main_product_id: formData.main_product_id!,
+          unit_id: formData.unit_id!,
+          quantity: formData.quantity!,
+          min_stock_alert: formData.min_stock_alert!,
+          cost_price: formData.cost_price!,
+          selling_price_retail: formData.selling_price_retail!,
+          selling_price_wholesale: formData.selling_price_wholesale!,
+          selling_price_special: formData.selling_price_special!,
+          wholesale_min_qty: formData.wholesale_min_qty!,
+          special_min_qty: formData.special_min_qty!,
           ...payload,
         });
         toast.success("Produk berhasil ditambahkan");
@@ -272,15 +347,20 @@ export function AddProductModal({
     label, 
     type, 
     items, 
-    valueKey 
+    valueKey,
+    isRequired = true
   }: { 
     label: string, 
     type: 'category' | 'brand' | 'main_product' | 'variant' | 'specification' | 'size' | 'unit', 
     items: any[], 
-    valueKey: keyof CreateProductInput 
+    valueKey: keyof CreateProductInput,
+    isRequired?: boolean
   }) => (
     <div className="space-y-2">
-      <Label>{label}</Label>
+      <Label>
+        {label}
+        {isRequired && <span className="text-destructive ml-0.5">*</span>}
+      </Label>
       <div className="flex gap-1">
         <Select
           value={formData[valueKey]?.toString() || "none"}
@@ -343,32 +423,50 @@ export function AddProductModal({
 
         <div className="grid grid-cols-2 gap-4 py-4">
           
-          <MasterDropdown label="Kategori" type="category" items={categories} valueKey="category_id" />
-          <MasterDropdown label="Brand" type="brand" items={brands} valueKey="brand_id" />
-          <MasterDropdown label="Produk Utama" type="main_product" items={mainProducts} valueKey="main_product_id" />
-          <MasterDropdown label="Varian" type="variant" items={variants} valueKey="variant_id" />
-          <MasterDropdown label="Spesifikasi" type="specification" items={specifications} valueKey="specification_id" />
-          <MasterDropdown label="Ukuran/Isi" type="size" items={sizes} valueKey="size_id" />
+          <MasterDropdown label="Kategori" type="category" items={categories} valueKey="category_id" isRequired={true} />
+          <MasterDropdown label="Brand" type="brand" items={brands} valueKey="brand_id" isRequired={false} />
+          <MasterDropdown label="Produk Utama" type="main_product" items={mainProducts} valueKey="main_product_id" isRequired={true} />
+          <MasterDropdown label="Varian" type="variant" items={variants} valueKey="variant_id" isRequired={false} />
+          <MasterDropdown label="Spesifikasi" type="specification" items={specifications} valueKey="specification_id" isRequired={false} />
+          <MasterDropdown label="Ukuran/Isi" type="size" items={sizes} valueKey="size_id" isRequired={false} />
 
           {/* Barcode/SKU */}
           <div className="space-y-2">
-            <Label>Barcode/SKU *</Label>
-            <div className="relative">
-              <Input
-                value={formData.code || ""}
-                onChange={(e) => setFormData((p) => ({ ...p, code: e.target.value }))}
-                placeholder="Scan barcode"
-                data-barcode-input="true"
-              />
-              <Barcode className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Label>Barcode/SKU <span className="text-destructive">*</span></Label>
+            <div className="flex gap-1">
+              <div className="relative flex-1">
+                <Input
+                  value={formData.code || ""}
+                  onChange={(e) => setFormData((p) => ({ ...p, code: e.target.value }))}
+                  data-barcode-input="true"
+                />
+                <Barcode className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={handleGenerateBarcode}
+                disabled={isGeneratingBarcode}
+                title="Generate barcode otomatis"
+              >
+                {isGeneratingBarcode ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-4 h-4" />
+                )}
+              </Button>
             </div>
+            <p className="text-[11px] text-muted-foreground">
+              Isi "-" untuk generate otomatis saat menyimpan
+            </p>
           </div>
 
-          <MasterDropdown label="Satuan" type="unit" items={units} valueKey="unit_id" />
+          <MasterDropdown label="Satuan" type="unit" items={units} valueKey="unit_id" isRequired={true} />
 
           {/* Stok */}
           <div className="space-y-2">
-            <Label>Stok Awal</Label>
+            <Label>Stok Awal <span className="text-destructive">*</span></Label>
             <Input
               type="number"
               value={formData.quantity !== undefined ? formData.quantity : ""}
@@ -376,10 +474,15 @@ export function AddProductModal({
               placeholder="0"
               disabled={!!editingProduct}
             />
+            {!editingProduct && (
+              <p className="text-[11px] text-muted-foreground">
+                Boleh bernilai negatif apabila stok fisik belum tercatat di sistem
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">
-            <Label>Stok Minimum</Label>
+            <Label>Stok Minimum <span className="text-destructive">*</span></Label>
             <Input
               type="number"
               value={formData.min_stock_alert !== undefined ? formData.min_stock_alert : ""}
@@ -390,7 +493,7 @@ export function AddProductModal({
 
           {/* Harga Dasar & Eceran */}
           <div className="space-y-2">
-            <Label>Harga Modal *</Label>
+            <Label>Harga Modal <span className="text-destructive">*</span></Label>
             <Input
               type="number"
               value={formData.cost_price !== undefined ? formData.cost_price : ""}
@@ -400,7 +503,7 @@ export function AddProductModal({
           </div>
 
           <div className="space-y-2">
-            <Label>Harga Jual Eceran *</Label>
+            <Label>Harga Jual Eceran <span className="text-destructive">*</span></Label>
             <Input
               type="number"
               value={formData.selling_price_retail !== undefined ? formData.selling_price_retail : ""}
@@ -411,7 +514,7 @@ export function AddProductModal({
 
           {/* Harga Grosir */}
           <div className="space-y-2">
-            <Label>Harga Jual Grosir</Label>
+            <Label>Harga Jual Grosir <span className="text-destructive">*</span></Label>
             <Input
               type="number"
               value={formData.selling_price_wholesale !== undefined ? formData.selling_price_wholesale : ""}
@@ -421,7 +524,7 @@ export function AddProductModal({
           </div>
 
           <div className="space-y-2">
-            <Label>Min. Qty Grosir</Label>
+            <Label>Min. Qty Grosir <span className="text-destructive">*</span></Label>
             <Input
               type="number"
               value={formData.wholesale_min_qty !== undefined ? formData.wholesale_min_qty : ""}
@@ -432,7 +535,7 @@ export function AddProductModal({
 
           {/* Harga Spesial */}
           <div className="space-y-2">
-            <Label>Harga Jual Spesial</Label>
+            <Label>Harga Jual Spesial <span className="text-destructive">*</span></Label>
             <Input
               type="number"
               value={formData.selling_price_special !== undefined ? formData.selling_price_special : ""}
@@ -442,7 +545,7 @@ export function AddProductModal({
           </div>
 
           <div className="space-y-2">
-            <Label>Min. Qty Spesial</Label>
+            <Label>Min. Qty Spesial <span className="text-destructive">*</span></Label>
             <Input
               type="number"
               value={formData.special_min_qty !== undefined ? formData.special_min_qty : ""}

@@ -93,12 +93,19 @@ export interface Database {
           selling_price_retail: number
           selling_price_wholesale: number
           selling_price_special: number
+          wholesale_min_qty: number | null
+          special_min_qty: number | null
           is_active: boolean | null
           created_at: string | null
           updated_at: string | null
-          category_id: number | null
+          category_id: number
           brand_id: number | null
-          unit_id: number | null
+          unit_id: number
+          main_product_id: number
+          variant_id: number | null
+          specification_id: number | null
+          size_id: number | null
+          short_name: string | null
         }
         Insert: {
           id?: number
@@ -111,12 +118,19 @@ export interface Database {
           selling_price_retail: number
           selling_price_wholesale: number
           selling_price_special: number
+          wholesale_min_qty?: number | null
+          special_min_qty?: number | null
           is_active?: boolean | null
           created_at?: string | null
           updated_at?: string | null
-          category_id?: number | null
+          category_id: number
           brand_id?: number | null
-          unit_id?: number | null
+          unit_id: number
+          main_product_id: number
+          variant_id?: number | null
+          specification_id?: number | null
+          size_id?: number | null
+          short_name?: string | null
         }
         Update: {
           id?: number
@@ -129,12 +143,19 @@ export interface Database {
           selling_price_retail?: number
           selling_price_wholesale?: number
           selling_price_special?: number
+          wholesale_min_qty?: number | null
+          special_min_qty?: number | null
           is_active?: boolean | null
           created_at?: string | null
           updated_at?: string | null
-          category_id?: number | null
+          category_id?: number
           brand_id?: number | null
-          unit_id?: number | null
+          unit_id?: number
+          main_product_id?: number
+          variant_id?: number | null
+          specification_id?: number | null
+          size_id?: number | null
+          short_name?: string | null
         }
         Relationships: any[]
       }
@@ -779,6 +800,90 @@ export interface Database {
           store_id?: number
           name?: string
           description?: string | null
+          created_at?: string | null
+        }
+        Relationships: any[]
+      }
+      main_products: {
+        Row: {
+          id: number
+          store_id: number
+          name: string
+          created_at: string | null
+        }
+        Insert: {
+          id?: number
+          store_id: number
+          name: string
+          created_at?: string | null
+        }
+        Update: {
+          id?: number
+          store_id?: number
+          name?: string
+          created_at?: string | null
+        }
+        Relationships: any[]
+      }
+      variants: {
+        Row: {
+          id: number
+          store_id: number
+          name: string
+          created_at: string | null
+        }
+        Insert: {
+          id?: number
+          store_id: number
+          name: string
+          created_at?: string | null
+        }
+        Update: {
+          id?: number
+          store_id?: number
+          name?: string
+          created_at?: string | null
+        }
+        Relationships: any[]
+      }
+      specifications: {
+        Row: {
+          id: number
+          store_id: number
+          name: string
+          created_at: string | null
+        }
+        Insert: {
+          id?: number
+          store_id: number
+          name: string
+          created_at?: string | null
+        }
+        Update: {
+          id?: number
+          store_id?: number
+          name?: string
+          created_at?: string | null
+        }
+        Relationships: any[]
+      }
+      sizes: {
+        Row: {
+          id: number
+          store_id: number
+          name: string
+          created_at: string | null
+        }
+        Insert: {
+          id?: number
+          store_id: number
+          name: string
+          created_at?: string | null
+        }
+        Update: {
+          id?: number
+          store_id?: number
+          name?: string
           created_at?: string | null
         }
         Relationships: any[]

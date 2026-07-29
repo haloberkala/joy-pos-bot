@@ -57,45 +57,81 @@ function mapProduct(row: ProductRow): Product {
   };
 }
 
+/**
+ * CreateProductInput - Product creation payload
+ * 
+ * REQUIRED FIELDS (must be provided):
+ * - store_id, code, name
+ * - category_id, main_product_id, unit_id (master data)
+ * - quantity, min_stock_alert (inventory)
+ * - cost_price, selling_price_retail, selling_price_wholesale, selling_price_special (prices)
+ * - wholesale_min_qty, special_min_qty (quantity thresholds)
+ * 
+ * OPTIONAL FIELDS (nullable):
+ * - brand_id, variant_id, specification_id, size_id (optional master data)
+ * - short_name (auto-generated if not provided)
+ */
 export interface CreateProductInput {
   store_id: number;
   code: string;
   name: string;
-  category_id?: number;
+  
+  // Required master data
+  category_id: number;
+  main_product_id: number;
+  unit_id: number;
+  
+  // Optional master data
   brand_id?: number;
-  unit_id?: number;
-  main_product_id?: number;
   variant_id?: number;
   specification_id?: number;
   size_id?: number;
+  
   short_name?: string;
-  quantity?: number;
-  min_stock_alert?: number;
+  
+  // Required inventory fields
+  quantity: number;
+  min_stock_alert: number;
+  
+  // Required price fields
   cost_price: number;
   selling_price_retail: number;
-  selling_price_wholesale?: number;
-  selling_price_special?: number;
-  wholesale_min_qty?: number;
-  special_min_qty?: number;
+  selling_price_wholesale: number;
+  selling_price_special: number;
+  
+  // Required quantity thresholds
+  wholesale_min_qty: number;
+  special_min_qty: number;
 }
 
 export interface UpdateProductInput {
   name?: string;
   code?: string;
+  
+  // Master data (category, main_product, unit are required but can be updated)
   category_id?: number;
-  brand_id?: number;
-  unit_id?: number;
   main_product_id?: number;
+  unit_id?: number;
+  
+  // Optional master data
+  brand_id?: number;
   variant_id?: number;
   specification_id?: number;
   size_id?: number;
+  
   short_name?: string;
+  
+  // Inventory fields
   quantity?: number;
   min_stock_alert?: number;
+  
+  // Price fields
   cost_price?: number;
   selling_price_retail?: number;
   selling_price_wholesale?: number;
   selling_price_special?: number;
+  
+  // Quantity thresholds
   wholesale_min_qty?: number;
   special_min_qty?: number;
 }
@@ -202,22 +238,33 @@ export async function createProduct(input: CreateProductInput): Promise<Product>
         store_id: input.store_id,
         code: input.code,
         name: input.name,
-        category_id: input.category_id || null,
+        
+        // Required master data
+        category_id: input.category_id,
+        main_product_id: input.main_product_id,
+        unit_id: input.unit_id,
+        
+        // Optional master data (nullable)
         brand_id: input.brand_id || null,
-        unit_id: input.unit_id || null,
-        main_product_id: input.main_product_id || null,
         variant_id: input.variant_id || null,
         specification_id: input.specification_id || null,
         size_id: input.size_id || null,
+        
         short_name: input.short_name || null,
-        quantity: input.quantity || 0,
-        min_stock_alert: input.min_stock_alert || 5,
+        
+        // Required inventory fields
+        quantity: input.quantity,
+        min_stock_alert: input.min_stock_alert,
+        
+        // Required price fields
         cost_price: input.cost_price,
         selling_price_retail: input.selling_price_retail,
-        selling_price_wholesale: input.selling_price_wholesale || input.selling_price_retail,
-        selling_price_special: input.selling_price_special || input.selling_price_retail,
-        wholesale_min_qty: input.wholesale_min_qty || 0,
-        special_min_qty: input.special_min_qty || 0,
+        selling_price_wholesale: input.selling_price_wholesale,
+        selling_price_special: input.selling_price_special,
+        
+        // Required quantity thresholds
+        wholesale_min_qty: input.wholesale_min_qty,
+        special_min_qty: input.special_min_qty,
       })
       .select()
       .single();
@@ -297,22 +344,33 @@ export async function bulkCreateProducts(products: CreateProductInput[]): Promis
       store_id: input.store_id,
       code: input.code,
       name: input.name,
-      category_id: input.category_id || null,
+      
+      // Required master data
+      category_id: input.category_id,
+      main_product_id: input.main_product_id,
+      unit_id: input.unit_id,
+      
+      // Optional master data (nullable)
       brand_id: input.brand_id || null,
-      unit_id: input.unit_id || null,
-      main_product_id: input.main_product_id || null,
       variant_id: input.variant_id || null,
       specification_id: input.specification_id || null,
       size_id: input.size_id || null,
+      
       short_name: input.short_name || null,
-      quantity: input.quantity || 0,
-      min_stock_alert: input.min_stock_alert || 5,
+      
+      // Required inventory fields
+      quantity: input.quantity,
+      min_stock_alert: input.min_stock_alert,
+      
+      // Required price fields
       cost_price: input.cost_price,
       selling_price_retail: input.selling_price_retail,
-      selling_price_wholesale: input.selling_price_wholesale || input.selling_price_retail,
-      selling_price_special: input.selling_price_special || input.selling_price_retail,
-      wholesale_min_qty: input.wholesale_min_qty || 0,
-      special_min_qty: input.special_min_qty || 0,
+      selling_price_wholesale: input.selling_price_wholesale,
+      selling_price_special: input.selling_price_special,
+      
+      // Required quantity thresholds
+      wholesale_min_qty: input.wholesale_min_qty,
+      special_min_qty: input.special_min_qty,
     }));
 
     // Use bulk upsert. Must specify onConflict constraint name if there is one,

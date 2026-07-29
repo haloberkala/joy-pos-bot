@@ -18,6 +18,7 @@ import {
   ProductMaster 
 } from "@/services/productMasterService";
 import { generateProductName, generateShortName } from "@/lib/productUtils";
+import { generateUniqueBarcode, processNullablePlaceholder, isAutoGeneratePlaceholder } from "@/lib/barcodeUtils";
 
 interface ImportProductModalProps {
   isOpen: boolean;
@@ -46,44 +47,44 @@ export function ImportProductModal({ isOpen, onClose, storeId, onSuccess }: Impo
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const HEADERS = [
-    "Barcode/SKU *",
-    "Kategori",
-    "Brand",
+    "Barcode/SKU * (atau \"-\")",
+    "Kategori *",
+    "Brand (atau \"-\")",
     "Produk Utama *",
-    "Varian",
-    "Spesifikasi",
-    "Ukuran/Isi",
+    "Varian (atau \"-\")",
+    "Spesifikasi (atau \"-\")",
+    "Ukuran/Isi (atau \"-\")",
     "Satuan *",
-    "Stok Awal",
-    "Stok Minimum",
-    "Harga Modal",
+    "Stok Awal *",
+    "Stok Minimum *",
+    "Harga Modal *",
     "Harga Jual Eceran *",
     "Harga Jual Grosir *",
-    "Min Qty Grosir",
+    "Min. Qty Grosir *",
     "Harga Jual Spesial *",
-    "Min Qty Spesial"
+    "Min. Qty Spesial *"
   ];
 
   const handleDownloadTemplate = () => {
     const ws = XLSX.utils.aoa_to_sheet([
       HEADERS,
       [
-        "SKU-12345",         // Barcode
-        "Bahan Bangunan",    // Kategori
-        "Propan",            // Brand
-        "Cat Kayu dan Besi", // Produk Utama
-        "Merah",             // Varian
-        "Gloss",             // Spesifikasi
-        "1 Kg",              // Ukuran/Isi
-        "Kaleng",            // Satuan
-        100,                 // Stok Awal
-        10,                  // Stok Minimum
-        40000,               // Harga Modal
-        50000,               // Harga Jual Eceran
-        48000,               // Harga Jual Grosir
-        12,                  // Min Qty Grosir
-        45000,               // Harga Jual Spesial
-        50                   // Min Qty Spesial
+        "SKU-12345",         // Barcode * (atau "-")
+        "Bahan Bangunan",    // Kategori *
+        "Propan",            // Brand (atau "-")
+        "Cat Kayu dan Besi", // Produk Utama *
+        "Merah",             // Varian (atau "-")
+        "Gloss",             // Spesifikasi (atau "-")
+        "1 Kg",              // Ukuran/Isi (atau "-")
+        "Kaleng",            // Satuan *
+        100,                 // Stok Awal *
+        10,                  // Stok Minimum *
+        40000,               // Harga Modal *
+        50000,               // Harga Jual Eceran *
+        48000,               // Harga Jual Grosir *
+        12,                  // Min. Qty Grosir *
+        45000,               // Harga Jual Spesial *
+        50                   // Min. Qty Spesial *
       ]
     ]);
     
@@ -198,36 +199,128 @@ export function ImportProductModal({ isOpen, onClose, storeId, onSuccess }: Impo
         const normRow: Record<string, any> = {};
         Object.keys(row).forEach(k => normRow[k.trim()] = row[k]);
 
-        // Mandatory fields check
-        const code = normRow["Barcode/SKU *"]?.toString().trim() || "";
+        // Read all field values first
+        let code = normRow["Barcode/SKU * (atau \"-\")"]?.toString().trim() || "";
+        const categoryName = normRow["Kategori *"]?.toString().trim() || "";
         const mainProductName = normRow["Produk Utama *"]?.toString().trim() || "";
         const unitName = normRow["Satuan *"]?.toString().trim() || "";
+        
+        const stokAwal = normRow["Stok Awal *"];
+        const stokMin = normRow["Stok Minimum *"];
+        const hargaModal = normRow["Harga Modal *"];
         const priceRetail = parseFloat(normRow["Harga Jual Eceran *"]);
         const priceWholesale = parseFloat(normRow["Harga Jual Grosir *"]);
+        const minQtyGrosir = normRow["Min. Qty Grosir *"];
         const priceSpecial = parseFloat(normRow["Harga Jual Spesial *"]);
+        const minQtySpesial = normRow["Min. Qty Spesial *"];
 
-        if (!code) { errors.push({ rowNumber, sku: code, reason: "Kolom 'Barcode/SKU' wajib diisi." }); continue; }
-        if (!mainProductName) { errors.push({ rowNumber, sku: code, reason: "Kolom 'Produk Utama' wajib diisi." }); continue; }
-        if (!unitName) { errors.push({ rowNumber, sku: code, reason: "Kolom 'Satuan' wajib diisi." }); continue; }
+        // Validate required fields - reject "-" in required fields (except barcode)
+        if (!code) { errors.push({ rowNumber, sku: code, reason: "Barcode/SKU wajib diisi." }); continue; }
         
-        if (isNaN(priceRetail)) { errors.push({ rowNumber, sku: code, reason: "Format 'Harga Jual Eceran' tidak valid (harus angka)." }); continue; }
-        if (isNaN(priceWholesale)) { errors.push({ rowNumber, sku: code, reason: "Format 'Harga Jual Grosir' tidak valid (harus angka)." }); continue; }
-        if (isNaN(priceSpecial)) { errors.push({ rowNumber, sku: code, reason: "Format 'Harga Jual Spesial' tidak valid (harus angka)." }); continue; }
+        if (!categoryName || categoryName === '-') { 
+          errors.push({ rowNumber, sku: code, reason: "Kategori wajib diisi. Nilai '-' hanya diperbolehkan untuk field opsional." }); 
+          continue; 
+        }
+        
+        if (!mainProductName || mainProductName === '-') { 
+          errors.push({ rowNumber, sku: code, reason: "Produk Utama wajib diisi. Nilai '-' hanya diperbolehkan untuk field opsional." }); 
+          continue; 
+        }
+        
+        if (!unitName || unitName === '-') { 
+          errors.push({ rowNumber, sku: code, reason: "Satuan wajib diisi. Nilai '-' hanya diperbolehkan untuk field opsional." }); 
+          continue; 
+        }
+        
+        // Process barcode: if "-", generate unique barcode
+        if (code === '-') {
+          code = await generateUniqueBarcode(storeId);
+        }
+        
+        // Stok Awal: required but CAN BE NEGATIVE (overselling allowed)
+        if (stokAwal === undefined || stokAwal === null || stokAwal === "") { 
+          errors.push({ rowNumber, sku: code, reason: "Stok Awal wajib diisi." }); 
+          continue; 
+        }
+        const parsedStokAwal = parseInt(stokAwal);
+        if (isNaN(parsedStokAwal)) {
+          errors.push({ rowNumber, sku: code, reason: "Stok Awal harus berupa angka." }); 
+          continue;
+        }
+        
+        // Stok Minimum: required and must be >= 0
+        if (stokMin === undefined || stokMin === null || stokMin === "") { 
+          errors.push({ rowNumber, sku: code, reason: "Stok Minimum wajib diisi." }); 
+          continue; 
+        }
+        const parsedStokMin = parseInt(stokMin);
+        if (isNaN(parsedStokMin) || parsedStokMin < 0) {
+          errors.push({ rowNumber, sku: code, reason: "Stok Minimum harus berupa angka >= 0." }); 
+          continue;
+        }
+        
+        // Harga Modal: required and must be >= 0
+        if (!hargaModal || parseFloat(hargaModal) < 0) { 
+          errors.push({ rowNumber, sku: code, reason: "Harga Modal wajib diisi dan tidak boleh negatif." }); 
+          continue; 
+        }
+        
+        // Prices: all required and must be >= 0
+        if (isNaN(priceRetail) || priceRetail < 0) { 
+          errors.push({ rowNumber, sku: code, reason: "Harga Jual Eceran wajib diisi dan tidak boleh negatif." }); 
+          continue; 
+        }
+        if (isNaN(priceWholesale) || priceWholesale < 0) { 
+          errors.push({ rowNumber, sku: code, reason: "Harga Jual Grosir wajib diisi dan tidak boleh negatif." }); 
+          continue; 
+        }
+        if (isNaN(priceSpecial) || priceSpecial < 0) { 
+          errors.push({ rowNumber, sku: code, reason: "Harga Jual Spesial wajib diisi dan tidak boleh negatif." }); 
+          continue; 
+        }
+        
+        // Min Quantities: all required and must be >= 0
+        if (minQtyGrosir === undefined || minQtyGrosir === null || minQtyGrosir === "") { 
+          errors.push({ rowNumber, sku: code, reason: "Min. Qty Grosir wajib diisi." }); 
+          continue; 
+        }
+        const parsedMinQtyGrosir = parseInt(minQtyGrosir);
+        if (isNaN(parsedMinQtyGrosir) || parsedMinQtyGrosir < 0) {
+          errors.push({ rowNumber, sku: code, reason: "Min. Qty Grosir harus berupa angka >= 0." }); 
+          continue;
+        }
+        
+        if (minQtySpesial === undefined || minQtySpesial === null || minQtySpesial === "") { 
+          errors.push({ rowNumber, sku: code, reason: "Min. Qty Spesial wajib diisi." }); 
+          continue; 
+        }
+        const parsedMinQtySpesial = parseInt(minQtySpesial);
+        if (isNaN(parsedMinQtySpesial) || parsedMinQtySpesial < 0) {
+          errors.push({ rowNumber, sku: code, reason: "Min. Qty Spesial harus berupa angka >= 0." }); 
+          continue;
+        }
 
         setProgress(40 + Math.floor((i / rows.length) * 40)); // Progress 40 -> 80
 
         try {
-          const brandName = normRow["Brand"]?.toString().trim();
-          const variantName = normRow["Varian"]?.toString().trim();
-          const specName = normRow["Spesifikasi"]?.toString().trim();
-          const sizeName = normRow["Ukuran/Isi"]?.toString().trim();
+          // Optional fields - process "-" as NULL, don't create master data
+          let brandName = normRow["Brand (atau \"-\")"]?.toString().trim();
+          let variantName = normRow["Varian (atau \"-\")"]?.toString().trim();
+          let specName = normRow["Spesifikasi (atau \"-\")"]?.toString().trim();
+          let sizeName = normRow["Ukuran/Isi (atau \"-\")"]?.toString().trim();
+          
+          // Process nullable placeholders
+          brandName = processNullablePlaceholder(brandName) || undefined;
+          variantName = processNullablePlaceholder(variantName) || undefined;
+          specName = processNullablePlaceholder(specName) || undefined;
+          sizeName = processNullablePlaceholder(sizeName) || undefined;
 
-          const catId = await getMasterId(normRow["Kategori"]?.toString(), 'cat');
-          const brandId = await getMasterId(brandName, 'brand');
+          const catId = await getMasterId(categoryName, 'cat');
+          const brandId = brandName ? await getMasterId(brandName, 'brand') : undefined;
           const mainId = await getMasterId(mainProductName, 'main');
-          const varId = await getMasterId(variantName, 'var');
-          const specId = await getMasterId(specName, 'spec');
-          const sizeId = await getMasterId(sizeName, 'size');
+          const varId = variantName ? await getMasterId(variantName, 'var') : undefined;
+          const specId = specName ? await getMasterId(specName, 'spec') : undefined;
+          const sizeId = sizeName ? await getMasterId(sizeName, 'size') : undefined;
           const unitId = await getMasterId(unitName, 'unit');
 
           const generatedName = generateProductName({
@@ -245,21 +338,31 @@ export function ImportProductModal({ isOpen, onClose, storeId, onSuccess }: Impo
             code,
             name: generatedName,
             short_name: shortName,
-            category_id: catId,
+            
+            // Required master data
+            category_id: catId!,
+            main_product_id: mainId!,
+            unit_id: unitId!,
+            
+            // Optional master data
             brand_id: brandId,
-            main_product_id: mainId,
             variant_id: varId,
             specification_id: specId,
             size_id: sizeId,
-            unit_id: unitId,
-            quantity: parseInt(normRow["Stok Awal"]) || 0,
-            min_stock_alert: parseInt(normRow["Stok Minimum"]) || 0,
-            cost_price: parseFloat(normRow["Harga Modal"]) || 0,
+            
+            // Required inventory (quantity can be negative - overselling)
+            quantity: parsedStokAwal,
+            min_stock_alert: parsedStokMin,
+            
+            // Required prices (all must be >= 0)
+            cost_price: parseFloat(hargaModal),
             selling_price_retail: priceRetail,
             selling_price_wholesale: priceWholesale,
-            wholesale_min_qty: parseInt(normRow["Min Qty Grosir"]) || 0,
             selling_price_special: priceSpecial,
-            special_min_qty: parseInt(normRow["Min Qty Spesial"]) || 0,
+            
+            // Required min quantities (all must be >= 0)
+            wholesale_min_qty: parsedMinQtyGrosir,
+            special_min_qty: parsedMinQtySpesial,
           };
 
           validProducts.push(productInput);
@@ -313,7 +416,7 @@ export function ImportProductModal({ isOpen, onClose, storeId, onSuccess }: Impo
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !isProcessing && !open && onClose()}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className="sm:max-w-[800px]">
         <DialogHeader>
           <DialogTitle>Import Produk via Excel</DialogTitle>
           <DialogDescription>
@@ -327,10 +430,14 @@ export function ImportProductModal({ isOpen, onClose, storeId, onSuccess }: Impo
             <div className="text-sm text-blue-900 space-y-1">
               <p className="font-semibold">Petunjuk Pengisian:</p>
               <ul className="list-disc list-inside space-y-1 ml-1 text-blue-800">
-                <li>Kolom bertanda <strong className="text-red-600">* (Wajib)</strong> tidak boleh kosong.</li>
-                <li>Baris pertama (Header) tidak boleh diubah.</li>
-                <li>Sistem akan otomatis membuat master data baru jika nama (Brand/Varian/dll) belum ada di database.</li>
-                <li>Nama produk otomatis di-generate dari gabungan (Brand + Utama + Varian + Spesifikasi + Ukuran).</li>
+                <li>Kolom bertanda <strong className="text-red-600">*</strong> wajib diisi dan tidak boleh kosong</li>
+                <li>Kolom tanpa tanda * (Brand, Varian, Spesifikasi, Ukuran/Isi) boleh dikosongkan</li>
+                <li>Isi <strong>"-"</strong> pada Barcode/SKU untuk membuat kode barcode otomatis</li>
+                <li>Isi <strong>"-"</strong> pada bagian opsional (Brand, Varian, Spesifikasi, Ukuran/Isi) untuk mengosongkan data</li>
+                <li>Jangan isi <strong>"-"</strong> pada field wajib (Kategori, Produk Utama, Satuan, dll) karena akan ditolak sistem</li>
+                <li>Baris pertama (Header) tidak boleh diubah</li>
+                <li>Nama yang belum ada di daftar akan otomatis ditambahkan sebagai pilihan baru</li>
+                <li>Nama produk otomatis di-generate dari gabungan master data</li>
               </ul>
             </div>
           </div>
