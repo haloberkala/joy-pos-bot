@@ -663,11 +663,10 @@ export default function Products() {
                 <p className="text-muted-foreground">Memuat produk...</p>
               </div>
             ) : (
-              <Table className="min-w-[1800px]">
+              <Table className="min-w-[1700px]">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="font-semibold whitespace-nowrap">Nama Produk</TableHead>
-                  <TableHead className="font-semibold whitespace-nowrap">Nama Pendek</TableHead>
                   <TableHead className="font-semibold whitespace-nowrap">Kategori</TableHead>
                   <TableHead className="font-semibold whitespace-nowrap">Brand</TableHead>
                   <TableHead className="font-semibold whitespace-nowrap">Produk Utama</TableHead>
@@ -700,9 +699,6 @@ export default function Products() {
                         <div className="flex flex-col">
                           <span>{product.name || "-"}</span>
                         </div>
-                      </TableCell>
-                      <TableCell className="text-sm py-4 whitespace-nowrap">
-                        <span className="font-mono text-muted-foreground">{product.short_name || "-"}</span>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground py-4 whitespace-nowrap">
                         {product.category_name || "-"}

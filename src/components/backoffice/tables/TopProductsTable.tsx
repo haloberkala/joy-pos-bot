@@ -53,10 +53,13 @@ export function TopProductsTable({ sales, storeId, limit = 10 }: TopProductsTabl
     saleItems.forEach(item => {
       const key = item.product_id ? `prod-${item.product_id}` : `service-${item.product_name}`;
       
+      // Use product.name from JOIN if available, fallback to product_name
+      const displayName = item.product?.name ?? item.product_name;
+      
       if (!salesMap[key]) {
         salesMap[key] = {
           productId: item.product_id,
-          productName: item.product_name,
+          productName: displayName,
           quantitySold: 0,
           totalRevenue: 0,
           avgPrice: item.price_per_unit,

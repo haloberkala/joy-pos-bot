@@ -35,7 +35,7 @@ export interface RefundReportItem {
 
 /**
  * Get sales report by product for a store
- * Uses cost_per_unit (correct column name in sale_items)
+ * Uses JOIN to products table to get latest product name
  */
 export async function getSalesReport(
   storeId: number,
@@ -51,6 +51,7 @@ export async function getSalesReport(
         quantity,
         total_price,
         cost_per_unit,
+        product:products(id, name),
         sale:sales!inner(store_id, sale_date, payment_status)
       `)
       .eq('sale.store_id', storeId)
@@ -69,6 +70,9 @@ export async function getSalesReport(
       const key = item.product_id ? String(item.product_id) : item.product_name;
       const existing = productMap.get(key);
       const itemCost = (item.cost_per_unit || 0) * item.quantity;
+      
+      // Use product.name from JOIN if available, fallback to product_name
+      const displayName = item.product?.name ?? item.product_name ?? `Produk #${item.product_id}`;
 
       if (existing) {
         existing.quantity += item.quantity;
@@ -78,7 +82,7 @@ export async function getSalesReport(
       } else {
         productMap.set(key, {
           product_id: item.product_id,
-          product_name: item.product_name || `Produk #${item.product_id}`,
+          product_name: displayName,
           quantity: item.quantity,
           revenue: item.total_price,
           cost: itemCost,

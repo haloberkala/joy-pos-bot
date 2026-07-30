@@ -55,12 +55,24 @@ export function BrandSalesChart({ sales, storeId }: BrandSalesChartProps) {
   };
 
   const chartData = useMemo(() => {
-    if (saleItems.length === 0 || products.length === 0) return [];
+    if (saleItems.length === 0) return [];
     const byBrand: Record<number | string, { name: string; value: number }> = {};
 
     saleItems.forEach((item) => {
-      const product = products.find((p) => p.code === item.product_code || p.name === item.product_name);
-      const brandId = product?.brand_id ?? 0;
+      // Use product_id for matching (more reliable than name matching)
+      let brandId: number | null = null;
+      
+      if (item.product_id) {
+        const product = products.find((p) => p.id === item.product_id);
+        brandId = product?.brand_id ?? null;
+      }
+      
+      // Fallback to name matching for legacy data without product_id
+      if (!brandId && !item.product_id) {
+        const product = products.find((p) => p.code === item.product_code || p.name === item.product_name);
+        brandId = product?.brand_id ?? null;
+      }
+      
       const brand = brands.find((b) => b.id === brandId);
       const key = brandId || 'none';
       if (!byBrand[key]) byBrand[key] = { name: brand?.name || 'Tanpa Brand', value: 0 };

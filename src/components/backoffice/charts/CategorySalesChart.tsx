@@ -56,12 +56,24 @@ export function CategorySalesChart({ sales, storeId }: CategorySalesChartProps) 
   };
 
   const chartData = useMemo(() => {
-    if (saleItems.length === 0 || products.length === 0) return [];
+    if (saleItems.length === 0) return [];
     const byCategory: Record<number | string, { name: string; value: number }> = {};
 
     saleItems.forEach((item) => {
-      const product = products.find((p) => p.code === item.product_code || p.name === item.product_name);
-      const catId = product?.category_id ?? 0;
+      // Use product_id for matching (more reliable than name matching)
+      let catId: number | null = null;
+      
+      if (item.product_id) {
+        const product = products.find((p) => p.id === item.product_id);
+        catId = product?.category_id ?? null;
+      }
+      
+      // Fallback to name matching for legacy data without product_id
+      if (!catId && !item.product_id) {
+        const product = products.find((p) => p.code === item.product_code || p.name === item.product_name);
+        catId = product?.category_id ?? null;
+      }
+      
       const category = categories.find((c) => c.id === catId);
       const key = catId || 'none';
       if (!byCategory[key]) byCategory[key] = { name: category?.name || 'Tanpa Kategori', value: 0 };
