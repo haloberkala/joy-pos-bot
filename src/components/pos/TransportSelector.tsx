@@ -22,10 +22,18 @@ export function TransportSelector() {
   }, []);
 
   const handleToggle = async (mode: 'webusb' | 'serial') => {
-    if (activeTransport === mode || isConnecting) return;
+    // Izinkan klik ulang pada transport yang sama untuk reconnect/pair ulang
+    if (isConnecting) return;
 
     setIsConnecting(true);
     try {
+      const isSameTransport = activeTransport === mode;
+      
+      if (isSameTransport) {
+        // Klik ulang pada transport yang sama: reconnect/pair ulang
+        toast.info(`${mode === 'webusb' ? 'USB' : 'Bluetooth'}: Memilih perangkat...`);
+      }
+      
       setActiveTransport(mode);
       
       // Disconnect jika sedang terhubung
@@ -33,10 +41,10 @@ export function TransportSelector() {
         await printerManager.disconnect();
       }
 
-      // Set transport baru
+      // Set transport (baru atau sama)
       printerManager.setActiveTransport(mode);
       
-      // Connect ke transport baru
+      // Connect ke transport - akan memunculkan device picker
       await printerManager.connect();
       
       toast.success(`Mode ${mode === 'webusb' ? 'USB' : 'Bluetooth'} siap digunakan!`);
@@ -60,12 +68,15 @@ export function TransportSelector() {
         disabled={isConnecting}
         className={cn(
           "flex items-center gap-1.5 px-3 py-1 text-[12px] font-medium transition-all duration-200 rounded-md",
+          "cursor-pointer", // Selalu clickable
           activeTransport === 'webusb'
-            ? "bg-primary text-primary-foreground shadow-sm" 
+            ? "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90" 
             : "text-muted-foreground hover:text-foreground hover:bg-accent/50",
           isConnecting && "opacity-50 cursor-wait"
         )}
-        title="Gunakan koneksi Kabel USB (WebUSB)"
+        title={activeTransport === 'webusb' 
+          ? "Klik untuk reconnect atau ganti printer USB" 
+          : "Gunakan koneksi Kabel USB (WebUSB)"}
         aria-label="Transport: USB"
         aria-pressed={activeTransport === 'webusb'}
       >
@@ -78,12 +89,15 @@ export function TransportSelector() {
         disabled={isConnecting}
         className={cn(
           "flex items-center gap-1.5 px-3 py-1 text-[12px] font-medium transition-all duration-200 rounded-md",
+          "cursor-pointer", // Selalu clickable
           activeTransport === 'serial'
-            ? "bg-primary text-primary-foreground shadow-sm" 
+            ? "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90" 
             : "text-muted-foreground hover:text-foreground hover:bg-accent/50",
           isConnecting && "opacity-50 cursor-wait"
         )}
-        title="Gunakan koneksi Bluetooth (Web Serial)"
+        title={activeTransport === 'serial' 
+          ? "Klik untuk reconnect atau ganti printer Bluetooth" 
+          : "Gunakan koneksi Bluetooth (Web Serial)"}
         aria-label="Transport: Bluetooth"
         aria-pressed={activeTransport === 'serial'}
       >
