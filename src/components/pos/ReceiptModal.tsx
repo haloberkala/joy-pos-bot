@@ -239,11 +239,12 @@ export function ReceiptModal({
   return (
     <Dialog open={isOpen} onOpenChange={(_open) => {}}>
       <DialogContent
-        className="sm:max-w-md"
+        className="sm:max-w-md max-h-[85vh] overflow-hidden gap-0 p-4 flex flex-col"
         hideCloseButton
         onPointerDownOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => e.preventDefault()}
       >
+
         <DialogHeader>
           <DialogTitle className="text-center">Struk Pembayaran</DialogTitle>
           <DialogDescription className="sr-only">
@@ -251,98 +252,117 @@ export function ReceiptModal({
           </DialogDescription>
         </DialogHeader>
 
-        {/* ── Receipt Preview ── */}
-        <div className="space-y-4 font-mono text-xs py-4">
-          {/* Header */}
-          <div className="text-center border-b border-dashed pb-3">
-            <p className="font-bold text-sm uppercase mb-3">STRUK PEMBAYARAN</p>
-            <h3 className="font-bold text-base">{store?.name || 'Toko'}</h3>
-            {store?.address && <p className="text-muted-foreground mt-1">{store.address}</p>}
-            {store?.phone && <p className="text-muted-foreground mt-0.5">{store.phone}</p>}
-          </div>
+        {/* ── Receipt Preview Viewport ── */}
+        {/*
+          Konsep: PDF Viewer / Print Preview
+          - Viewport: tinggi tetap, overflow-y-auto (hanya area ini yang scroll)
+          - Receipt: dirender di dalam viewport, di-scale dengan CSS zoom ~0.68
+          - zoom (bukan transform:scale) dipilih karena mempengaruhi layout flow
+            sehingga tinggi yang ditempuh di DOM juga ikut dikecilkan.
+          - Modal tidak pernah berubah tinggi. Tombol selalu terlihat.
+        */}
+        <div
+          className="my-2 rounded-lg border bg-slate-100 dark:bg-slate-800 overflow-y-auto overflow-x-hidden py-4 flex-shrink-0"
+          style={{ height: '420px' }}
+        >
+          {/* Receipt paper — scaled 68% untuk preview */}
+          <div
+            className="bg-white text-black shadow-md rounded-sm border border-slate-200 mx-auto h-fit flex-shrink-0 space-y-4 font-mono text-xs p-4"
+            style={{ zoom: 0.68, width: '320px', transformOrigin: 'top center' }}
+          >
 
-          {/* Transaction Info */}
-          <div className="space-y-1 border-b border-dashed pb-3">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">No Invoice</span>
-              <span className="font-medium">{sale.invoice_number}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Tanggal</span>
-              <span className="font-medium">{dateStr} {timeStr}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Kasir</span>
-              <span className="font-medium">{cashierName}</span>
-            </div>
-            {customerName && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Pelanggan</span>
-                <span className="font-medium">{customerName}</span>
+              {/* Header toko */}
+              <div className="text-center border-b border-dashed pb-3">
+                <p className="font-bold text-sm uppercase mb-3">STRUK PEMBAYARAN</p>
+                <h3 className="font-bold text-base">{store?.name || 'Toko'}</h3>
+                {store?.address && <p className="text-muted-foreground mt-1">{store.address}</p>}
+                {store?.phone && <p className="text-muted-foreground mt-0.5">{store.phone}</p>}
               </div>
-            )}
-          </div>
 
-          {/* Items */}
-          <div className="space-y-2.5 border-b border-dashed pb-3">
-            {saleDetails.map((item, idx) => {
-              const displayName = item.product?.short_name || item.product?.name || `Produk #${item.product_id}`;
-              return (
-                <div key={idx} className="space-y-0.5">
-                  <div className="font-medium">{displayName}</div>
-                  <div className="flex justify-between text-muted-foreground">
-                    <span>{item.quantity}x {formatCurrency(item.price_at_sale)}</span>
-                    <span className="font-medium">{formatCurrency(item.total_price)}</span>
-                  </div>
+              {/* Info transaksi */}
+              <div className="space-y-1 border-b border-dashed pb-3">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">No Invoice</span>
+                  <span className="font-medium">{sale.invoice_number}</span>
                 </div>
-              );
-            })}
-          </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Tanggal</span>
+                  <span className="font-medium">{dateStr} {timeStr}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Kasir</span>
+                  <span className="font-medium">{cashierName}</span>
+                </div>
+                {customerName && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Pelanggan</span>
+                    <span className="font-medium">{customerName}</span>
+                  </div>
+                )}
+              </div>
 
-          {/* Payment */}
-          <div className="space-y-1 border-b border-dashed pb-3">
-            <div className="flex justify-between font-bold text-sm">
-              <span>TOTAL</span>
-              <span>{formatCurrency(sale.grand_total)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Bayar</span>
-              <span className="font-medium">{formatCurrency(sale.amount_received || sale.grand_total)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Kembali</span>
-              <span className="font-medium">{formatCurrency(sale.change_amount || 0)}</span>
-            </div>
-          </div>
+              {/* Items */}
+              <div className="space-y-2.5 border-b border-dashed pb-3">
+                {saleDetails.map((item, idx) => {
+                  const displayName = item.product?.short_name || item.product?.name || `Produk #${item.product_id}`;
+                  return (
+                    <div key={idx} className="space-y-0.5">
+                      <div className="font-medium">{displayName}</div>
+                      <div className="flex justify-between text-muted-foreground">
+                        <span>{item.quantity}x {formatCurrency(item.price_at_sale)}</span>
+                        <span className="font-medium">{formatCurrency(item.total_price)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
 
-          {/* Footer */}
-          <div className="text-center text-muted-foreground text-[11px] space-y-1">
-            <p className="font-medium">Terima kasih sudah berbelanja!</p>
-            <div className="h-1"></div>
-            <p>Barang yang telah dibeli dapat dikembalikan</p>
-            <p>Syarat & Ketentuan Berlaku</p>
-            <div className="pt-3 pb-2 flex justify-center">
-              <QRCodeSVG
-                value={sale.invoice_number}
-                size={80}
-                bgColor={"#ffffff"}
-                fgColor={"#000000"}
-                level={"L"}
-              />
+              {/* Payment summary */}
+              <div className="space-y-1 border-b border-dashed pb-3">
+                <div className="flex justify-between font-bold text-sm">
+                  <span>TOTAL</span>
+                  <span>{formatCurrency(sale.grand_total)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Bayar</span>
+                  <span className="font-medium">{formatCurrency(sale.amount_received || sale.grand_total)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Kembali</span>
+                  <span className="font-medium">{formatCurrency(sale.change_amount || 0)}</span>
+                </div>
+              </div>
+
+              {/* Footer + QR */}
+              <div className="text-center text-muted-foreground text-[11px] space-y-1">
+                <p className="font-medium">Terima kasih sudah berbelanja!</p>
+                <div className="h-1" />
+                <p>Barang yang telah dibeli dapat dikembalikan</p>
+                <p>Syarat &amp; Ketentuan Berlaku</p>
+                <div className="pt-3 pb-2 flex justify-center">
+                  <QRCodeSVG
+                    value={sale.invoice_number}
+                    size={80}
+                    bgColor={"#ffffff"}
+                    fgColor={"#000000"}
+                    level={"L"}
+                  />
+                </div>
+                <p className="text-xs font-medium text-foreground">{sale.invoice_number}</p>
+              </div>
+
             </div>
-            <p className="text-xs font-medium text-foreground">{sale.invoice_number}</p>
-          </div>
         </div>
 
         {/* ── Keyboard Hints ── */}
-        <div className="flex items-center justify-center gap-3 pt-1 text-[10px] text-muted-foreground">
+        <div className="flex-shrink-0 flex items-center justify-center gap-3 pt-2 pb-1 text-[10px] text-muted-foreground">
           <span><kbd className="px-1 py-0.5 rounded border bg-muted font-mono text-[9px]">Esc</kbd> Tutup</span>
           <span><kbd className="px-1 py-0.5 rounded border bg-muted font-mono text-[9px]">Enter</kbd> Cetak Struk</span>
           <span><kbd className="px-1 py-0.5 rounded border bg-muted font-mono text-[9px]">Ctrl+Enter</kbd> Print Faktur</span>
         </div>
 
         {/* ── Action Buttons ── */}
-        <div className="flex items-center gap-2 pt-1">
+        <div className="flex-shrink-0 flex items-center gap-2 pt-2 border-t">
           <Button
             variant="outline"
             className="flex-none px-3"
