@@ -35,6 +35,7 @@ export interface SaleItem {
   price_mode: 'retail' | 'wholesale' | 'special' | null;
   is_service: boolean;
   created_at: string;
+  product?: { name: string } | null;
 }
 
 export interface CreateSaleInput {
@@ -170,7 +171,7 @@ export async function getSaleWithItems(saleId: number): Promise<{
   try {
     const [saleResult, itemsResult] = await Promise.all([
       supabase.from('sales').select('*').eq('id', saleId).single(),
-      supabase.from('sale_items').select('*').eq('sale_id', saleId),
+      supabase.from('sale_items').select('*, product:products(name)').eq('sale_id', saleId),
     ]);
 
     if (saleResult.error) throw saleResult.error;
@@ -227,7 +228,7 @@ export async function getSaleItemsBySale(saleId: number): Promise<SaleItem[]> {
   try {
     const { data, error } = await supabase
       .from('sale_items')
-      .select('*')
+      .select('*, product:products(name)')
       .eq('sale_id', saleId);
 
     if (error) throw error;
@@ -247,7 +248,7 @@ export async function getSaleItemsBySaleIds(saleIds: number[]): Promise<SaleItem
   try {
     const { data, error } = await supabase
       .from('sale_items')
-      .select('*')
+      .select('*, product:products(name)')
       .in('sale_id', saleIds);
 
     if (error) throw error;

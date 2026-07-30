@@ -22,6 +22,7 @@ interface ReceiptModalProps {
   saleDetails: (SaleDetail & { product?: Product })[];
   cashierName: string;
   customerName?: string;
+  customerPhone?: string;
   store?: { name: string; address?: string | null; phone?: string | null } | null;
 }
 
@@ -32,6 +33,7 @@ export function ReceiptModal({
   saleDetails,
   cashierName,
   customerName,
+  customerPhone,
   store,
 }: ReceiptModalProps) {
   // ─── Handler: Cetak Struk Thermal ─────────────────────────────────────────
@@ -201,6 +203,7 @@ export function ReceiptModal({
       items,
       store,
       customerName,
+      customerPhone,
     });
   };
 

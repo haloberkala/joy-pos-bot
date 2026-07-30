@@ -232,6 +232,11 @@ export default function Transactions() {
     return customers.find(c => c.id === id)?.name || '-';
   };
 
+  const getCustomerPhone = (id: number | null) => {
+    if (!id) return undefined;
+    return customers.find(c => c.id === id)?.phone;
+  };
+
   const getRemainingDebtForSale = (sale: Sale): number => {
     const debtInfo = debtTotals.get(sale.id);
     return debtInfo?.remaining || sale.grand_total;
@@ -567,6 +572,7 @@ export default function Transactions() {
                       items: selectedSaleItems, 
                       store: currentStore,
                       customerName: getCustomerName(selectedSale.customer_id),
+                      customerPhone: getCustomerPhone(selectedSale.customer_id),
                     });
                   }
                 }}>

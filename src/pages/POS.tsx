@@ -445,7 +445,7 @@ export default function POS() {
       const saleItems = [
         ...items.map(item => ({
           product_id: item.product.id,
-          product_name: item.product.short_name || item.product.name,
+          product_name: item.product.name,
           product_code: item.product.code,
           quantity: item.quantity,
           price_per_unit: item.price_per_unit,
@@ -554,7 +554,7 @@ export default function POS() {
       const saleItems = [
         ...items.map(item => ({
           product_id: item.product.id,
-          product_name: item.product.short_name || item.product.name,
+          product_name: item.product.name,
           product_code: item.product.code,
           quantity: item.quantity,
           price_per_unit: item.price_per_unit,
@@ -720,7 +720,7 @@ export default function POS() {
       const saleItems = [
         ...items.map(item => ({
           product_id: item.product.id,
-          product_name: item.product.short_name || item.product.name,
+          product_name: item.product.name,
           product_code: item.product.code,
           quantity: item.quantity,
           price_per_unit: item.price_per_unit,
@@ -1436,6 +1436,11 @@ export default function POS() {
         customerName={
           currentSale?.customer_id
             ? customers.find((c) => c.id === currentSale.customer_id)?.name
+            : undefined
+        }
+        customerPhone={
+          currentSale?.customer_id
+            ? customers.find((c) => c.id === currentSale.customer_id)?.phone
             : undefined
         }
         store={activeStore}

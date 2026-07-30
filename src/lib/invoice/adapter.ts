@@ -3,18 +3,20 @@ import { InvoiceData } from './types';
 
 interface Store { name: string; address?: string | null; phone?: string | null; }
 
-export function adaptSaleToInvoice(sale: Sale, items: SaleItem[], store: Store, customerName?: string): InvoiceData {
+export function adaptSaleToInvoice(sale: Sale, items: SaleItem[], store: Store, customerName?: string, customerPhone?: string): InvoiceData {
   return {
     invoice_number: sale.invoice_number,
     date: sale.sale_date || new Date().toISOString(),
     customer: customerName || 'Umum',
+    customer_phone: customerPhone || null,
     cashier: sale.cashier_name || '-',
     payment_method: sale.payment_method || 'cash',
     payment_status: sale.payment_status || 'paid',
+    due_date: sale.due_date,
     store,
     items: items.map((item, index) => ({
       no: index + 1,
-      name: item.product_name || '-',
+      name: item.product?.name || item.product_name || '-',
       qty: item.quantity || 0,
       price: item.price_per_unit || 0,
       total: item.total_price || 0,

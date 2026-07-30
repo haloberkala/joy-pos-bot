@@ -4,6 +4,7 @@ import { getStoreById, updateStore } from '@/services/storesService';
 import { exportFullDatabase } from '@/services/backupService';
 import { importFullDatabase } from '@/services/restoreService';
 import { printerManager, PrinterError } from '@/lib/printer';
+import { generateCalibrationPDF, printPDF } from '@/lib/invoice';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -168,6 +169,16 @@ export default function Settings() {
       }
     } finally {
       setIsTesting(false);
+    }
+  };
+
+  const handleCalibrationPrint = () => {
+    try {
+      printPDF(generateCalibrationPDF());
+      toast.info('PDF kalibrasi dibuka. Cetak pada skala 100%.');
+    } catch (err) {
+      console.error('Calibration PDF error:', err);
+      toast.error('Gagal membuat PDF kalibrasi');
     }
   };
 
@@ -513,6 +524,14 @@ export default function Settings() {
               ? <><Loader2 className="w-4 h-4 animate-spin" /> Testing...</>
               : <><Printer className="w-4 h-4" /> Test Print</>
             }
+          </Button>
+
+          <Button
+            variant="outline"
+            className="col-span-2 gap-2"
+            onClick={handleCalibrationPrint}
+          >
+            <Printer className="w-4 h-4" /> Cetak Kalibrasi LX-310
           </Button>
 
           {/* Open Cash Drawer */}
