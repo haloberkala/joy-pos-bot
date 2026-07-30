@@ -4,6 +4,7 @@ export interface Unit {
   id: number;
   store_id: number;
   name: string;
+  short_name: string | null;
   description: string | null;
   created_at: string;
 }
@@ -16,6 +17,7 @@ export interface CreateUnitInput {
 
 export interface UpdateUnitInput {
   name?: string;
+  short_name?: string;
   description?: string;
 }
 
@@ -111,6 +113,7 @@ export async function updateUnit(id: number, input: UpdateUnitInput): Promise<Un
     const updateData: any = {};
     
     if (input.name !== undefined) updateData.name = input.name;
+    if (input.short_name !== undefined) updateData.short_name = input.short_name;
     if (input.description !== undefined) updateData.description = input.description;
 
     const { data, error } = await supabase

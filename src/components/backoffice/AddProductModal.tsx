@@ -33,7 +33,7 @@ import {
   getSizes, getOrCreateSize,
   ProductMaster 
 } from "@/services/productMasterService";
-import { generateProductName, generateShortName } from "@/lib/productUtils";
+import { generateProductName, generateProductShortName } from "@/lib/productUtils";
 import { generateUniqueBarcode } from "@/lib/barcodeUtils";
 
 interface AddProductModalProps {
@@ -78,7 +78,21 @@ export function AddProductModal({
     });
   }, [formData, brands, mainProducts, variants, specifications, sizes]);
 
-  const generatedShortName = useMemo(() => generateShortName(generatedName), [generatedName]);
+  const generatedShortName = useMemo(() => {
+    const brand = brands.find(b => b.id === formData.brand_id);
+    const mainProduct = mainProducts.find(m => m.id === formData.main_product_id);
+    const variant = variants.find(v => v.id === formData.variant_id);
+    const specification = specifications.find(s => s.id === formData.specification_id);
+    const size = sizes.find(s => s.id === formData.size_id);
+    
+    return generateProductShortName({
+      brand,
+      mainProduct,
+      variant,
+      specification,
+      size,
+    });
+  }, [formData, brands, mainProducts, variants, specifications, sizes]);
 
   const loadData = async () => {
     try {
@@ -290,7 +304,6 @@ export function AddProductModal({
 
       const payload = {
         name: generatedName,
-        short_name: generatedShortName,
         code: formData.code,
         category_id: formData.category_id,
         brand_id: formData.brand_id,

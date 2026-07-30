@@ -15,7 +15,7 @@ import {
   getSizes, getOrCreateSize,
   ProductMaster 
 } from "@/services/productMasterService";
-import { generateProductName, generateShortName } from "@/lib/productUtils";
+import { generateProductName } from "@/lib/productUtils";
 import { generateUniqueBarcode, processNullablePlaceholder } from "@/lib/barcodeUtils";
 
 interface MasterItem { id: number; name: string; }
@@ -346,27 +346,31 @@ export function BulkProductModal({ isOpen, onClose, storeId, onProductsAdded }: 
           processedBarcode = await generateUniqueBarcode(storeId);
         }
         
-        // Get master data names, processing nullable fields
-        const brandName = processNullablePlaceholder(brands.find(b => b.id === r.brand_id)?.name);
-        const variantName = processNullablePlaceholder(variants.find(v => v.id === r.variant_id)?.name);
-        const specificationName = processNullablePlaceholder(specifications.find(s => s.id === r.specification_id)?.name);
-        const sizeName = processNullablePlaceholder(sizes.find(s => s.id === r.size_id)?.name);
+        // Get master data objects
+        const brandObj = brands.find(b => b.id === r.brand_id);
+        const mainProductObj = mainProducts.find(m => m.id === r.main_product_id);
+        const variantObj = variants.find(v => v.id === r.variant_id);
+        const specificationObj = specifications.find(s => s.id === r.specification_id);
+        const sizeObj = sizes.find(s => s.id === r.size_id);
+        
+        // Process nullable fields for name generation
+        const brandName = processNullablePlaceholder(brandObj?.name);
+        const variantName = processNullablePlaceholder(variantObj?.name);
+        const specificationName = processNullablePlaceholder(specificationObj?.name);
+        const sizeName = processNullablePlaceholder(sizeObj?.name);
         
         const generatedName = generateProductName({
           brandName: brandName || undefined,
-          mainProductName: mainProducts.find(m => m.id === r.main_product_id)?.name,
+          mainProductName: mainProductObj?.name,
           variantName: variantName || undefined,
           specificationName: specificationName || undefined,
           sizeName: sizeName || undefined,
         });
 
-        const shortName = generateShortName(generatedName);
-
         products.push({
           store_id: storeId,
           code: processedBarcode,
           name: generatedName,
-          short_name: shortName,
           
           // Required master data
           category_id: r.category_id!,

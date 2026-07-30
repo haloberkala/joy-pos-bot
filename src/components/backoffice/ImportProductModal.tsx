@@ -17,7 +17,7 @@ import {
   getSizes, getOrCreateSize,
   ProductMaster 
 } from "@/services/productMasterService";
-import { generateProductName, generateShortName } from "@/lib/productUtils";
+import { generateProductName } from "@/lib/productUtils";
 import { generateUniqueBarcode, processNullablePlaceholder, isAutoGeneratePlaceholder } from "@/lib/barcodeUtils";
 
 interface ImportProductModalProps {
@@ -331,13 +331,10 @@ export function ImportProductModal({ isOpen, onClose, storeId, onSuccess }: Impo
             sizeName
           });
 
-          const shortName = generateShortName(generatedName);
-
           const productInput: CreateProductInput = {
             store_id: storeId,
             code,
             name: generatedName,
-            short_name: shortName,
             
             // Required master data
             category_id: catId!,

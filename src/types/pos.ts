@@ -69,7 +69,6 @@ export interface Product {
   specification_id?: number | null;
   size_id?: number | null;
   name: string;
-  short_name?: string | null;
   category_name?: string;
   brand_name?: string;
   unit_name?: string;
@@ -77,6 +76,13 @@ export interface Product {
   variant_name?: string;
   specification_name?: string;
   size_name?: string;
+  // Master data short_name for dynamic receipt name generation
+  category_short_name?: string | null;
+  brand_short_name?: string | null;
+  main_product_short_name?: string | null;
+  variant_short_name?: string | null;
+  specification_short_name?: string | null;
+  size_short_name?: string | null;
   code: string;
   expiry_date?: string | null;
   image?: string;

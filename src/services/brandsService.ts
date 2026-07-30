@@ -4,6 +4,7 @@ export interface Brand {
   id: number;
   store_id: number;
   name: string;
+  short_name: string | null;
   description: string | null;
   created_at: string;
 }
@@ -16,6 +17,7 @@ export interface CreateBrandInput {
 
 export interface UpdateBrandInput {
   name?: string;
+  short_name?: string;
   description?: string;
 }
 
@@ -88,6 +90,7 @@ export async function updateBrand(id: number, input: UpdateBrandInput): Promise<
     const updateData: any = {};
     
     if (input.name !== undefined) updateData.name = input.name;
+    if (input.short_name !== undefined) updateData.short_name = input.short_name;
     if (input.description !== undefined) updateData.description = input.description;
 
     const { data, error } = await supabase

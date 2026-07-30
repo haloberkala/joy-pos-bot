@@ -67,6 +67,7 @@ import { Plus, Pencil, Trash2, Tag, Package, Ruler, Search, Box, Layers, Setting
 interface Entity {
   id: number;
   name: string;
+  short_name?: string | null;
   description?: string | null;
   store_id: number;
 }
@@ -95,6 +96,7 @@ export default function ProductClassification() {
   const [showForm, setShowForm] = useState(false);
   const [editingItem, setEditingItem] = useState<Entity | null>(null);
   const [formName, setFormName] = useState('');
+  const [formShortName, setFormShortName] = useState('');
   const [formDescription, setFormDescription] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -114,49 +116,49 @@ export default function ProductClassification() {
       label: 'Kategori', hasDescription: true, icon: Tag,
       get: getAllCategories,
       create: (d, storeId) => createCategory({ store_id: storeId, name: d.name, description: d.description }),
-      update: (id, d) => updateCategory(id, { name: d.name, description: d.description }),
+      update: (id, d) => updateCategory(id, { name: d.name, short_name: d.short_name, description: d.description }),
       delete: deleteCategory
     },
     brand: {
       label: 'Brand', hasDescription: true, icon: Package,
       get: getAllBrands,
       create: (d, storeId) => createBrand({ store_id: storeId, name: d.name, description: d.description }),
-      update: (id, d) => updateBrand(id, { name: d.name, description: d.description }),
+      update: (id, d) => updateBrand(id, { name: d.name, short_name: d.short_name, description: d.description }),
       delete: deleteBrand
     },
     main_product: {
       label: 'Produk Utama', hasDescription: false, icon: Box,
       get: getMainProducts,
       create: (d, storeId) => getOrCreateMainProduct(d.name, storeId),
-      update: (id, d) => updateMasterData('main_products', id, d.name),
+      update: (id, d) => updateMasterData('main_products', id, d.name, d.short_name),
       delete: (id) => deleteMasterData('main_products', id)
     },
     variant: {
       label: 'Varian', hasDescription: false, icon: Layers,
       get: getVariants,
       create: (d, storeId) => getOrCreateVariant(d.name, storeId),
-      update: (id, d) => updateMasterData('variants', id, d.name),
+      update: (id, d) => updateMasterData('variants', id, d.name, d.short_name),
       delete: (id) => deleteMasterData('variants', id)
     },
     specification: {
       label: 'Spesifikasi', hasDescription: false, icon: Settings2,
       get: getSpecifications,
       create: (d, storeId) => getOrCreateSpecification(d.name, storeId),
-      update: (id, d) => updateMasterData('specifications', id, d.name),
+      update: (id, d) => updateMasterData('specifications', id, d.name, d.short_name),
       delete: (id) => deleteMasterData('specifications', id)
     },
     size: {
       label: 'Ukuran/Isi', hasDescription: false, icon: Maximize,
       get: getSizes,
       create: (d, storeId) => getOrCreateSize(d.name, storeId),
-      update: (id, d) => updateMasterData('sizes', id, d.name),
+      update: (id, d) => updateMasterData('sizes', id, d.name, d.short_name),
       delete: (id) => deleteMasterData('sizes', id)
     },
     unit: {
       label: 'Satuan', hasDescription: true, icon: Ruler,
       get: getAllUnits,
       create: (d, storeId) => createUnit({ store_id: storeId, name: d.name, description: d.description }),
-      update: (id, d) => updateUnit(id, { name: d.name, description: d.description }),
+      update: (id, d) => updateUnit(id, { name: d.name, short_name: d.short_name, description: d.description }),
       delete: deleteUnit
     }
   }), []);
@@ -186,6 +188,7 @@ export default function ProductClassification() {
   const openAdd = () => {
     setEditingItem(null);
     setFormName('');
+    setFormShortName('');
     setFormDescription('');
     setShowForm(true);
   };
@@ -193,6 +196,7 @@ export default function ProductClassification() {
   const openEdit = (item: Entity) => {
     setEditingItem(item);
     setFormName(item.name);
+    setFormShortName(item.short_name || '');
     setFormDescription(item.description || '');
     setShowForm(true);
   };
@@ -202,13 +206,28 @@ export default function ProductClassification() {
       toast.error(`Nama ${CONFIG[activeTab].label} wajib diisi`);
       return;
     }
+    
+    if (editingItem && !formShortName.trim()) {
+      toast.error(`Short Name wajib diisi`);
+      return;
+    }
+    
     setIsSaving(true);
     try {
+      const dataToSave: any = { 
+        name: formName,
+        description: formDescription || null 
+      };
+      
       if (editingItem) {
-        await CONFIG[activeTab].update(editingItem.id, { name: formName, description: formDescription || null });
+        dataToSave.short_name = formShortName || null;
+      }
+      
+      if (editingItem) {
+        await CONFIG[activeTab].update(editingItem.id, dataToSave);
         toast.success(`${CONFIG[activeTab].label} berhasil diperbarui`);
       } else {
-        await CONFIG[activeTab].create({ name: formName, description: formDescription || null }, activeStoreId!);
+        await CONFIG[activeTab].create(dataToSave, activeStoreId!);
         toast.success(`${CONFIG[activeTab].label} berhasil ditambahkan`);
       }
       setShowForm(false);
@@ -288,6 +307,7 @@ export default function ProductClassification() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Nama {CONFIG[activeTab].label}</TableHead>
+                  <TableHead>Short Name</TableHead>
                   {CONFIG[activeTab].hasDescription && <TableHead>Deskripsi</TableHead>}
                   <TableHead className="text-right">Aksi</TableHead>
                 </TableRow>
@@ -295,13 +315,13 @@ export default function ProductClassification() {
               <TableBody>
                 {isLoading[activeTab] ? (
                   <TableRow>
-                    <TableCell colSpan={CONFIG[activeTab].hasDescription ? 3 : 2} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={CONFIG[activeTab].hasDescription ? 4 : 3} className="text-center py-8 text-muted-foreground">
                       Memuat {CONFIG[activeTab].label.toLowerCase()}...
                     </TableCell>
                   </TableRow>
                 ) : filteredData.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={CONFIG[activeTab].hasDescription ? 3 : 2} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={CONFIG[activeTab].hasDescription ? 4 : 3} className="text-center py-8 text-muted-foreground">
                       {search[activeTab] ? `${CONFIG[activeTab].label} tidak ditemukan` : `Belum ada ${CONFIG[activeTab].label.toLowerCase()}`}
                     </TableCell>
                   </TableRow>
@@ -309,6 +329,15 @@ export default function ProductClassification() {
                   filteredData.map((item) => (
                     <TableRow key={item.id}>
                       <TableCell className="font-medium">{item.name}</TableCell>
+                      <TableCell>
+                        {item.short_name ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary">
+                            {item.short_name}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">-</span>
+                        )}
+                      </TableCell>
                       {CONFIG[activeTab].hasDescription && (
                         <TableCell className="text-muted-foreground">
                           {item.description || '-'}
@@ -361,6 +390,18 @@ export default function ProductClassification() {
                 placeholder={`Contoh: ${CONFIG[activeTab].label === 'Kategori' ? 'Elektronik' : CONFIG[activeTab].label === 'Brand' ? 'Samsung' : 'Isi nama'}`}
               />
             </div>
+            {editingItem && (
+              <div className="space-y-2">
+                <Label>
+                  Short Name <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  value={formShortName}
+                  onChange={(e) => setFormShortName(e.target.value)}
+                  placeholder="Short name"
+                />
+              </div>
+            )}
             {CONFIG[activeTab].hasDescription && (
               <div className="space-y-2">
                 <Label>Deskripsi</Label>

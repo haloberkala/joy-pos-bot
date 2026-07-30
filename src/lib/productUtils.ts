@@ -254,6 +254,71 @@ export function generateProductName({
 }
 
 /**
+ * Generate product short name using master data short_name when available
+ * Falls back to generateShortName(name) if short_name is null/empty
+ * 
+ * This is the SINGLE SOURCE OF TRUTH for product short name generation.
+ * Used by: AddProductModal, BulkProductModal, ImportProductModal
+ * 
+ * Example:
+ * brand: { name: "Honda", short_name: "HND" }
+ * main: { name: "Cat Kayu dan Besi", short_name: "CKB" }
+ * variant: { name: "Super White", short_name: "SW" }
+ * spec: { name: "Gloss", short_name: null }
+ * size: { name: "0,9 Liter", short_name: "0.9L" }
+ * 
+ * Result: "HND CKB SW Gls 0.9L"
+ * (Gloss uses fallback because short_name is null)
+ */
+export function generateProductShortName({
+  brand,
+  mainProduct,
+  variant,
+  specification,
+  size,
+}: {
+  brand?: { name: string; short_name?: string | null } | null;
+  mainProduct?: { name: string; short_name?: string | null } | null;
+  variant?: { name: string; short_name?: string | null } | null;
+  specification?: { name: string; short_name?: string | null } | null;
+  size?: { name: string; short_name?: string | null } | null;
+}): string {
+  const parts: string[] = [];
+  
+  // Brand
+  if (brand) {
+    const shortName = brand.short_name?.trim();
+    parts.push(shortName || generateShortName(brand.name));
+  }
+  
+  // Main Product
+  if (mainProduct) {
+    const shortName = mainProduct.short_name?.trim();
+    parts.push(shortName || generateShortName(mainProduct.name));
+  }
+  
+  // Variant
+  if (variant) {
+    const shortName = variant.short_name?.trim();
+    parts.push(shortName || generateShortName(variant.name));
+  }
+  
+  // Specification
+  if (specification) {
+    const shortName = specification.short_name?.trim();
+    parts.push(shortName || generateShortName(specification.name));
+  }
+  
+  // Size
+  if (size) {
+    const shortName = size.short_name?.trim();
+    parts.push(shortName || generateShortName(size.name));
+  }
+  
+  return parts.filter(Boolean).join(" ");
+}
+
+/**
  * Generate a short name (max 30 chars) from the full product name
  * 
  * Pipeline:
@@ -287,4 +352,70 @@ export function generateShortName(fullProductName: string): string {
   result = formatShortName(result, 30);
   
   return result;
+}
+
+/**
+ * Generate product short name (receipt name) from a Product object
+ * Uses master data short_name fields when available
+ * Falls back to generateShortName(name) if short_name is null/empty
+ * 
+ * This is used to dynamically calculate receipt names from products
+ * fetched from the database (which include master data relations)
+ * 
+ * Example:
+ * product with:
+ *   brand_short_name: "HND"
+ *   main_product_short_name: "CKB"
+ *   variant_short_name: null, variant_name: "Super White"
+ *   specification_short_name: "SW"
+ *   size_short_name: "0.9L"
+ * 
+ * Result: "HND CKB Spr Wht SW 0.9L"
+ * (variant uses fallback because short_name is null)
+ */
+export function getProductReceiptName(product: {
+  brand_name?: string | null;
+  brand_short_name?: string | null;
+  main_product_name?: string | null;
+  main_product_short_name?: string | null;
+  variant_name?: string | null;
+  variant_short_name?: string | null;
+  specification_name?: string | null;
+  specification_short_name?: string | null;
+  size_name?: string | null;
+  size_short_name?: string | null;
+}): string {
+  const parts: string[] = [];
+  
+  // Brand
+  if (product.brand_name) {
+    const shortName = product.brand_short_name?.trim();
+    parts.push(shortName || generateShortName(product.brand_name));
+  }
+  
+  // Main Product
+  if (product.main_product_name) {
+    const shortName = product.main_product_short_name?.trim();
+    parts.push(shortName || generateShortName(product.main_product_name));
+  }
+  
+  // Variant
+  if (product.variant_name) {
+    const shortName = product.variant_short_name?.trim();
+    parts.push(shortName || generateShortName(product.variant_name));
+  }
+  
+  // Specification
+  if (product.specification_name) {
+    const shortName = product.specification_short_name?.trim();
+    parts.push(shortName || generateShortName(product.specification_name));
+  }
+  
+  // Size
+  if (product.size_name) {
+    const shortName = product.size_short_name?.trim();
+    parts.push(shortName || generateShortName(product.size_name));
+  }
+  
+  return parts.filter(Boolean).join(" ");
 }

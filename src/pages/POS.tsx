@@ -45,6 +45,7 @@ import { canAccessMenu } from "@/contexts/AuthContext";
 import { useBarcodeScanner } from "@/hooks/useBarcodeScanner";
 import { formatCurrency } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { getProductReceiptName } from "@/lib/productUtils";
 import { ProductListPanel } from "@/components/pos/ProductListPanel";
 import { ShippingModal } from "@/components/pos/ShippingModal";
 import { TransportSelector } from "@/components/pos/TransportSelector";
@@ -674,7 +675,7 @@ export default function POS() {
           paymentStatus: sale.payment_status as PrinterTransaction['paymentStatus'],
           items: [
             ...items.map(item => ({
-              name: item.product.short_name || item.product.name,  // OK: Thermal receipt uses short_name
+              name: getProductReceiptName(item.product),
               quantity: item.quantity,
               unitPrice: item.price_per_unit,
               totalPrice: item.price_per_unit * item.quantity,

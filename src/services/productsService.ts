@@ -16,7 +16,6 @@ type ProductRow = {
   variant_id: number | null;
   specification_id: number | null;
   size_id: number | null;
-  short_name: string | null;
   quantity: number;
   min_stock_alert: number;
   cost_price: number;
@@ -28,13 +27,13 @@ type ProductRow = {
   is_active: boolean;
   created_at: string;
   updated_at: string;
-  categories?: { name: string } | null;
-  brands?: { name: string } | null;
+  categories?: { name: string; short_name?: string | null } | null;
+  brands?: { name: string; short_name?: string | null } | null;
   units?: { name: string } | null;
-  main_products?: { name: string } | null;
-  variants?: { name: string } | null;
-  specifications?: { name: string } | null;
-  sizes?: { name: string } | null;
+  main_products?: { name: string; short_name?: string | null } | null;
+  variants?: { name: string; short_name?: string | null } | null;
+  specifications?: { name: string; short_name?: string | null } | null;
+  sizes?: { name: string; short_name?: string | null } | null;
 };
 
 /** Bridge raw DB row → types/pos.ts Product */
@@ -54,6 +53,13 @@ function mapProduct(row: ProductRow): Product {
     variant_name: row.variants?.name,
     specification_name: row.specifications?.name,
     size_name: row.sizes?.name,
+    // Master data short_name for dynamic receipt name generation
+    category_short_name: row.categories?.short_name,
+    brand_short_name: row.brands?.short_name,
+    main_product_short_name: row.main_products?.short_name,
+    variant_short_name: row.variants?.short_name,
+    specification_short_name: row.specifications?.short_name,
+    size_short_name: row.sizes?.short_name,
   };
 }
 
@@ -69,7 +75,8 @@ function mapProduct(row: ProductRow): Product {
  * 
  * OPTIONAL FIELDS (nullable):
  * - brand_id, variant_id, specification_id, size_id (optional master data)
- * - short_name (auto-generated if not provided)
+ * 
+ * NOTE: short_name has been removed - receipt names are dynamically calculated from master data
  */
 export interface CreateProductInput {
   store_id: number;
@@ -86,8 +93,6 @@ export interface CreateProductInput {
   variant_id?: number;
   specification_id?: number;
   size_id?: number;
-  
-  short_name?: string;
   
   // Required inventory fields
   quantity: number;
@@ -119,8 +124,6 @@ export interface UpdateProductInput {
   specification_id?: number;
   size_id?: number;
   
-  short_name?: string;
-  
   // Inventory fields
   quantity?: number;
   min_stock_alert?: number;
@@ -138,12 +141,22 @@ export interface UpdateProductInput {
 
 /**
  * Get products by store ID
+ * Includes master data with short_name for dynamic receipt name generation
  */
 export async function getProductsByStore(storeId: number): Promise<Product[]> {
   try {
     const { data, error } = await db
       .from('products')
-      .select('*, categories(name), brands(name), main_products(name), variants(name), specifications(name), sizes(name), units(name)')
+      .select(`
+        *, 
+        categories(name, short_name), 
+        brands(name, short_name), 
+        main_products(name, short_name), 
+        variants(name, short_name), 
+        specifications(name, short_name), 
+        sizes(name, short_name), 
+        units(name)
+      `)
       .eq('store_id', storeId)
       .eq('is_active', true)
       .order('name', { ascending: true });
@@ -250,8 +263,6 @@ export async function createProduct(input: CreateProductInput): Promise<Product>
         specification_id: input.specification_id || null,
         size_id: input.size_id || null,
         
-        short_name: input.short_name || null,
-        
         // Required inventory fields
         quantity: input.quantity,
         min_stock_alert: input.min_stock_alert,
@@ -305,7 +316,6 @@ export async function updateProduct(productId: number, input: UpdateProductInput
     if (input.variant_id !== undefined) updateData.variant_id = input.variant_id;
     if (input.specification_id !== undefined) updateData.specification_id = input.specification_id;
     if (input.size_id !== undefined) updateData.size_id = input.size_id;
-    if (input.short_name !== undefined) updateData.short_name = input.short_name;
     if (input.quantity !== undefined) updateData.quantity = input.quantity;
     if (input.min_stock_alert !== undefined) updateData.min_stock_alert = input.min_stock_alert;
     if (input.cost_price !== undefined) updateData.cost_price = input.cost_price;
@@ -355,8 +365,6 @@ export async function bulkCreateProducts(products: CreateProductInput[]): Promis
       variant_id: input.variant_id || null,
       specification_id: input.specification_id || null,
       size_id: input.size_id || null,
-      
-      short_name: input.short_name || null,
       
       // Required inventory fields
       quantity: input.quantity,

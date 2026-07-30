@@ -4,6 +4,7 @@ export interface ProductMaster {
   id: number;
   store_id: number;
   name: string;
+  short_name?: string | null;
 }
 
 export async function getMasterData(table: string, storeId: number): Promise<ProductMaster[]> {
@@ -42,11 +43,17 @@ export async function getOrCreateMasterData(table: string, name: string, storeId
   return created;
 }
 
-export async function updateMasterData(table: string, id: number, name: string): Promise<ProductMaster> {
+export async function updateMasterData(table: string, id: number, name: string, shortName?: string): Promise<ProductMaster> {
   const cleanName = name.trim();
+  const updateData: any = { name: cleanName };
+  
+  if (shortName !== undefined) {
+    updateData.short_name = shortName;
+  }
+  
   const { data, error } = await (supabase as any)
     .from(table)
-    .update({ name: cleanName })
+    .update(updateData)
     .eq("id", id)
     .select()
     .single();

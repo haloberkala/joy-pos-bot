@@ -14,6 +14,7 @@ import {
   formatReceiptDate,
   formatReceiptTime,
 } from '@/lib/printer/receiptTemplate';
+import { getProductReceiptName } from '@/lib/productUtils';
 
 interface ReceiptModalProps {
   isOpen: boolean;
@@ -54,7 +55,7 @@ export function ReceiptModal({
           paymentMethod: sale.payment_method as PrinterTransaction['paymentMethod'],
           paymentStatus: sale.payment_status as PrinterTransaction['paymentStatus'],
           items: saleDetails.map(item => ({
-            name: item.product?.short_name || item.product?.name || `Produk #${item.product_id}`,
+            name: item.product ? getProductReceiptName(item.product) : `Produk #${item.product_id}`,
             quantity: item.quantity,
             unitPrice: item.price_at_sale,
             totalPrice: item.total_price,
@@ -95,7 +96,7 @@ export function ReceiptModal({
     const timeStr = formatReceiptTime(dateObj);
 
     const itemsHtml = saleDetails.map(item => {
-      const displayName = item.product?.short_name || item.product?.name || `Produk #${item.product_id}`;
+      const displayName = item.product ? getProductReceiptName(item.product) : `Produk #${item.product_id}`;
       return `
         <div class="item-name">${displayName}</div>
         <div class="item-row">
@@ -267,8 +268,7 @@ export function ReceiptModal({
         >
           {/* Receipt paper — scaled 68% untuk preview */}
           <div
-            className="bg-white text-black shadow-md rounded-sm border border-slate-200 mx-auto h-fit flex-shrink-0 space-y-4 font-mono text-xs p-4"
-            style={{ zoom: 0.68, width: '320px', transformOrigin: 'top center' }}
+            className="bg-white text-black shadow-md rounded-sm border border-slate-200 mx-auto w-[240px] h-fit flex-shrink-0 space-y-4 font-mono text-[11px] leading-relaxed p-4"
           >
 
               {/* Header toko */}
@@ -304,7 +304,7 @@ export function ReceiptModal({
               {/* Items */}
               <div className="space-y-2.5 border-b border-dashed pb-3">
                 {saleDetails.map((item, idx) => {
-                  const displayName = item.product?.short_name || item.product?.name || `Produk #${item.product_id}`;
+                  const displayName = item.product ? getProductReceiptName(item.product) : `Produk #${item.product_id}`;
                   return (
                     <div key={idx} className="space-y-0.5">
                       <div className="font-medium">{displayName}</div>
