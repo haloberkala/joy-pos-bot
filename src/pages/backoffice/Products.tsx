@@ -23,7 +23,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -32,7 +31,6 @@ import {
   Edit,
   Trash2,
   Barcode,
-  Download,
   Package,
   ClipboardCheck,
   TrendingUp,
@@ -63,6 +61,7 @@ import { BarcodeGenerator } from "@/components/backoffice/BarcodeGenerator";
 import { AddProductModal } from "@/components/backoffice/AddProductModal";
 import { BulkProductModal } from "@/components/backoffice/BulkProductModal";
 import { ImportProductModal } from "@/components/backoffice/ImportProductModal";
+import { BarcodeDownloadDialog } from "@/components/backoffice/BarcodeDownloadDialog";
 import JsBarcode from "jsbarcode";
 
 export default function Products() {
@@ -84,7 +83,7 @@ export default function Products() {
   const [selectedOpname, setSelectedOpname] = useState<StockOpname | null>(null);
   const [activeTab, setActiveTab] = useState("products");
   const [qrProduct, setQrProduct] = useState<Product | null>(null);
-  const [showBulkQr, setShowBulkQr] = useState(false);
+  const [showBarcodeDownload, setShowBarcodeDownload] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Supabase integration
@@ -219,65 +218,7 @@ export default function Products() {
     link.click();
   };
 
-  const downloadAllBarcodes = () => {
-    import("jspdf").then(({ jsPDF }) => {
-      const doc = new jsPDF("p", "mm", "a4");
-      let x = 10,
-        y = 10;
-      const colWidth = 45;
-      const rowHeight = 45;
-      const colsPerPage = 4;
 
-      filteredProducts.forEach((product, i) => {
-        if (y + rowHeight > 280) {
-          doc.addPage();
-          y = 10;
-          x = 10;
-        }
-        const canvas = document.createElement("canvas");
-        try {
-          JsBarcode(canvas, product.code, {
-            format: "CODE128",
-            width: 1,
-            height: 25,
-            displayValue: true,
-            fontSize: 7,
-            margin: 2,
-          });
-          const imgData = canvas.toDataURL("image/png");
-          doc.addImage(imgData, "PNG", x + 2, y + 2, colWidth - 4, 16);
-        } catch {
-          /* skip invalid */
-        }
-        doc.setFontSize(7);
-        doc.text(product.name.substring(0, 20), x + colWidth / 2, y + 20, {
-          align: "center",
-          maxWidth: colWidth - 2,
-        });
-        doc.setFontSize(6);
-        doc.text(`SKU: ${product.code}`, x + colWidth / 2, y + 25, {
-          align: "center",
-        });
-        doc.setFontSize(7);
-        doc.setTextColor(37, 99, 235);
-        doc.text(
-          formatCurrency(product.selling_price_retail),
-          x + colWidth / 2,
-          y + 30,
-          { align: "center" },
-        );
-        doc.setTextColor(0, 0, 0);
-        x += colWidth;
-        if (x + colWidth > 200) {
-          x = 10;
-          y += rowHeight;
-        }
-      });
-
-      doc.save("barcode-produk.pdf");
-      toast.success("PDF Barcode berhasil di-download");
-    });
-  };
 
   useBarcodeScanner({
     onScan: (barcode) => {
@@ -289,7 +230,7 @@ export default function Products() {
         toast.error(`Produk dengan barcode ${barcode} tidak ditemukan`);
       }
     },
-    enabled: !showOpnameDetail && !isAddModalOpen && !showBulkModal && !showImportModal,
+    enabled: !showOpnameDetail && !isAddModalOpen && !showBulkModal && !showImportModal && !showBarcodeDownload,
   });
 
   // Open edit modal when editing product is set
@@ -410,7 +351,7 @@ export default function Products() {
           <Button
             variant="outline"
             className="gap-2"
-            onClick={() => setShowBulkQr(true)}
+            onClick={() => setShowBarcodeDownload(true)}
           >
             <Barcode className="w-4 h-4" /> Barcode
           </Button>
@@ -914,45 +855,12 @@ export default function Products() {
         </DialogContent>
       </Dialog>
 
-      {/* Download All Barcodes */}
-      <Dialog open={showBulkQr} onOpenChange={setShowBulkQr}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>
-              Barcode Semua Produk ({filteredProducts.length})
-            </DialogTitle>
-          </DialogHeader>
-          <div className="flex justify-end mb-4">
-            <Button className="gap-2" onClick={downloadAllBarcodes}>
-              <Download className="w-4 h-4" /> Download Semua Barcode (PDF)
-            </Button>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-            {filteredProducts.map((product) => (
-              <div
-                key={product.id}
-                className="flex flex-col items-center bg-white p-3 rounded-lg border border-border"
-              >
-                <BarcodeGenerator
-                  value={product.code}
-                  height={40}
-                  width={1}
-                  fontSize={8}
-                />
-                <p className="text-xs font-bold mt-2 text-center line-clamp-2">
-                  {product.name}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  SKU: {product.code}
-                </p>
-                <p className="text-xs font-semibold text-primary">
-                  {formatCurrency(product.selling_price_retail)}
-                </p>
-              </div>
-            ))}
-          </div>
-        </DialogContent>
-      </Dialog>
+      {/* Barcode Download Dialog */}
+      <BarcodeDownloadDialog
+        isOpen={showBarcodeDownload}
+        onClose={() => setShowBarcodeDownload(false)}
+        products={filteredProducts}
+      />
     </div>
   );
 }
