@@ -3,6 +3,7 @@ import { UserRole } from '@/types/pos';
 import { toast } from 'sonner';
 import * as authService from '@/services/authService';
 import { supabase } from '@/lib/supabase';
+import { hasPermission } from '@/config/permissions';
 
 interface User {
   id: string;
@@ -226,22 +227,12 @@ export function useAuth() {
   return context;
 }
 
-// Role-based menu access configuration
-export const MENU_ACCESS: Record<string, UserRole[]> = {
-  'pos': ['owner', 'admin', 'cashier'],
-  'dashboard': ['owner', 'admin'],
-  'products': ['owner', 'admin'],
-  'transactions': ['owner', 'admin', 'cashier'],
-  'expenses': ['owner'],
-  'reports': ['owner'],
-  'purchases': ['owner', 'admin'],
-  'shipping': ['owner', 'admin'],
-  'sdm': ['owner', 'admin'],
-  'settings': ['owner'],
-};
-
+/**
+ * Check if user's role can access a specific menu/feature
+ * Uses centralized permission configuration from @/config/permissions
+ * 
+ * @deprecated Use hasPermission from @/config/permissions directly
+ */
 export function canAccessMenu(role: UserRole | undefined, menuKey: string): boolean {
-  if (!role) return false;
-  const allowedRoles = MENU_ACCESS[menuKey];
-  return allowedRoles ? allowedRoles.includes(role) : false;
+  return hasPermission(role, menuKey);
 }

@@ -4,7 +4,6 @@ import { getStoreById, updateStore } from '@/services/storesService';
 import { exportFullDatabase } from '@/services/backupService';
 import { importFullDatabase } from '@/services/restoreService';
 import { printerManager, PrinterError } from '@/lib/printer';
-import { generateCalibrationPDF, printPDF } from '@/lib/invoice';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,6 +22,11 @@ import { toast } from 'sonner';
 
 export default function Settings() {
   const { activeStoreId, user } = useAuth();
+  
+  // Role helpers
+  const isOwner = user?.role === 'owner';
+  const isAdmin = user?.role === 'admin';
+  
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving]   = useState(false);
 
@@ -172,16 +176,6 @@ export default function Settings() {
     }
   };
 
-  const handleCalibrationPrint = () => {
-    try {
-      printPDF(generateCalibrationPDF());
-      toast.info('PDF kalibrasi dibuka. Cetak pada skala 100%.');
-    } catch (err) {
-      console.error('Calibration PDF error:', err);
-      toast.error('Gagal membuat PDF kalibrasi');
-    }
-  };
-
   const handlePaperWidthChange = (w: 58 | 80) => {
     printerManager.setPaperWidth(w);
   };
@@ -292,38 +286,40 @@ export default function Settings() {
         <p className="text-muted-foreground">Kelola informasi toko dan perangkat keras</p>
       </div>
 
-      {/* ── Store Settings ── */}
-      <div className="bg-card rounded-xl border border-border p-6 space-y-4">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-primary/10">
-            <Store className="w-5 h-5 text-primary" />
+      {/* ── Store Settings (Owner Only) ── */}
+      {isOwner && (
+        <div className="bg-card rounded-xl border border-border p-6 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-primary/10">
+              <Store className="w-5 h-5 text-primary" />
+            </div>
+            <div>
+              <h2 className="font-semibold text-foreground">Informasi Toko</h2>
+              <p className="text-sm text-muted-foreground">Nama dan alamat ditampilkan di struk</p>
+            </div>
           </div>
-          <div>
-            <h2 className="font-semibold text-foreground">Informasi Toko</h2>
-            <p className="text-sm text-muted-foreground">Nama dan alamat ditampilkan di struk</p>
+          <Separator />
+          <div className="grid gap-4">
+            <div className="grid gap-2">
+              <Label htmlFor="storeName">Nama Toko *</Label>
+              <Input id="storeName" value={storeName} onChange={e => setStoreName(e.target.value)} placeholder="Masukkan nama toko" />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="storeAddress">Alamat</Label>
+              <Input id="storeAddress" value={storeAddress} onChange={e => setStoreAddress(e.target.value)} placeholder="Masukkan alamat toko" />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="storePhone">Nomor Telepon</Label>
+              <Input id="storePhone" value={storePhone} onChange={e => setStorePhone(e.target.value)} placeholder="Masukkan nomor telepon" />
+            </div>
           </div>
+          <Button onClick={handleSave} disabled={isSaving}>
+            {isSaving ? 'Menyimpan...' : 'Simpan Perubahan'}
+          </Button>
         </div>
-        <Separator />
-        <div className="grid gap-4">
-          <div className="grid gap-2">
-            <Label htmlFor="storeName">Nama Toko *</Label>
-            <Input id="storeName" value={storeName} onChange={e => setStoreName(e.target.value)} placeholder="Masukkan nama toko" />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="storeAddress">Alamat</Label>
-            <Input id="storeAddress" value={storeAddress} onChange={e => setStoreAddress(e.target.value)} placeholder="Masukkan alamat toko" />
-          </div>
-          <div className="grid gap-2">
-            <Label htmlFor="storePhone">Nomor Telepon</Label>
-            <Input id="storePhone" value={storePhone} onChange={e => setStorePhone(e.target.value)} placeholder="Masukkan nomor telepon" />
-          </div>
-        </div>
-        <Button onClick={handleSave} disabled={isSaving}>
-          {isSaving ? 'Menyimpan...' : 'Simpan Perubahan'}
-        </Button>
-      </div>
+      )}
 
-      {/* ── Printer Card ── */}
+      {/* ── Printer Card (Owner & Admin) ── */}
       <div className="bg-card rounded-xl border border-border p-6 space-y-4">
         <div className="flex items-center gap-3">
           <div className="p-2 rounded-lg bg-blue-100">
@@ -526,14 +522,6 @@ export default function Settings() {
             }
           </Button>
 
-          <Button
-            variant="outline"
-            className="col-span-2 gap-2"
-            onClick={handleCalibrationPrint}
-          >
-            <Printer className="w-4 h-4" /> Cetak Kalibrasi LX-310
-          </Button>
-
           {/* Open Cash Drawer */}
           <Button
             variant="outline"
@@ -547,7 +535,7 @@ export default function Settings() {
       </div>
 
       {/* ── Backup & Restore (Owner Only) ── */}
-      {user?.role === 'owner' && (
+      {isOwner && (
         <div className="bg-card rounded-xl border border-border p-6 space-y-4">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-emerald-100">
