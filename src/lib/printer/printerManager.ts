@@ -19,7 +19,16 @@ const TRANSPORT_KEY = 'nadi_printer_transport';
 function loadConfig(): PrinterConfig {
   try {
     const raw = localStorage.getItem(CONFIG_KEY);
-    if (raw) return { ...DEFAULT_PRINTER_CONFIG, ...JSON.parse(raw) };
+    if (raw) {
+      const saved = JSON.parse(raw);
+      // Always enforce default drawer pin and baud rate
+      return {
+        ...DEFAULT_PRINTER_CONFIG,
+        ...saved,
+        drawerPin: 'pin2',  // Always use Pin 2
+        baudRate: 9600,     // Always use 9600 bps
+      };
+    }
   } catch {
     // Ignore
   }
@@ -249,11 +258,6 @@ export class PrinterManager {
     this.config = { ...this.config, paperWidth: w };
     saveConfig(this.config);
     this.notify();
-  }
-
-  setDrawerPin(pin: DrawerPin): void {
-    this.config = { ...this.config, drawerPin: pin };
-    saveConfig(this.config);
   }
 
   // ── Listeners ─────────────────────────────────────────────────────────────

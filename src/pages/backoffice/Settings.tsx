@@ -25,7 +25,6 @@ export default function Settings() {
   
   // Role helpers
   const isOwner = user?.role === 'owner';
-  const isAdmin = user?.role === 'admin';
   
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving]   = useState(false);
@@ -180,16 +179,6 @@ export default function Settings() {
     printerManager.setPaperWidth(w);
   };
 
-  const handleDrawerPinChange = (p: 'pin2' | 'pin5') => {
-    printerManager.setDrawerPin(p);
-  };
-
-  const handleBaudRateChange = (r: number) => {
-    const config = printerManager.getConfig();
-    config.baudRate = r;
-    // Config will auto-save via printerManager
-  };
-
   const handleTransportChange = async (transportId: string) => {
     if (transportId === printerState.transportId) return;
 
@@ -328,7 +317,7 @@ export default function Settings() {
           <div>
             <h2 className="font-semibold text-foreground">Printer Thermal</h2>
             <p className="text-sm text-muted-foreground">
-              Pilih transport di header POS: USB atau Bluetooth
+              Hubungkan printer thermal untuk mencetak struk. Sistem menggunakan konfigurasi otomatis yang kompatibel dengan sebagian besar printer ESC/POS.
             </p>
           </div>
         </div>
@@ -420,43 +409,6 @@ export default function Settings() {
               </button>
             ))}
           </div>
-        </div>
-
-        {/* Drawer Pin */}
-        <div className="space-y-2">
-          <Label className="text-sm font-medium">Pin Laci Kasir (RJ-11)</Label>
-          <div className="grid grid-cols-2 gap-2">
-            {(['pin2', 'pin5'] as const).map(p => (
-              <button
-                key={p}
-                onClick={() => handleDrawerPinChange(p)}
-                className={`flex items-center justify-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                  printerState.config.drawerPin === p
-                    ? 'border-primary bg-primary/10 text-primary'
-                    : 'border-border bg-background text-muted-foreground hover:border-primary/40'
-                }`}
-              >
-                {printerState.config.drawerPin === p && <CheckCircle2 className="w-3.5 h-3.5" />}
-                {p === 'pin2' ? 'Pin 2 (default)' : 'Pin 5 (alt)'}
-              </button>
-            ))}
-          </div>
-          <p className="text-xs text-muted-foreground">Sebagian besar printer menggunakan Pin 2. Coba Pin 5 jika laci tidak terbuka.</p>
-        </div>
-
-        {/* Baud Rate */}
-        <div className="space-y-2">
-          <Label htmlFor="baudRate" className="text-sm font-medium">Baud Rate</Label>
-          <select
-            id="baudRate"
-            value={printerState.config.baudRate}
-            onChange={e => handleBaudRateChange(Number(e.target.value))}
-            className="w-full h-9 px-3 rounded-lg border border-border bg-background text-sm text-foreground focus:outline-none focus:border-primary"
-          >
-            {[9600, 19200, 38400, 115200].map(r => (
-              <option key={r} value={r}>{r} bps{r === 9600 ? ' (default)' : ''}</option>
-            ))}
-          </select>
         </div>
 
         {/* Setup guide */}

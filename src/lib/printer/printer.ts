@@ -29,13 +29,6 @@ export const printer = {
   getConfig: () => printerManager.getConfig(),
   getPaperWidth: () => printerManager.getPaperWidth(),
   setPaperWidth: (w: 58 | 80) => printerManager.setPaperWidth(w),
-  setDrawerPin: (pin: 'pin2' | 'pin5') => printerManager.setDrawerPin(pin),
-  setBaudRate: (rate: number) => {
-    // Baud rate hanya digunakan untuk WebSerial, disimpan di config
-    const cfg = printerManager.getConfig();
-    cfg.baudRate = rate;
-    // Config akan otomatis tersimpan
-  },
   getInfo: (): PrinterInfo => ({
     status: printerManager.isConnected() ? 'connected' : 'disconnected',
     portName: printerManager.getDeviceLabel(),
