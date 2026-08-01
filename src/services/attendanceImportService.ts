@@ -24,17 +24,7 @@ export interface ParseResult {
 export interface ImportResult {
   inserted: number;
   updated: number;
-  /** Total data dilewati (jumlah dari semua kategori di bawah) */
   skipped: number;
-  /** Breakdown penyebab skip */
-  skippedDetail: {
-    unknownFingerprint: number;   // machineId tidak terdaftar di DB
-    manualEditProtected: number;  // HR sudah edit manual, tidak ditimpa
-    sameData: number;             // data identik, tidak ada yang berubah
-  };
-  /** Daftar machineId yang tidak ditemukan di database */
-  unknownFingerprintIds: string[];
-  /** Error DB atau fatal lainnya */
   errors: string[];
 }
 
@@ -161,19 +151,20 @@ function timeToMinutes(timeStr: string): number {
   return h * 60 + m;
 }
 
+// Helper to convert total minutes back to "HH:MM" (digunakan di pesan validasi)
+function toHHMM(totalMin: number): string {
+  const h = Math.floor(Math.max(0, totalMin) / 60) % 24;
+  const m = Math.max(0, totalMin) % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
 export async function importAttendances(
   rows: ZKTecoRow[],
   storeId: number,
   employeeMap: Record<string, string>
 ): Promise<ImportResult> {
-  const result: ImportResult = {
-    inserted: 0,
-    updated: 0,
-    skipped: 0,
-    skippedDetail: { unknownFingerprint: 0, manualEditProtected: 0, sameData: 0 },
-    unknownFingerprintIds: [],
-    errors: [],
-  };
+  const result: ImportResult = { inserted: 0, updated: 0, skipped: 0, errors: [] };
+  const skippedIds = new Set<string>();
 
   // Ambil data setting absensi
   const { data: settingData, error: settingError } = await supabaseAny
@@ -204,13 +195,17 @@ export async function importAttendances(
   for (const row of rows) {
     const employeeUuid = employeeMap[row.machineId];
     if (!employeeUuid) {
-      result.skippedDetail.unknownFingerprint++;
-      if (!result.unknownFingerprintIds.includes(row.machineId)) {
-        result.unknownFingerprintIds.push(row.machineId);
-      }
+      result.skipped++;
+      skippedIds.add(row.machineId);
     } else {
       mappedRows.push({ row, employeeUuid });
     }
+  }
+
+  if (skippedIds.size > 0) {
+    result.errors.push(
+      `ID mesin tidak ada di database (${result.skipped} data dilewati): [ID ${Array.from(skippedIds).join(', ID ')}]`
+    );
   }
 
   if (mappedRows.length === 0) return result;
@@ -254,6 +249,41 @@ export async function importAttendances(
   for (const { row, employeeUuid } of mappedRows) {
     const key = `${employeeUuid}|${row.date}`;
     const existing = existingMap.get(key);
+
+    // ── Validasi window shift ────────────────────────────────────────────────
+    // Clock In valid : shift_start - 60 menit  s/d  shift_start + 120 menit
+    // Clock Out valid: shift_end   - 120 menit s/d  23:59
+    // Data di luar window ditolak dan tidak disimpan.
+    if (row.clockIn) {
+      const min      = timeToMinutes(row.clockIn);
+      const earliest = shiftStartMin - 60;
+      const latest   = shiftStartMin + 120;
+      if (min < earliest || min > latest) {
+        result.skipped++;
+        result.errors.push(
+          `ID Fingerprint ${row.machineId} / ${row.date}: ` +
+          `Clock In ${row.clockIn} di luar window jam masuk ` +
+          `(${toHHMM(earliest)}–${toHHMM(latest)}). ` +
+          `Shift: ${shiftStartStr}–${shiftEndStr}`
+        );
+        continue;
+      }
+    }
+    if (row.clockOut) {
+      const min      = timeToMinutes(row.clockOut);
+      const earliest = shiftEndMin - 120;
+      if (min < earliest) {
+        result.skipped++;
+        result.errors.push(
+          `ID Fingerprint ${row.machineId} / ${row.date}: ` +
+          `Clock Out ${row.clockOut} di luar window jam pulang ` +
+          `(minimal ${toHHMM(earliest)}). ` +
+          `Shift: ${shiftStartStr}–${shiftEndStr}`
+        );
+        continue;
+      }
+    }
+    // ────────────────────────────────────────────────────────────────────────
 
     let duration_minutes: number | null = null;
     let penaltyMinutes = 0;
@@ -311,7 +341,7 @@ export async function importAttendances(
       toInsert.push(payload);
     } else if (existing.is_manual_edit) {
       // (a) Sudah diedit manual → SKIP
-      result.skippedDetail.manualEditProtected++;
+      result.skipped++;
     } else if (
       existing.clock_in === row.clockIn &&
       existing.clock_out === row.clockOut &&
@@ -320,7 +350,7 @@ export async function importAttendances(
       existing.status === calculatedStatus
     ) {
       // (b) Data identik → SKIP
-      result.skippedDetail.sameData++;
+      result.skipped++;
     } else {
       // (c) Ada perbedaan → UPDATE
       toUpdate.push({ id: existing.id, payload });
@@ -350,12 +380,6 @@ export async function importAttendances(
     }
   }
 
-  // Hitung total skipped dari semua kategori
-  result.skipped =
-    result.skippedDetail.unknownFingerprint +
-    result.skippedDetail.manualEditProtected +
-    result.skippedDetail.sameData;
-
   return result;
 }
 
@@ -374,8 +398,6 @@ export async function importZKTecoFile(
         inserted: 0,
         updated: 0,
         skipped: 0,
-        skippedDetail: { unknownFingerprint: 0, manualEditProtected: 0, sameData: 0 },
-        unknownFingerprintIds: [],
         errors: ['Tidak ada data absensi valid yang ditemukan di file ini.'],
       },
     };
