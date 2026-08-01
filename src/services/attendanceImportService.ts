@@ -8,7 +8,6 @@ export interface ZKTecoRow {
   date: string;
   clockIn: string | null;
   clockOut: string | null;
-  penaltyMinutes: number;
   status: 'hadir' | 'alpha';
 }
 
@@ -100,18 +99,15 @@ export function parseExceptionStatSheet(file: File): Promise<ParseResult> {
 
           const clockIn = toTimeString(row[4]);
           const clockOut = toTimeString(row[5]);
-          const penaltyMinutes = parseInt(row[11]) || 0;
 
           let status: 'hadir' | 'alpha';
           if (clockIn) {
             status = 'hadir';
-          } else if (penaltyMinutes >= 540) {
-            status = 'alpha';
           } else {
-            continue;
+            status = 'alpha';
           }
 
-          result.push({ machineId, date: dateStr, clockIn, clockOut, penaltyMinutes, status });
+          result.push({ machineId, date: dateStr, clockIn, clockOut, status });
         }
 
         resolve({ rows: result, parseErrors });
@@ -186,7 +182,6 @@ export async function importAttendances(
   const shiftEndMin = timeToMinutes(shiftEndStr);
   const breakStartMin = timeToMinutes(breakStartStr);
   const breakEndMin = timeToMinutes(breakEndStr);
-  const breakDurationMin = breakEndMin - breakStartMin;
 
   // Pisahkan baris yang punya mapping UUID
   const mappedRows: { row: ZKTecoRow; employeeUuid: string }[] = [];
@@ -214,7 +209,7 @@ export async function importAttendances(
 
   const { data: existing, error: fetchError } = await supabaseAny
     .from('attendances')
-    .select('id, employee_id, attendance_date, clock_in, clock_out, penalty_minutes, status, is_manual_edit')
+    .select('id, employee_id, attendance_date, clock_in, clock_out, duration_minutes, penalty_minutes, status, is_manual_edit')
     .in('employee_id', employeeUuids)
     .in('attendance_date', dates);
 
@@ -230,6 +225,7 @@ export async function importAttendances(
     attendance_date: string;
     clock_in: string | null;
     clock_out: string | null;
+    duration_minutes: number | null;
     penalty_minutes: number;
     status: string;
     is_manual_edit: boolean;
@@ -248,42 +244,41 @@ export async function importAttendances(
     const existing = existingMap.get(key);
 
     let duration_minutes: number | null = null;
-    let penaltyMinutes = row.penaltyMinutes;
+    let penaltyMinutes = 0;
     let calculatedStatus: 'hadir' | 'alpha' = 'alpha';
 
     if (row.clockIn) {
       calculatedStatus = 'hadir';
       
+      // Hitung keterlambatan
       const clockInMin = timeToMinutes(row.clockIn);
-      const penalty = Math.max(0, (clockInMin - shiftStartMin) - gracePeriod);
-      penaltyMinutes = penalty; // Override ZKTeco penalty calculation
+      const lateness = Math.max(0, clockInMin - shiftStartMin);
+      penaltyMinutes = Math.max(0, lateness - gracePeriod);
 
+      // Hitung durasi jika ada clock_out
       if (row.clockOut) {
         const clockOutMin = timeToMinutes(row.clockOut);
         
-        // Kalkulasi Effective Time (Virtual) untuk menghindari lembur
+        // Effective time: mulai dari max(clock_in, shift_start) hingga min(clock_out, shift_end)
         const effectiveStartMin = Math.max(clockInMin, shiftStartMin);
         const effectiveEndMin = Math.min(clockOutMin, shiftEndMin);
         
         let totalDur = effectiveEndMin - effectiveStartMin;
 
-        // Kurangi durasi istirahat jika jam kerja efektif memotong waktu istirahat
-        if (effectiveStartMin <= breakStartMin && effectiveEndMin >= breakEndMin) {
-          totalDur -= breakDurationMin;
-        } else if (effectiveStartMin > breakStartMin && effectiveStartMin < breakEndMin && effectiveEndMin >= breakEndMin) {
-          totalDur -= (breakEndMin - effectiveStartMin);
-        } else if (effectiveStartMin <= breakStartMin && effectiveEndMin > breakStartMin && effectiveEndMin < breakEndMin) {
-          totalDur -= (effectiveEndMin - breakStartMin);
+        // Kurangi durasi istirahat jika jam kerja melewati waktu istirahat
+        if (effectiveStartMin < breakEndMin && effectiveEndMin > breakStartMin) {
+          const breakOverlapStart = Math.max(effectiveStartMin, breakStartMin);
+          const breakOverlapEnd = Math.min(effectiveEndMin, breakEndMin);
+          const breakOverlap = breakOverlapEnd - breakOverlapStart;
+          totalDur -= breakOverlap;
         }
 
-        if (totalDur > 0) {
-          duration_minutes = totalDur;
-        } else {
-          duration_minutes = 0;
-        }
+        duration_minutes = Math.max(0, totalDur);
       }
     } else {
+      // Tidak ada clock in → alpha
       calculatedStatus = 'alpha';
+      penaltyMinutes = 0;
     }
 
     const payload = {
@@ -308,6 +303,7 @@ export async function importAttendances(
     } else if (
       existing.clock_in === row.clockIn &&
       existing.clock_out === row.clockOut &&
+      existing.duration_minutes === duration_minutes &&
       existing.penalty_minutes === penaltyMinutes &&
       existing.status === calculatedStatus
     ) {

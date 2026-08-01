@@ -232,7 +232,9 @@ export default function AttendancePage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Rekap Absensi</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">Data kehadiran karyawan per hari</p>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Data kehadiran karyawan berdasarkan Clock In dan Clock Out
+          </p>
         </div>
         {activeStoreId && (
           <div className="flex items-center gap-2">
@@ -357,6 +359,7 @@ export default function AttendancePage() {
               <TableHead>Jam Masuk</TableHead>
               <TableHead>Jam Keluar</TableHead>
               <TableHead>Durasi</TableHead>
+              <TableHead>Terlambat</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Keterangan</TableHead>
               <TableHead className="w-12" />
@@ -365,7 +368,7 @@ export default function AttendancePage() {
           <TableBody>
             {filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
                   Tidak ada data absensi
                 </TableCell>
               </TableRow>
@@ -375,6 +378,8 @@ export default function AttendancePage() {
               const durH = row.duration_minutes ? Math.floor(row.duration_minutes / 60) : null;
               const durM = row.duration_minutes ? row.duration_minutes % 60 : null;
               const simple = toSimpleStatus(row.status);
+              const lateMinutes = row.penalty_minutes || 0;
+              
               return (
                 <TableRow key={row.id}>
                   <TableCell className="font-medium">{emp?.name}</TableCell>
@@ -382,6 +387,13 @@ export default function AttendancePage() {
                   <TableCell>{row.clock_in || '-'}</TableCell>
                   <TableCell>{row.clock_out || '-'}</TableCell>
                   <TableCell>{durH !== null ? `${durH}j ${durM}m` : '-'}</TableCell>
+                  <TableCell>
+                    {lateMinutes > 0 ? (
+                      <span className="text-red-600 font-medium">{lateMinutes} menit</span>
+                    ) : (
+                      <span className="text-muted-foreground">-</span>
+                    )}
+                  </TableCell>
                   <TableCell>
                     <Badge className={STATUS_COLORS[simple]}>{STATUS_LABELS[simple]}</Badge>
                     {row.is_manual_edit && (
@@ -480,6 +492,15 @@ export default function AttendancePage() {
           <DialogHeader>
             <DialogTitle>Aturan Absensi</DialogTitle>
           </DialogHeader>
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-900">
+            <p className="font-medium mb-1">Cara Kerja:</p>
+            <ul className="space-y-1 text-xs">
+              <li>• <strong>Clock In/Out</strong>: Karyawan hanya perlu fingerprint saat masuk dan keluar</li>
+              <li>• <strong>Durasi</strong>: Dihitung dari Clock In - Clock Out, dikurangi waktu istirahat otomatis</li>
+              <li>• <strong>Terlambat</strong>: Dihitung jika Clock In lebih dari Grace Period setelah Shift Start</li>
+              <li>• <strong>Lembur</strong>: Tidak dihitung, durasi maksimal sampai Shift End</li>
+            </ul>
+          </div>
           <form onSubmit={handleSaveSettings(onSubmitSettings)} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -496,15 +517,18 @@ export default function AttendancePage() {
             <div className="space-y-2">
               <label className="text-sm font-medium">Toleransi Keterlambatan (Menit)</label>
               <Input type="number" {...registerSettings('grace_period_minutes', { required: true, valueAsNumber: true })} />
+              <p className="text-[10px] text-muted-foreground">Keterlambatan dihitung setelah Grace Period</p>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <label className="text-sm font-medium">Mulai Istirahat</label>
                 <Input type="text" placeholder="12:00" {...registerSettings('break_start', { required: true, pattern: /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/ })} />
+                <p className="text-[10px] text-muted-foreground">Otomatis dikurangi dari durasi</p>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Selesai Istirahat</label>
                 <Input type="text" placeholder="13:00" {...registerSettings('break_end', { required: true, pattern: /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/ })} />
+                <p className="text-[10px] text-muted-foreground">Otomatis dikurangi dari durasi</p>
               </div>
             </div>
             <DialogFooter>
