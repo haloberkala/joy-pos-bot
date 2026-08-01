@@ -24,7 +24,17 @@ export interface ParseResult {
 export interface ImportResult {
   inserted: number;
   updated: number;
+  /** Total data dilewati (jumlah dari semua kategori di bawah) */
   skipped: number;
+  /** Breakdown penyebab skip */
+  skippedDetail: {
+    unknownFingerprint: number;   // machineId tidak terdaftar di DB
+    manualEditProtected: number;  // HR sudah edit manual, tidak ditimpa
+    sameData: number;             // data identik, tidak ada yang berubah
+  };
+  /** Daftar machineId yang tidak ditemukan di database */
+  unknownFingerprintIds: string[];
+  /** Error DB atau fatal lainnya */
   errors: string[];
 }
 
@@ -156,8 +166,14 @@ export async function importAttendances(
   storeId: number,
   employeeMap: Record<string, string>
 ): Promise<ImportResult> {
-  const result: ImportResult = { inserted: 0, updated: 0, skipped: 0, errors: [] };
-  const skippedIds = new Set<string>();
+  const result: ImportResult = {
+    inserted: 0,
+    updated: 0,
+    skipped: 0,
+    skippedDetail: { unknownFingerprint: 0, manualEditProtected: 0, sameData: 0 },
+    unknownFingerprintIds: [],
+    errors: [],
+  };
 
   // Ambil data setting absensi
   const { data: settingData, error: settingError } = await supabaseAny
@@ -188,17 +204,13 @@ export async function importAttendances(
   for (const row of rows) {
     const employeeUuid = employeeMap[row.machineId];
     if (!employeeUuid) {
-      result.skipped++;
-      skippedIds.add(row.machineId);
+      result.skippedDetail.unknownFingerprint++;
+      if (!result.unknownFingerprintIds.includes(row.machineId)) {
+        result.unknownFingerprintIds.push(row.machineId);
+      }
     } else {
       mappedRows.push({ row, employeeUuid });
     }
-  }
-
-  if (skippedIds.size > 0) {
-    result.errors.push(
-      `ID mesin tidak ada di database (${result.skipped} data dilewati): [ID ${Array.from(skippedIds).join(', ID ')}]`
-    );
   }
 
   if (mappedRows.length === 0) return result;
@@ -299,7 +311,7 @@ export async function importAttendances(
       toInsert.push(payload);
     } else if (existing.is_manual_edit) {
       // (a) Sudah diedit manual → SKIP
-      result.skipped++;
+      result.skippedDetail.manualEditProtected++;
     } else if (
       existing.clock_in === row.clockIn &&
       existing.clock_out === row.clockOut &&
@@ -308,7 +320,7 @@ export async function importAttendances(
       existing.status === calculatedStatus
     ) {
       // (b) Data identik → SKIP
-      result.skipped++;
+      result.skippedDetail.sameData++;
     } else {
       // (c) Ada perbedaan → UPDATE
       toUpdate.push({ id: existing.id, payload });
@@ -338,6 +350,12 @@ export async function importAttendances(
     }
   }
 
+  // Hitung total skipped dari semua kategori
+  result.skipped =
+    result.skippedDetail.unknownFingerprint +
+    result.skippedDetail.manualEditProtected +
+    result.skippedDetail.sameData;
+
   return result;
 }
 
@@ -356,6 +374,8 @@ export async function importZKTecoFile(
         inserted: 0,
         updated: 0,
         skipped: 0,
+        skippedDetail: { unknownFingerprint: 0, manualEditProtected: 0, sameData: 0 },
+        unknownFingerprintIds: [],
         errors: ['Tidak ada data absensi valid yang ditemukan di file ini.'],
       },
     };
