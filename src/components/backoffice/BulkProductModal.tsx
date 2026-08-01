@@ -17,6 +17,13 @@ import {
 } from "@/services/productMasterService";
 import { generateProductName } from "@/lib/productUtils";
 import { generateUniqueBarcode, processNullablePlaceholder } from "@/lib/barcodeUtils";
+import { 
+  fetchExistingBarcodes, 
+  fetchExistingProductCombinations,
+  createCombinationKey,
+  checkDuplicateBarcodeInMemory,
+  checkDuplicateProductInMemory
+} from "@/lib/product/validators/duplicateValidators";
 
 interface MasterItem { id: number; name: string; }
 
@@ -283,123 +290,253 @@ export function BulkProductModal({ isOpen, onClose, storeId, onProductsAdded }: 
     const filledRows = rows.filter(isRowFilled);
     if (filledRows.length === 0) { toast.error("Tidak ada data produk yang diisi"); return; }
 
+    setIsSaving(true);
+    
+    // ═══════════════════════════════════════════════════════════════
+    // BATCH OPTIMIZATION - Fetch all existing data once
+    // ═══════════════════════════════════════════════════════════════
+    const [existingBarcodes, existingCombinations] = await Promise.all([
+      fetchExistingBarcodes(storeId),
+      fetchExistingProductCombinations(storeId),
+    ]);
+
+    // Track in-file duplicates
+    const seenBarcodes = new Map<string, number>(); // barcode -> row index + 1
+    const seenCombinations = new Map<string, number>(); // combination key -> row index + 1
+    
+    // ═══════════════════════════════════════════════════════════════
+    // VALIDATION PHASE - Use Batch Validation
+    // ═══════════════════════════════════════════════════════════════
+    
     const newErrors: Record<string, RowErrors> = {};
+    const validatedProducts: CreateProductInput[] = [];
+    const errorMessages: string[] = []; // Collect detailed error messages for toast
     let hasError = false;
     
-    for (const row of filledRows) {
+    for (let idx = 0; idx < filledRows.length; idx++) {
+      const r = filledRows[idx];
+      const rowDisplayNumber = rows.indexOf(r) + 1;
+      
+      // Process barcode: if "-", generate unique barcode
+      let processedBarcode = r.code.trim();
+      if (processedBarcode === '-') {
+        try {
+          processedBarcode = await generateUniqueBarcode(storeId);
+        } catch (error: any) {
+          newErrors[r.id] = { code: true };
+          errorMessages.push(`Baris ${rowDisplayNumber}: Gagal generate barcode`);
+          hasError = true;
+          continue;
+        }
+      }
+      
+      // Collect ALL errors for this row
+      const rowErrors: string[] = [];
       const rowErr: RowErrors = {};
       
-      // Validate REQUIRED master data fields
-      if (!row.category_id) { rowErr.category_id = true; hasError = true; }
-      if (!row.main_product_id) { rowErr.main_product_id = true; hasError = true; }
-      if (!row.unit_id) { rowErr.unit_id = true; hasError = true; }
+      // ═══════════════════════════════════════════════════════════════
+      // IN-FILE DUPLICATE CHECK
+      // ═══════════════════════════════════════════════════════════════
       
-      // Validate barcode
-      if (!row.code || !row.code.trim()) { rowErr.code = true; hasError = true; }
+      // Check barcode duplicate within file
+      const lowerCode = processedBarcode.toLowerCase();
+      if (seenBarcodes.has(lowerCode)) {
+        rowErrors.push(`Barcode sama dengan Baris ${seenBarcodes.get(lowerCode)}`);
+        rowErr.code = true;
+      } else {
+        seenBarcodes.set(lowerCode, rowDisplayNumber);
+        
+        // Check barcode duplicate in database (using cached set)
+        if (checkDuplicateBarcodeInMemory(processedBarcode, existingBarcodes)) {
+          rowErrors.push(`Barcode "${processedBarcode}" sudah ada di database`);
+          rowErr.code = true;
+        }
+      }
       
-      // Validate inventory fields
-      // quantity: required but CAN BE NEGATIVE (overselling allowed)
-      const qty = parseInt(row.quantity);
-      if (row.quantity === "" || isNaN(qty)) { rowErr.quantity = true; hasError = true; }
+      // Check product combination duplicate within file
+      const combinationKey = createCombinationKey({
+        brand_id: r.brand_id || undefined,
+        main_product_id: r.main_product_id!,
+        variant_id: r.variant_id || undefined,
+        specification_id: r.specification_id || undefined,
+        size_id: r.size_id || undefined,
+      });
       
-      // min_stock_alert: required and must be >= 0
-      const minStock = parseInt(row.min_stock_alert);
-      if (row.min_stock_alert === "" || isNaN(minStock) || minStock < 0) { rowErr.min_stock_alert = true; hasError = true; }
+      if (seenCombinations.has(combinationKey)) {
+        rowErrors.push(`Kombinasi master data sama dengan Baris ${seenCombinations.get(combinationKey)}`);
+        rowErr.main_product_id = true;
+      } else {
+        seenCombinations.set(combinationKey, rowDisplayNumber);
+        
+        // Check product combination duplicate in database (using cached map)
+        const existingProduct = checkDuplicateProductInMemory(
+          { 
+            brand_id: r.brand_id || undefined, 
+            main_product_id: r.main_product_id!, 
+            variant_id: r.variant_id || undefined, 
+            specification_id: r.specification_id || undefined, 
+            size_id: r.size_id || undefined 
+          },
+          existingCombinations
+        );
+        
+        if (existingProduct) {
+          rowErrors.push(`Produk sama sudah ada: "${existingProduct.name}" (${existingProduct.code})`);
+          rowErr.main_product_id = true;
+        }
+      }
       
-      // Validate price fields (all must be >= 0)
-      const cost = parseFloat(row.cost_price);
-      if (!row.cost_price || isNaN(cost) || cost < 0) { rowErr.cost_price = true; hasError = true; }
+      // ═══════════════════════════════════════════════════════════════
+      // FIELD & BUSINESS RULE VALIDATION
+      // ═══════════════════════════════════════════════════════════════
       
-      const retail = parseFloat(row.selling_price_retail);
-      if (!row.selling_price_retail || isNaN(retail) || retail < 0) { rowErr.selling_price_retail = true; hasError = true; }
+      // Prepare validation payload
+      const validationPayload = {
+        category_id: r.category_id || 0,
+        main_product_id: r.main_product_id || 0,
+        unit_id: r.unit_id || 0,
+        brand_id: r.brand_id || undefined,
+        variant_id: r.variant_id || undefined,
+        specification_id: r.specification_id || undefined,
+        size_id: r.size_id || undefined,
+        code: processedBarcode,
+        quantity: parseInt(r.quantity) || 0,
+        min_stock_alert: parseInt(r.min_stock_alert) || 0,
+        cost_price: parseFloat(r.cost_price) || 0,
+        selling_price_retail: parseFloat(r.selling_price_retail) || 0,
+        selling_price_wholesale: parseFloat(r.selling_price_wholesale) || 0,
+        selling_price_special: parseFloat(r.selling_price_special) || 0,
+        wholesale_min_qty: parseInt(r.wholesale_min_qty) || 0,
+        special_min_qty: parseInt(r.special_min_qty) || 0,
+      };
       
-      const wholesale = parseFloat(row.selling_price_wholesale);
-      if (!row.selling_price_wholesale || isNaN(wholesale) || wholesale < 0) { rowErr.selling_price_wholesale = true; hasError = true; }
+      // Import field validators directly for non-duplicate validation
+      const { 
+        validateRequiredFields, 
+        validateNumberFields, 
+        validateMasterDataIds 
+      } = await import('@/lib/product/validators/fieldValidators');
+      const { validateAllBusinessRules } = await import('@/lib/product/validators/businessRuleValidators');
       
-      const special = parseFloat(row.selling_price_special);
-      if (!row.selling_price_special || isNaN(special) || special < 0) { rowErr.selling_price_special = true; hasError = true; }
+      const requiredResult = validateRequiredFields(validationPayload);
+      const numberResult = validateNumberFields(validationPayload);
+      const masterDataResult = validateMasterDataIds(validationPayload);
+      const businessRuleResult = validateAllBusinessRules(
+        {
+          cost_price: validationPayload.cost_price,
+          selling_price_retail: validationPayload.selling_price_retail,
+          selling_price_wholesale: validationPayload.selling_price_wholesale,
+          selling_price_special: validationPayload.selling_price_special,
+        },
+        {
+          wholesale_min_qty: validationPayload.wholesale_min_qty,
+          special_min_qty: validationPayload.special_min_qty,
+        }
+      );
       
-      // Validate min quantity fields (all must be >= 0)
-      const wholesaleMinQty = parseInt(row.wholesale_min_qty);
-      if (row.wholesale_min_qty === "" || isNaN(wholesaleMinQty) || wholesaleMinQty < 0) { rowErr.wholesale_min_qty = true; hasError = true; }
+      // Collect ALL validation errors
+      const validationErrors = [
+        ...requiredResult.errors,
+        ...numberResult.errors,
+        ...masterDataResult.errors,
+        ...businessRuleResult.errors,
+      ];
       
-      const specialMinQty = parseInt(row.special_min_qty);
-      if (row.special_min_qty === "" || isNaN(specialMinQty) || specialMinQty < 0) { rowErr.special_min_qty = true; hasError = true; }
+      validationErrors.forEach(err => {
+        rowErrors.push(err.message);
+        // Map validator field names to row error keys
+        const field = err.field as keyof RowErrors;
+        if (field in rowErr || [
+          'category_id', 'main_product_id', 'unit_id', 'code',
+          'quantity', 'min_stock_alert', 'cost_price',
+          'selling_price_retail', 'selling_price_wholesale', 'selling_price_special',
+          'wholesale_min_qty', 'special_min_qty'
+        ].includes(field)) {
+          rowErr[field] = true;
+        }
+      });
       
-      if (Object.keys(rowErr).length > 0) newErrors[row.id] = rowErr;
+      // If there are ANY errors, mark as failed
+      if (rowErrors.length > 0) {
+        newErrors[r.id] = rowErr;
+        errorMessages.push(`Baris ${rowDisplayNumber}: ${rowErrors.join('; ')}`);
+        hasError = true;
+        continue;
+      }
+      
+      // ═══════════════════════════════════════════════════════════════
+      // VALIDATION PASSED - Prepare product for bulk insert
+      // ═══════════════════════════════════════════════════════════════
+      
+      // Get master data objects for name generation
+      const brandObj = brands.find(b => b.id === r.brand_id);
+      const mainProductObj = mainProducts.find(m => m.id === r.main_product_id);
+      const variantObj = variants.find(v => v.id === r.variant_id);
+      const specificationObj = specifications.find(s => s.id === r.specification_id);
+      const sizeObj = sizes.find(s => s.id === r.size_id);
+      
+      // Process nullable fields for name generation
+      const brandName = processNullablePlaceholder(brandObj?.name);
+      const variantName = processNullablePlaceholder(variantObj?.name);
+      const specificationName = processNullablePlaceholder(specificationObj?.name);
+      const sizeName = processNullablePlaceholder(sizeObj?.name);
+      
+      const generatedName = generateProductName({
+        brandName: brandName || undefined,
+        mainProductName: mainProductObj?.name,
+        variantName: variantName || undefined,
+        specificationName: specificationName || undefined,
+        sizeName: sizeName || undefined,
+      });
+
+      validatedProducts.push({
+        store_id: storeId,
+        code: processedBarcode,
+        name: generatedName,
+        
+        // Required master data
+        category_id: r.category_id!,
+        main_product_id: r.main_product_id!,
+        unit_id: r.unit_id!,
+        
+        // Optional master data (nullable)
+        brand_id: r.brand_id,
+        variant_id: r.variant_id,
+        specification_id: r.specification_id,
+        size_id: r.size_id,
+        
+        // Required inventory (quantity can be negative)
+        quantity: parseInt(r.quantity),
+        min_stock_alert: parseInt(r.min_stock_alert),
+        
+        // Required prices (all must be >= 0)
+        cost_price: parseFloat(r.cost_price),
+        selling_price_retail: parseFloat(r.selling_price_retail),
+        selling_price_wholesale: parseFloat(r.selling_price_wholesale),
+        selling_price_special: parseFloat(r.selling_price_special),
+        
+        // Required min quantities (all must be >= 0)
+        wholesale_min_qty: parseInt(r.wholesale_min_qty),
+        special_min_qty: parseInt(r.special_min_qty),
+      });
     }
     
     if (hasError) { 
       setErrors(newErrors); 
-      toast.error("Lengkapi semua field wajib yang ditandai merah"); 
+      setIsSaving(false);
+      // Show first few errors
+      const displayErrors = errorMessages.slice(0, 3).join('\n');
+      const moreCount = errorMessages.length > 3 ? `\n... dan ${errorMessages.length - 3} error lainnya` : '';
+      toast.error(`Validasi gagal:\n${displayErrors}${moreCount}`); 
       return; 
     }
 
-    setIsSaving(true);
+    // ═══════════════════════════════════════════════════════════════
+    // BULK INSERT - All rows validated successfully
+    // ═══════════════════════════════════════════════════════════════
+    
     try {
-      const products: CreateProductInput[] = [];
-      
-      for (const r of filledRows) {
-        // Process barcode: if "-", generate unique barcode
-        let processedBarcode = r.code.trim();
-        if (processedBarcode === '-') {
-          processedBarcode = await generateUniqueBarcode(storeId);
-        }
-        
-        // Get master data objects
-        const brandObj = brands.find(b => b.id === r.brand_id);
-        const mainProductObj = mainProducts.find(m => m.id === r.main_product_id);
-        const variantObj = variants.find(v => v.id === r.variant_id);
-        const specificationObj = specifications.find(s => s.id === r.specification_id);
-        const sizeObj = sizes.find(s => s.id === r.size_id);
-        
-        // Process nullable fields for name generation
-        const brandName = processNullablePlaceholder(brandObj?.name);
-        const variantName = processNullablePlaceholder(variantObj?.name);
-        const specificationName = processNullablePlaceholder(specificationObj?.name);
-        const sizeName = processNullablePlaceholder(sizeObj?.name);
-        
-        const generatedName = generateProductName({
-          brandName: brandName || undefined,
-          mainProductName: mainProductObj?.name,
-          variantName: variantName || undefined,
-          specificationName: specificationName || undefined,
-          sizeName: sizeName || undefined,
-        });
-
-        products.push({
-          store_id: storeId,
-          code: processedBarcode,
-          name: generatedName,
-          
-          // Required master data
-          category_id: r.category_id!,
-          main_product_id: r.main_product_id!,
-          unit_id: r.unit_id!,
-          
-          // Optional master data (nullable)
-          brand_id: r.brand_id,
-          variant_id: r.variant_id,
-          specification_id: r.specification_id,
-          size_id: r.size_id,
-          
-          // Required inventory (quantity can be negative)
-          quantity: parseInt(r.quantity),
-          min_stock_alert: parseInt(r.min_stock_alert),
-          
-          // Required prices (all must be >= 0)
-          cost_price: parseFloat(r.cost_price),
-          selling_price_retail: parseFloat(r.selling_price_retail),
-          selling_price_wholesale: parseFloat(r.selling_price_wholesale),
-          selling_price_special: parseFloat(r.selling_price_special),
-          
-          // Required min quantities (all must be >= 0)
-          wholesale_min_qty: parseInt(r.wholesale_min_qty),
-          special_min_qty: parseInt(r.special_min_qty),
-        });
-      }
-
-      const result = await bulkCreateProducts(products);
+      const result = await bulkCreateProducts(validatedProducts);
       if (result.success > 0) { toast.success(`${result.success} produk berhasil disimpan`); onProductsAdded?.(); }
       if (result.errors.length > 0) toast.error(`${result.errors.length} produk gagal: ${result.errors[0]}`);
       if (result.success > 0 && result.errors.length === 0) onClose();

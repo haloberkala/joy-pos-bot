@@ -18,7 +18,15 @@ import {
   ProductMaster 
 } from "@/services/productMasterService";
 import { generateProductName } from "@/lib/productUtils";
-import { generateUniqueBarcode, processNullablePlaceholder, isAutoGeneratePlaceholder } from "@/lib/barcodeUtils";
+import { generateUniqueBarcode, processNullablePlaceholder } from "@/lib/barcodeUtils";
+import { validateProductForCreate } from "@/lib/product/validators";
+import { 
+  fetchExistingBarcodes, 
+  fetchExistingProductCombinations,
+  createCombinationKey,
+  checkDuplicateBarcodeInMemory,
+  checkDuplicateProductInMemory
+} from "@/lib/product/validators/duplicateValidators";
 
 interface ImportProductModalProps {
   isOpen: boolean;
@@ -38,6 +46,16 @@ interface ImportSummary {
   success: number;
   failed: number;
   errors: FailedRow[];
+  masterDataCreated: {
+    categories: number;
+    brands: number;
+    mainProducts: number;
+    variants: number;
+    specifications: number;
+    sizes: number;
+    units: number;
+  };
+  autoBarcodesGenerated: number;
 }
 
 export function ImportProductModal({ isOpen, onClose, storeId, onSuccess }: ImportProductModalProps) {
@@ -148,45 +166,84 @@ export function ImportProductModal({ isOpen, onClose, storeId, onSuccess }: Impo
         const lowerName = cleanName.toLowerCase();
         
         let id: number | undefined;
+        let isNew = false;
 
         if (type === 'cat') {
           if (mapCat.has(lowerName)) return mapCat.get(lowerName);
           const item = await getOrCreateCategory(cleanName, storeId);
           mapCat.set(lowerName, item.id);
+          isNew = item.id > 0 && !cats.some(c => c.id === item.id);
+          if (isNew) masterDataCreated.categories++;
           return item.id;
         } else if (type === 'brand') {
           if (mapBrand.has(lowerName)) return mapBrand.get(lowerName);
           const item = await getOrCreateBrand(cleanName, storeId);
           mapBrand.set(lowerName, item.id);
+          isNew = item.id > 0 && !brs.some(b => b.id === item.id);
+          if (isNew) masterDataCreated.brands++;
           return item.id;
         } else if (type === 'unit') {
           if (mapUnit.has(lowerName)) return mapUnit.get(lowerName);
           const item = await getOrCreateUnit(cleanName, storeId);
           mapUnit.set(lowerName, item.id);
+          isNew = item.id > 0 && !uns.some(u => u.id === item.id);
+          if (isNew) masterDataCreated.units++;
           return item.id;
         } else if (type === 'main') {
           if (mapMain.has(lowerName)) return mapMain.get(lowerName);
           const item = await getOrCreateMainProduct(cleanName, storeId);
           mapMain.set(lowerName, item.id);
+          isNew = item.id > 0 && !mains.some(m => m.id === item.id);
+          if (isNew) masterDataCreated.mainProducts++;
           return item.id;
         } else if (type === 'var') {
           if (mapVar.has(lowerName)) return mapVar.get(lowerName);
           const item = await getOrCreateVariant(cleanName, storeId);
           mapVar.set(lowerName, item.id);
+          isNew = item.id > 0 && !vars.some(v => v.id === item.id);
+          if (isNew) masterDataCreated.variants++;
           return item.id;
         } else if (type === 'spec') {
           if (mapSpec.has(lowerName)) return mapSpec.get(lowerName);
           const item = await getOrCreateSpecification(cleanName, storeId);
           mapSpec.set(lowerName, item.id);
+          isNew = item.id > 0 && !specs.some(s => s.id === item.id);
+          if (isNew) masterDataCreated.specifications++;
           return item.id;
         } else if (type === 'size') {
           if (mapSize.has(lowerName)) return mapSize.get(lowerName);
           const item = await getOrCreateSize(cleanName, storeId);
           mapSize.set(lowerName, item.id);
+          isNew = item.id > 0 && !szs.some(s => s.id === item.id);
+          if (isNew) masterDataCreated.sizes++;
           return item.id;
         }
         return undefined;
       };
+
+      // ═══════════════════════════════════════════════════════════════
+      // BATCH OPTIMIZATION - Fetch all existing data once
+      // ═══════════════════════════════════════════════════════════════
+      const [existingBarcodes, existingCombinations] = await Promise.all([
+        fetchExistingBarcodes(storeId),
+        fetchExistingProductCombinations(storeId),
+      ]);
+
+      // Track in-file duplicates
+      const seenBarcodes = new Map<string, number>(); // barcode -> row number
+      const seenCombinations = new Map<string, number>(); // combination key -> row number
+
+      // Track master data creation
+      const masterDataCreated = {
+        categories: 0,
+        brands: 0,
+        mainProducts: 0,
+        variants: 0,
+        specifications: 0,
+        sizes: 0,
+        units: 0,
+      };
+      let autoBarcodesGenerated = 0;
 
       const validProducts: CreateProductInput[] = [];
       const errors: FailedRow[] = [];
@@ -208,101 +265,53 @@ export function ImportProductModal({ isOpen, onClose, storeId, onSuccess }: Impo
         const stokAwal = normRow["Stok Awal *"];
         const stokMin = normRow["Stok Minimum *"];
         const hargaModal = normRow["Harga Modal *"];
-        const priceRetail = parseFloat(normRow["Harga Jual Eceran *"]);
-        const priceWholesale = parseFloat(normRow["Harga Jual Grosir *"]);
+        const priceRetail = normRow["Harga Jual Eceran *"];
+        const priceWholesale = normRow["Harga Jual Grosir *"];
         const minQtyGrosir = normRow["Min. Qty Grosir *"];
-        const priceSpecial = parseFloat(normRow["Harga Jual Spesial *"]);
+        const priceSpecial = normRow["Harga Jual Spesial *"];
         const minQtySpesial = normRow["Min. Qty Spesial *"];
 
-        // Validate required fields - reject "-" in required fields (except barcode)
+        // Basic pre-validation for required string fields (before calling validator)
         if (!code) { errors.push({ rowNumber, sku: code, reason: "Barcode/SKU wajib diisi." }); continue; }
-        
         if (!categoryName || categoryName === '-') { 
           errors.push({ rowNumber, sku: code, reason: "Kategori wajib diisi. Nilai '-' hanya diperbolehkan untuk field opsional." }); 
           continue; 
         }
-        
         if (!mainProductName || mainProductName === '-') { 
           errors.push({ rowNumber, sku: code, reason: "Produk Utama wajib diisi. Nilai '-' hanya diperbolehkan untuk field opsional." }); 
           continue; 
         }
-        
         if (!unitName || unitName === '-') { 
           errors.push({ rowNumber, sku: code, reason: "Satuan wajib diisi. Nilai '-' hanya diperbolehkan untuk field opsional." }); 
           continue; 
         }
         
         // Process barcode: if "-", generate unique barcode
+        let wasAutoGenerated = false;
         if (code === '-') {
-          code = await generateUniqueBarcode(storeId);
-        }
-        
-        // Stok Awal: required but CAN BE NEGATIVE (overselling allowed)
-        if (stokAwal === undefined || stokAwal === null || stokAwal === "") { 
-          errors.push({ rowNumber, sku: code, reason: "Stok Awal wajib diisi." }); 
-          continue; 
-        }
-        const parsedStokAwal = parseInt(stokAwal);
-        if (isNaN(parsedStokAwal)) {
-          errors.push({ rowNumber, sku: code, reason: "Stok Awal harus berupa angka." }); 
-          continue;
-        }
-        
-        // Stok Minimum: required and must be >= 0
-        if (stokMin === undefined || stokMin === null || stokMin === "") { 
-          errors.push({ rowNumber, sku: code, reason: "Stok Minimum wajib diisi." }); 
-          continue; 
-        }
-        const parsedStokMin = parseInt(stokMin);
-        if (isNaN(parsedStokMin) || parsedStokMin < 0) {
-          errors.push({ rowNumber, sku: code, reason: "Stok Minimum harus berupa angka >= 0." }); 
-          continue;
-        }
-        
-        // Harga Modal: required and must be >= 0
-        if (!hargaModal || parseFloat(hargaModal) < 0) { 
-          errors.push({ rowNumber, sku: code, reason: "Harga Modal wajib diisi dan tidak boleh negatif." }); 
-          continue; 
-        }
-        
-        // Prices: all required and must be >= 0
-        if (isNaN(priceRetail) || priceRetail < 0) { 
-          errors.push({ rowNumber, sku: code, reason: "Harga Jual Eceran wajib diisi dan tidak boleh negatif." }); 
-          continue; 
-        }
-        if (isNaN(priceWholesale) || priceWholesale < 0) { 
-          errors.push({ rowNumber, sku: code, reason: "Harga Jual Grosir wajib diisi dan tidak boleh negatif." }); 
-          continue; 
-        }
-        if (isNaN(priceSpecial) || priceSpecial < 0) { 
-          errors.push({ rowNumber, sku: code, reason: "Harga Jual Spesial wajib diisi dan tidak boleh negatif." }); 
-          continue; 
-        }
-        
-        // Min Quantities: all required and must be >= 0
-        if (minQtyGrosir === undefined || minQtyGrosir === null || minQtyGrosir === "") { 
-          errors.push({ rowNumber, sku: code, reason: "Min. Qty Grosir wajib diisi." }); 
-          continue; 
-        }
-        const parsedMinQtyGrosir = parseInt(minQtyGrosir);
-        if (isNaN(parsedMinQtyGrosir) || parsedMinQtyGrosir < 0) {
-          errors.push({ rowNumber, sku: code, reason: "Min. Qty Grosir harus berupa angka >= 0." }); 
-          continue;
-        }
-        
-        if (minQtySpesial === undefined || minQtySpesial === null || minQtySpesial === "") { 
-          errors.push({ rowNumber, sku: code, reason: "Min. Qty Spesial wajib diisi." }); 
-          continue; 
-        }
-        const parsedMinQtySpesial = parseInt(minQtySpesial);
-        if (isNaN(parsedMinQtySpesial) || parsedMinQtySpesial < 0) {
-          errors.push({ rowNumber, sku: code, reason: "Min. Qty Spesial harus berupa angka >= 0." }); 
-          continue;
+          try {
+            code = await generateUniqueBarcode(storeId);
+            wasAutoGenerated = true;
+            autoBarcodesGenerated++;
+          } catch (error: any) {
+            errors.push({ rowNumber, sku: code, reason: error.message || "Gagal generate barcode" });
+            continue;
+          }
         }
 
         setProgress(40 + Math.floor((i / rows.length) * 40)); // Progress 40 -> 80
 
         try {
+          // Parse numeric values
+          const parsedStokAwal = parseInt(stokAwal);
+          const parsedStokMin = parseInt(stokMin);
+          const parsedHargaModal = parseFloat(hargaModal);
+          const parsedPriceRetail = parseFloat(priceRetail);
+          const parsedPriceWholesale = parseFloat(priceWholesale);
+          const parsedPriceSpecial = parseFloat(priceSpecial);
+          const parsedMinQtyGrosir = parseInt(minQtyGrosir);
+          const parsedMinQtySpesial = parseInt(minQtySpesial);
+          
           // Optional fields - process "-" as NULL, don't create master data
           let brandName = normRow["Brand (atau \"-\")"]?.toString().trim();
           let variantName = normRow["Varian (atau \"-\")"]?.toString().trim();
@@ -315,6 +324,7 @@ export function ImportProductModal({ isOpen, onClose, storeId, onSuccess }: Impo
           specName = processNullablePlaceholder(specName) || undefined;
           sizeName = processNullablePlaceholder(sizeName) || undefined;
 
+          // Get or create master data IDs
           const catId = await getMasterId(categoryName, 'cat');
           const brandId = brandName ? await getMasterId(brandName, 'brand') : undefined;
           const mainId = await getMasterId(mainProductName, 'main');
@@ -322,6 +332,131 @@ export function ImportProductModal({ isOpen, onClose, storeId, onSuccess }: Impo
           const specId = specName ? await getMasterId(specName, 'spec') : undefined;
           const sizeId = sizeName ? await getMasterId(sizeName, 'size') : undefined;
           const unitId = await getMasterId(unitName, 'unit');
+
+          // ═══════════════════════════════════════════════════════════════
+          // IN-FILE DUPLICATE CHECK (before validator)
+          // ═══════════════════════════════════════════════════════════════
+          const rowErrors: string[] = [];
+          
+          // Check barcode duplicate within file
+          const lowerCode = code.toLowerCase();
+          if (seenBarcodes.has(lowerCode)) {
+            rowErrors.push(`Barcode sama dengan Baris ${seenBarcodes.get(lowerCode)}`);
+          } else {
+            seenBarcodes.set(lowerCode, rowNumber);
+            
+            // Check barcode duplicate in database (using cached set)
+            if (checkDuplicateBarcodeInMemory(code, existingBarcodes)) {
+              rowErrors.push(`Barcode "${code}" sudah ada di database`);
+            }
+          }
+          
+          // Check product combination duplicate within file
+          const combinationKey = createCombinationKey({
+            brand_id: brandId,
+            main_product_id: mainId!,
+            variant_id: varId,
+            specification_id: specId,
+            size_id: sizeId,
+          });
+          
+          if (seenCombinations.has(combinationKey)) {
+            rowErrors.push(`Kombinasi master data sama dengan Baris ${seenCombinations.get(combinationKey)}`);
+          } else {
+            seenCombinations.set(combinationKey, rowNumber);
+            
+            // Check product combination duplicate in database (using cached map)
+            const existingProduct = checkDuplicateProductInMemory(
+              { brand_id: brandId, main_product_id: mainId!, variant_id: varId, specification_id: specId, size_id: sizeId },
+              existingCombinations
+            );
+            
+            if (existingProduct) {
+              rowErrors.push(
+                `Produk dengan kombinasi master data sama sudah ada: ` +
+                `"${existingProduct.name}" (${existingProduct.code}), ` +
+                `Stok: ${existingProduct.quantity}, ` +
+                `Harga: Rp ${existingProduct.selling_price_retail.toLocaleString()}`
+              );
+            }
+          }
+
+          // ═══════════════════════════════════════════════════════════════
+          // FIELD & BUSINESS RULE VALIDATION (without duplicate checks)
+          // ═══════════════════════════════════════════════════════════════
+          
+          const validationPayload = {
+            category_id: catId || 0,
+            main_product_id: mainId || 0,
+            unit_id: unitId || 0,
+            brand_id: brandId,
+            variant_id: varId,
+            specification_id: specId,
+            size_id: sizeId,
+            code,
+            quantity: parsedStokAwal,
+            min_stock_alert: parsedStokMin,
+            cost_price: parsedHargaModal,
+            selling_price_retail: parsedPriceRetail,
+            selling_price_wholesale: parsedPriceWholesale,
+            selling_price_special: parsedPriceSpecial,
+            wholesale_min_qty: parsedMinQtyGrosir,
+            special_min_qty: parsedMinQtySpesial,
+          };
+          
+          // Note: We already checked duplicates above using cached data
+          // So we skip validator's duplicate checks to avoid redundant queries
+          // We only need field validation and business rule validation
+          
+          // Import field validators directly for non-duplicate validation
+          const { 
+            validateRequiredFields, 
+            validateNumberFields, 
+            validateMasterDataIds 
+          } = await import('@/lib/product/validators/fieldValidators');
+          const { validateAllBusinessRules } = await import('@/lib/product/validators/businessRuleValidators');
+          
+          const requiredResult = validateRequiredFields(validationPayload);
+          const numberResult = validateNumberFields(validationPayload);
+          const masterDataResult = validateMasterDataIds(validationPayload);
+          const businessRuleResult = validateAllBusinessRules(
+            {
+              cost_price: parsedHargaModal,
+              selling_price_retail: parsedPriceRetail,
+              selling_price_wholesale: parsedPriceWholesale,
+              selling_price_special: parsedPriceSpecial,
+            },
+            {
+              wholesale_min_qty: parsedMinQtyGrosir,
+              special_min_qty: parsedMinQtySpesial,
+            }
+          );
+          
+          // Collect ALL validation errors
+          const validationErrors = [
+            ...requiredResult.errors,
+            ...numberResult.errors,
+            ...masterDataResult.errors,
+            ...businessRuleResult.errors,
+          ];
+          
+          validationErrors.forEach(err => {
+            rowErrors.push(err.message);
+          });
+          
+          // If there are ANY errors (duplicate or validation), add to error list
+          if (rowErrors.length > 0) {
+            errors.push({ 
+              rowNumber, 
+              sku: code, 
+              reason: rowErrors.join('; ') 
+            });
+            continue;
+          }
+          
+          // ═══════════════════════════════════════════════════════════════
+          // ALL VALIDATION PASSED - Generate name and prepare product
+          // ═══════════════════════════════════════════════════════════════
 
           const generatedName = generateProductName({
             brandName,
@@ -352,10 +487,10 @@ export function ImportProductModal({ isOpen, onClose, storeId, onSuccess }: Impo
             min_stock_alert: parsedStokMin,
             
             // Required prices (all must be >= 0)
-            cost_price: parseFloat(hargaModal),
-            selling_price_retail: priceRetail,
-            selling_price_wholesale: priceWholesale,
-            selling_price_special: priceSpecial,
+            cost_price: parsedHargaModal,
+            selling_price_retail: parsedPriceRetail,
+            selling_price_wholesale: parsedPriceWholesale,
+            selling_price_special: parsedPriceSpecial,
             
             // Required min quantities (all must be >= 0)
             wholesale_min_qty: parsedMinQtyGrosir,
@@ -382,7 +517,9 @@ export function ImportProductModal({ isOpen, onClose, storeId, onSuccess }: Impo
           total: rows.length,
           success: result.success,
           failed: (rows.length - validProducts.length) + bulkErrors.length,
-          errors: [...errors, ...bulkErrors]
+          errors: [...errors, ...bulkErrors],
+          masterDataCreated,
+          autoBarcodesGenerated,
         });
 
         if (result.success > 0) {
@@ -394,7 +531,9 @@ export function ImportProductModal({ isOpen, onClose, storeId, onSuccess }: Impo
           total: rows.length,
           success: 0,
           failed: rows.length,
-          errors: errors
+          errors: errors,
+          masterDataCreated,
+          autoBarcodesGenerated,
         });
         toast.error("Tidak ada data valid yang bisa diimport");
       }
@@ -483,6 +622,32 @@ export function ImportProductModal({ isOpen, onClose, storeId, onSuccess }: Impo
                   <span className="text-red-600 flex items-center gap-1">
                     <XCircle className="w-4 h-4" /> Gagal: {summary.failed}
                   </span>
+                </div>
+              </div>
+              
+              {/* Summary Statistics */}
+              <div className="p-4 bg-blue-50/50 border-b border-border">
+                <p className="text-xs font-semibold text-blue-900 mb-2">Statistik Import:</p>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <p className="text-blue-800 font-medium">Total Data: {summary.total}</p>
+                    <p className="text-green-700">✓ Berhasil: {summary.success}</p>
+                    <p className="text-red-700">✗ Gagal: {summary.failed}</p>
+                  </div>
+                  <div>
+                    <p className="text-blue-800 font-medium mb-1">Master Data Baru:</p>
+                    {summary.masterDataCreated.categories > 0 && <p className="text-blue-700">• Kategori: {summary.masterDataCreated.categories}</p>}
+                    {summary.masterDataCreated.brands > 0 && <p className="text-blue-700">• Brand: {summary.masterDataCreated.brands}</p>}
+                    {summary.masterDataCreated.mainProducts > 0 && <p className="text-blue-700">• Produk Utama: {summary.masterDataCreated.mainProducts}</p>}
+                    {summary.masterDataCreated.variants > 0 && <p className="text-blue-700">• Varian: {summary.masterDataCreated.variants}</p>}
+                    {summary.masterDataCreated.specifications > 0 && <p className="text-blue-700">• Spesifikasi: {summary.masterDataCreated.specifications}</p>}
+                    {summary.masterDataCreated.sizes > 0 && <p className="text-blue-700">• Ukuran: {summary.masterDataCreated.sizes}</p>}
+                    {summary.masterDataCreated.units > 0 && <p className="text-blue-700">• Satuan: {summary.masterDataCreated.units}</p>}
+                    {summary.autoBarcodesGenerated > 0 && <p className="text-blue-700 mt-1">• Barcode Auto: {summary.autoBarcodesGenerated}</p>}
+                    {Object.values(summary.masterDataCreated).every(v => v === 0) && summary.autoBarcodesGenerated === 0 && (
+                      <p className="text-blue-600 italic">Tidak ada master data baru</p>
+                    )}
+                  </div>
                 </div>
               </div>
               

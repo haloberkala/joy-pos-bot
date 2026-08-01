@@ -35,6 +35,7 @@ import {
 } from "@/services/productMasterService";
 import { generateProductName, generateProductShortName } from "@/lib/productUtils";
 import { generateUniqueBarcode } from "@/lib/barcodeUtils";
+import { validateProductForCreate, validateProductForUpdate } from "@/lib/product/validators";
 
 interface AddProductModalProps {
   isOpen: boolean;
@@ -235,72 +236,56 @@ export function AddProductModal({
   };
 
   const handleSave = async () => {
-    // Validate ALL REQUIRED fields
-    // Master data
-    if (!formData.category_id) {
-      toast.error("Kategori wajib dipilih");
-      return;
-    }
-    if (!formData.main_product_id) {
-      toast.error("Produk Utama wajib dipilih");
-      return;
-    }
-    if (!formData.unit_id) {
-      toast.error("Satuan wajib dipilih");
-      return;
-    }
-    
-    // Barcode
-    if (!formData.code?.trim()) {
-      toast.error("Barcode/SKU wajib diisi");
-      return;
-    }
-    
-    // Inventory - quantity is required but CAN BE NEGATIVE (overselling allowed)
-    // Only validate on ADD mode, not EDIT (stock is managed separately)
-    if (!editingProduct) {
-      if (formData.quantity === undefined || formData.quantity === null) {
-        toast.error("Stok Awal wajib diisi");
-        return;
-      }
-    }
-    
-    // min_stock_alert is always required and must be >= 0
-    if (formData.min_stock_alert === undefined || formData.min_stock_alert < 0) {
-      toast.error("Stok Minimum wajib diisi (minimal 0)");
-      return;
-    }
-    
-    // Prices - all required and must be >= 0
-    if (!formData.cost_price || formData.cost_price < 0) {
-      toast.error("Harga Modal wajib diisi dan tidak boleh negatif");
-      return;
-    }
-    if (!formData.selling_price_retail || formData.selling_price_retail < 0) {
-      toast.error("Harga Jual Eceran wajib diisi dan tidak boleh negatif");
-      return;
-    }
-    if (!formData.selling_price_wholesale || formData.selling_price_wholesale < 0) {
-      toast.error("Harga Jual Grosir wajib diisi dan tidak boleh negatif");
-      return;
-    }
-    if (!formData.selling_price_special || formData.selling_price_special < 0) {
-      toast.error("Harga Jual Spesial wajib diisi dan tidak boleh negatif");
-      return;
-    }
-    
-    // Min quantities - all required and must be >= 0
-    if (formData.wholesale_min_qty === undefined || formData.wholesale_min_qty < 0) {
-      toast.error("Min. Qty Grosir wajib diisi (minimal 0)");
-      return;
-    }
-    if (formData.special_min_qty === undefined || formData.special_min_qty < 0) {
-      toast.error("Min. Qty Spesial wajib diisi (minimal 0)");
-      return;
-    }
-
     try {
       setIsSaving(true);
+      
+      // ═══════════════════════════════════════════════════════════════
+      // NEW VALIDATION LAYER - Centralized & Comprehensive
+      // ═══════════════════════════════════════════════════════════════
+      
+      // Prepare validation payload
+      const validationPayload = {
+        category_id: formData.category_id!,
+        main_product_id: formData.main_product_id!,
+        unit_id: formData.unit_id!,
+        brand_id: formData.brand_id,
+        variant_id: formData.variant_id,
+        specification_id: formData.specification_id,
+        size_id: formData.size_id,
+        code: formData.code!,
+        quantity: editingProduct ? 0 : formData.quantity!, // 0 for edit mode (stock managed separately)
+        min_stock_alert: formData.min_stock_alert!,
+        cost_price: formData.cost_price!,
+        selling_price_retail: formData.selling_price_retail!,
+        selling_price_wholesale: formData.selling_price_wholesale!,
+        selling_price_special: formData.selling_price_special!,
+        wholesale_min_qty: formData.wholesale_min_qty!,
+        special_min_qty: formData.special_min_qty!,
+      };
+      
+      // Run centralized validation
+      const validationResult = editingProduct
+        ? await validateProductForUpdate(editingProduct.id, validationPayload, storeId)
+        : await validateProductForCreate(validationPayload, storeId);
+      
+      // Handle validation errors
+      if (!validationResult.isValid) {
+        setIsSaving(false);
+        
+        // Show first error as toast (primary feedback)
+        if (validationResult.errors.length > 0) {
+          toast.error(validationResult.errors[0].message);
+        }
+        
+        // Log all errors for debugging
+        console.warn('Product validation failed:', validationResult.errors);
+        
+        return;
+      }
+      
+      // ═══════════════════════════════════════════════════════════════
+      // VALIDATION PASSED - Proceed with save
+      // ═══════════════════════════════════════════════════════════════
 
       const payload = {
         name: generatedName,
