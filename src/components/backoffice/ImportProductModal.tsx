@@ -19,7 +19,6 @@ import {
 } from "@/services/productMasterService";
 import { generateProductName } from "@/lib/productUtils";
 import { generateUniqueBarcode, processNullablePlaceholder } from "@/lib/barcodeUtils";
-import { validateProductForCreate } from "@/lib/product/validators";
 import { 
   fetchExistingBarcodes, 
   fetchExistingProductCombinations,
@@ -159,6 +158,17 @@ export function ImportProductModal({ isOpen, onClose, storeId, onSuccess }: Impo
       const mapSize = new Map(szs.map(i => [i.name.toLowerCase(), i.id]));
       const mapUnit = new Map(uns.map(i => [i.name.toLowerCase(), i.id]));
 
+      // Track master data creation (declare BEFORE getMasterId function)
+      const masterDataCreated = {
+        categories: 0,
+        brands: 0,
+        mainProducts: 0,
+        variants: 0,
+        specifications: 0,
+        sizes: 0,
+        units: 0,
+      };
+
       // Cache mapping function to retrieve or create and then update cache
       const getMasterId = async (name: string, type: 'cat'|'brand'|'main'|'var'|'spec'|'size'|'unit') => {
         if (!name || !name.trim()) return undefined;
@@ -233,16 +243,7 @@ export function ImportProductModal({ isOpen, onClose, storeId, onSuccess }: Impo
       const seenBarcodes = new Map<string, number>(); // barcode -> row number
       const seenCombinations = new Map<string, number>(); // combination key -> row number
 
-      // Track master data creation
-      const masterDataCreated = {
-        categories: 0,
-        brands: 0,
-        mainProducts: 0,
-        variants: 0,
-        specifications: 0,
-        sizes: 0,
-        units: 0,
-      };
+      // Track auto-generated barcodes
       let autoBarcodesGenerated = 0;
 
       const validProducts: CreateProductInput[] = [];
