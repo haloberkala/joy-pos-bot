@@ -358,6 +358,28 @@ export async function getWorkHolidays(
 }
 
 /**
+ * Ambil semua hari libur untuk satu tahun (untuk toko ini).
+ */
+export async function getWorkHolidaysByYear(
+  storeId: number,
+  year: number
+): Promise<WorkHoliday[]> {
+  const startDate = `${year}-01-01`;
+  const endDate   = `${year}-12-31`;
+
+  const { data, error } = await supabaseAny
+    .from('work_holidays')
+    .select('*')
+    .gte('date', startDate)
+    .lte('date', endDate)
+    .or(`store_id.eq.${storeId},store_id.is.null`)
+    .order('date', { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []) as WorkHoliday[];
+}
+
+/**
  * Tambah satu hari libur (nasional atau toko).
  */
 export async function createWorkHoliday(
@@ -366,6 +388,24 @@ export async function createWorkHoliday(
   const { data, error } = await supabaseAny
     .from('work_holidays')
     .insert(input)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as WorkHoliday;
+}
+
+/**
+ * Update hari libur.
+ */
+export async function updateWorkHoliday(
+  id: number,
+  input: Partial<CreateWorkHolidayInput>
+): Promise<WorkHoliday> {
+  const { data, error } = await supabaseAny
+    .from('work_holidays')
+    .update(input)
+    .eq('id', id)
     .select()
     .single();
 
