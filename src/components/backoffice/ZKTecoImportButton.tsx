@@ -18,8 +18,8 @@ export function ZKTecoImportButton({ storeId, onSuccess }: Props) {
 
     if (!file) return;
 
-    if (!/\.(xls|xlsx)$/i.test(file.name)) {
-      toast.error('Format tidak didukung. Gunakan file .xls atau .xlsx dari mesin absensi.');
+    if (!/\.dat$/i.test(file.name)) {
+      toast.error('Format tidak didukung. Gunakan file attlog.dat dari mesin absensi.');
       return;
     }
 
@@ -65,7 +65,7 @@ export function ZKTecoImportButton({ storeId, onSuccess }: Props) {
         ) : (
           <>
             <FileUp className="w-4 h-4" />
-            Import Excel
+            Import Absensi
           </>
         )}
       </button>
@@ -73,10 +73,10 @@ export function ZKTecoImportButton({ storeId, onSuccess }: Props) {
       <input
         ref={inputRef}
         type="file"
-        accept=".xls,.xlsx"
+        accept=".dat"
         onChange={handleFileChange}
         className="hidden"
-        aria-label="Upload file Excel absensi"
+        aria-label="Upload file attlog.dat absensi"
       />
     </>
   );

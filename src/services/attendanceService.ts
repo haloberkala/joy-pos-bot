@@ -177,8 +177,8 @@ export async function updateAttendance(
   input: UpdateAttendanceInput
 ): Promise<Attendance> {
   try {
-    const updateData: any = {};
-    
+    const updateData: Partial<UpdateAttendanceInput> = {};
+
     if (input.status !== undefined) updateData.status = input.status;
     if (input.note !== undefined) updateData.note = input.note;
     if (input.clock_in !== undefined) updateData.clock_in = input.clock_in;
@@ -249,7 +249,7 @@ export async function getAttendanceSummary(
       cuti: 0,
     };
 
-    data?.forEach((att: any) => {
+    data?.forEach((att: { status: string }) => {
       if (att.status === 'hadir') summary.hadir++;
       else if (att.status === 'alpha') summary.alpha++;
       else if (att.status === 'izin') summary.izin++;
@@ -277,7 +277,7 @@ export async function getAttendanceSetting(storeId: number) {
   return data;
 }
 
-export async function upsertAttendanceSetting(storeId: number, setting: any) {
+export async function upsertAttendanceSetting(storeId: number, setting: AttendanceSetting) {
   // Bersihkan payload (jangan kirim id, dll agar aman)
   const { id, created_at, updated_at, store_id, ...cleanSetting } = setting;
 
@@ -308,4 +308,550 @@ export async function upsertAttendanceSetting(storeId: number, setting: any) {
     if (error) throw error;
     return data && data.length > 0 ? data[0] : null;
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ATTENDANCE ENGINE
+// ═══════════════════════════════════════════════════════════════════════════════
+//
+// Pipeline:
+//   Parse (attendanceImportService)
+//     ↓ AttlogEntry[]
+//   resolveEmployee()       — fingerprint_id → employee UUID
+//     ↓
+//   validateAttendanceSetting() — pastikan aturan sudah dikonfigurasi
+//     ↓ AttendanceEngineSettings
+//   validateHoliday()       — (Tahap 1: semua hari dianggap hari kerja)
+//     ↓
+//   validateScanWindow()    — validasi: warning jika semua scan di luar window
+//     ↓ scans (TIDAK difilter — source of truth tetap scans asli)
+//   selectClockIn()         — pilih scan clock-in berdasarkan aturan shift
+//     ↓ clockIn
+//   selectClockOut()        — pilih scan clock-out berdasarkan aturan shift
+//     ↓ clockOut
+//   calculatePenalty()      — hitung keterlambatan vs grace period
+//     ↓ penaltyMinutes
+//   calculateDuration()     — hitung durasi efektif (potong OT & break)
+//     ↓ durationMinutes
+//   calculateStatus()       — tentukan status hadir / alpha
+//     ↓ status
+//   compareExistingAttendance() — INSERT / UPDATE / SKIP
+//     ↓
+//   persistAttendance()     — tulis ke database
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── Tipe Lokal ────────────────────────────────────────────────────────────────
+
+/** Tipe lokal agar tidak terjadi circular import dengan attendanceImportService. */
+interface AttlogEntry {
+  fingerprintId: string;
+  date: string;
+  scans: string[]; // sudah sorted & deduplicated ascending, format "HH:mm"
+}
+
+interface ImportResult {
+  inserted: number;
+  updated: number;
+  skipped: number;
+  /** Kondisi yang benar-benar gagal (DB error, setting tidak ada, dsb). */
+  errors: string[];
+  /** Alasan data dilewati — bukan error, hanya informasi (manual edit, identik, dsb). */
+  skippedReasons: string[];
+}
+
+/** Snapshot aturan absensi yang sudah di-parse dari attendance_settings. */
+interface AttendanceEngineSettings {
+  shiftStart:   string; // "HH:mm"
+  shiftEnd:     string;
+  gracePeriod:  number; // menit
+  breakStart:   string;
+  breakEnd:     string;
+  // Derived (menit sejak 00:00) — dihitung sekali, dipakai di semua step.
+  shiftStartMin: number;
+  shiftEndMin:   number;
+  breakStartMin: number;
+  breakEndMin:   number;
+}
+
+type AttendanceStatus = 'hadir' | 'alpha' | 'izin' | 'sakit' | 'cuti';
+
+/** Hasil kalkulasi satu hari kerja sebelum ditulis ke DB. */
+interface DayResult {
+  clockIn:         string | null;
+  clockOut:        string | null;
+  penaltyMinutes:  number;
+  durationMinutes: number | null;
+  status:          AttendanceStatus;
+}
+
+type PersistAction = 'insert' | 'update' | 'skip_identical' | 'skip_manual_edit';
+
+interface ExistingRow {
+  id:               number;
+  employee_id:      string;
+  attendance_date:  string;
+  clock_in:         string | null;
+  clock_out:        string | null;
+  duration_minutes: number | null;
+  penalty_minutes:  number;
+  status:           string;
+  is_manual_edit:   boolean;
+}
+
+// ── Konstanta ─────────────────────────────────────────────────────────────────
+
+const IMPORT_BATCH_SIZE = 50;
+
+/**
+ * Berapa menit setelah shift_end scan masih dianggap clock-out yang valid.
+ * Contoh: shift 17:00 + 180 menit = batas clock-out 20:00.
+ */
+const MAX_CLOCK_OUT_AFTER_SHIFT = 180;
+
+// ── Helper Murni ──────────────────────────────────────────────────────────────
+
+function _min(t: string): number {
+  const [h, m] = t.split(':').map(Number);
+  return h * 60 + m;
+}
+
+function _fmt(totalMin: number): string {
+  const h = Math.floor(Math.max(0, totalMin) / 60) % 24;
+  const m = Math.max(0, totalMin) % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+function _normalizeId(raw: string): string {
+  const s = raw.replace(/['"]/g, '').trim();
+  const n = Number(s);
+  return isNaN(n) ? s : String(n);
+}
+
+/**
+ * Apakah waktu `t` berada dalam window jam masuk?
+ * Window: shift_start - 60 menit  s/d  shift_start + 120 menit
+ */
+function isInClockInWindow(t: string, s: AttendanceEngineSettings): boolean {
+  const m = _min(t);
+  return m >= s.shiftStartMin - 60 && m <= s.shiftStartMin + 120;
+}
+
+/**
+ * Apakah waktu `t` berada dalam window jam pulang?
+ * Window: shift_end - 120 menit  s/d  shift_end + MAX_CLOCK_OUT_AFTER_SHIFT
+ */
+function isInClockOutWindow(t: string, s: AttendanceEngineSettings): boolean {
+  const m = _min(t);
+  return m >= s.shiftEndMin - 120 && m <= s.shiftEndMin + MAX_CLOCK_OUT_AFTER_SHIFT;
+}
+
+// ── Step 1: validateAttendanceSetting ────────────────────────────────────────
+//
+// Ambil attendance_settings dari DB dan konversi ke AttendanceEngineSettings.
+// Error hard-stop jika setting belum dikonfigurasi — import tidak boleh lanjut.
+
+async function validateAttendanceSetting(
+  storeId: number
+): Promise<{ settings: AttendanceEngineSettings } | { error: string }> {
+  const { data, error } = await supabaseAny
+    .from('attendance_settings')
+    .select('*')
+    .eq('store_id', Number(storeId))
+    .single();
+
+  if (error) {
+    return {
+      error: error.code === 'PGRST116'
+        ? 'Attendance setting belum dibuat. Harap konfigurasi aturan absensi terlebih dahulu.'
+        : `Gagal mengambil aturan absensi: ${error.message}`,
+    };
+  }
+
+  const shiftStart  = (data.shift_start  ?? '08:00') as string;
+  const shiftEnd    = (data.shift_end    ?? '17:00') as string;
+  const breakStart  = (data.break_start  ?? '12:00') as string;
+  const breakEnd    = (data.break_end    ?? '13:00') as string;
+  const gracePeriod = (data.grace_period_minutes ?? 15) as number;
+
+  return {
+    settings: {
+      shiftStart, shiftEnd, gracePeriod, breakStart, breakEnd,
+      shiftStartMin: _min(shiftStart),
+      shiftEndMin:   _min(shiftEnd),
+      breakStartMin: _min(breakStart),
+      breakEndMin:   _min(breakEnd),
+    },
+  };
+}
+
+// ── Step 2: resolveEmployee ───────────────────────────────────────────────────
+//
+// Fetch semua karyawan store ini (batch), bangun Map fingerprintId → UUID.
+// Lookup per-entry dilakukan di pipeline utama.
+
+async function resolveEmployee(
+  storeId: number
+): Promise<{ map: Map<string, string> } | { error: string }> {
+  const { data, error } = await supabaseAny
+    .from('employees')
+    .select('id, fingerprint_id')
+    .eq('store_id', Number(storeId))
+    .not('fingerprint_id', 'is', null);
+
+  if (error) return { error: `Gagal mengambil data karyawan: ${error.message}` };
+
+  const map = new Map<string, string>();
+  (data ?? []).forEach((emp: { id: string; fingerprint_id: string }) =>
+    map.set(_normalizeId(emp.fingerprint_id), emp.id)
+  );
+  return { map };
+}
+
+// ── Step 3: validateHoliday ───────────────────────────────────────────────────
+//
+// Tahap 1: semua tanggal dianggap hari kerja. Fungsi ini selalu lolos.
+// Nanti saat modul kalender hari libur ditambahkan, cukup modifikasi step ini.
+
+function validateHoliday(
+  _date: string,
+  _fingerprintId: string
+): { pass: true } | { pass: false; reason: string } {
+  // Placeholder — Tahap 1 tidak mendukung hari libur.
+  return { pass: true };
+}
+
+// ── Step 4: validateScanWindow ────────────────────────────────────────────────
+//
+// HANYA memvalidasi — tidak memfilter array scan.
+// scans asli tetap menjadi source of truth untuk selectClockIn/Out.
+//
+// Return: { pass: true } jika minimal satu scan berada dalam window clock-in
+//         ATAU window clock-out.
+//         { pass: false, reason } jika semua scan di luar kedua window (entry dilewati).
+
+function validateScanWindow(
+  scans: string[],
+  s: AttendanceEngineSettings,
+  fingerprintId: string,
+  date: string
+): { pass: true } | { pass: false; reason: string } {
+  const hasValidScan = scans.some(
+    (t) => isInClockInWindow(t, s) || isInClockOutWindow(t, s)
+  );
+
+  if (!hasValidScan) {
+    return {
+      pass: false,
+      reason:
+        `Fingerprint ID ${fingerprintId} / ${date}: ` +
+        `Semua scan berada di luar aturan absensi ` +
+        `(window masuk ${_fmt(s.shiftStartMin - 60)}–${_fmt(s.shiftStartMin + 120)}, ` +
+        `window pulang ${_fmt(s.shiftEndMin - 120)}–${_fmt(s.shiftEndMin + MAX_CLOCK_OUT_AFTER_SHIFT)}). Dilewati.`,
+    };
+  }
+
+  return { pass: true };
+}
+
+// ── Step 5: selectClockIn ─────────────────────────────────────────────────────
+//
+// Menerima scans asli. Mengembalikan scan pertama dalam window clock-in.
+// Jika tidak ada scan dalam window → null (TIDAK fallback ke scans[0]).
+//
+// Window: shift_start - 60 menit  s/d  shift_start + 120 menit
+
+function selectClockIn(
+  scans: string[],
+  s: AttendanceEngineSettings
+): string | null {
+  const inWindow = scans.filter((t) => isInClockInWindow(t, s));
+  return inWindow.length > 0 ? inWindow[0] : null;
+}
+
+// ── Step 6: selectClockOut ────────────────────────────────────────────────────
+//
+// Menerima scans asli. Mengembalikan scan terakhir dalam window clock-out
+// yang bukan clockIn itu sendiri.
+// Scan di luar window clock-out (mis. 10:17 saat shift 08-17) diabaikan.
+// Jika tidak ada kandidat valid → null.
+//
+// Window: shift_end - 120 menit  s/d  shift_end + MAX_CLOCK_OUT_AFTER_SHIFT
+
+function selectClockOut(
+  scans: string[],
+  clockIn: string | null,
+  s: AttendanceEngineSettings
+): string | null {
+  // Kandidat: scan dalam window clock-out, bukan clock-in
+  const candidates = scans.filter(
+    (t) => t !== clockIn && isInClockOutWindow(t, s)
+  );
+
+  if (candidates.length === 0) return null;
+
+  // Deprioritisasi scan yang jatuh di window break
+  const nonBreak = candidates.filter((t) => {
+    const m = _min(t);
+    return !(m >= s.breakStartMin && m <= s.breakEndMin);
+  });
+
+  const pool = nonBreak.length > 0 ? nonBreak : candidates;
+  return pool[pool.length - 1];
+}
+
+// ── Step 7: calculatePenalty ──────────────────────────────────────────────────
+//
+// Keterlambatan = max(0, clock_in - shift_start)
+// Penalty       = max(0, keterlambatan - grace_period)
+
+function calculatePenalty(clockIn: string | null, s: AttendanceEngineSettings): number {
+  if (!clockIn) return 0;
+  const lateness = Math.max(0, _min(clockIn) - s.shiftStartMin);
+  return Math.max(0, lateness - s.gracePeriod);
+}
+
+// ── Step 8: calculateDuration ─────────────────────────────────────────────────
+//
+// Durasi efektif = min(clock_out, shift_end) - max(clock_in, shift_start)
+//                  dikurangi overlap dengan break.
+// OT tidak dihitung — durasi dibatasi oleh shift_end.
+// Dirancang untuk nanti mendukung: multiple break, OT threshold.
+
+function calculateDuration(
+  clockIn: string,
+  clockOut: string | null,
+  s: AttendanceEngineSettings
+): number | null {
+  if (!clockOut) return null;
+
+  const ciMin = _min(clockIn);
+  const coMin = _min(clockOut);
+
+  // Effective window: dibatasi shift_start s/d shift_end
+  const effStart = Math.max(ciMin, s.shiftStartMin);
+  const effEnd   = Math.min(coMin, s.shiftEndMin);
+  let dur = effEnd - effStart;
+
+  // Kurangi overlap dengan break
+  if (effStart < s.breakEndMin && effEnd > s.breakStartMin) {
+    const bStart = Math.max(effStart, s.breakStartMin);
+    const bEnd   = Math.min(effEnd,   s.breakEndMin);
+    dur -= (bEnd - bStart);
+  }
+
+  return Math.max(0, dur);
+}
+
+// ── Step 9: calculateStatus ───────────────────────────────────────────────────
+//
+// clockIn valid → hadir.
+// Kasus clockIn null sudah ditangani di pipeline sebelum fungsi ini dipanggil.
+
+function calculateStatus(): AttendanceStatus {
+  return 'hadir';
+}
+
+// ── Step 10: compareExistingAttendance ────────────────────────────────────────
+//
+// Bandingkan hasil kalkulasi dengan data yang sudah ada di DB.
+// Return action yang harus dilakukan: insert / update / skip.
+
+function compareExistingAttendance(
+  existing: ExistingRow | undefined,
+  day: DayResult,
+  fingerprintId: string,
+  date: string
+): { action: PersistAction; skipReason?: string } {
+  if (!existing) return { action: 'insert' };
+
+  if (existing.is_manual_edit) {
+    return {
+      action: 'skip_manual_edit',
+      skipReason: `Fingerprint ID ${fingerprintId} / ${date}: Data manual edit, tidak ditimpa.`,
+    };
+  }
+
+  const identical =
+    existing.clock_in         === day.clockIn          &&
+    existing.clock_out        === day.clockOut         &&
+    existing.duration_minutes === day.durationMinutes  &&
+    existing.penalty_minutes  === day.penaltyMinutes   &&
+    existing.status           === day.status;
+
+  return { action: identical ? 'skip_identical' : 'update' };
+}
+
+// ── Step 11: persistAttendance ────────────────────────────────────────────────
+//
+// Tulis ke DB: batch INSERT atau per-record UPDATE.
+// Dipisah agar mudah diganti dengan transaction atau RPC di masa depan.
+
+async function persistAttendance(
+  toInsert: object[],
+  toUpdate: { id: number; payload: object }[],
+  result: ImportResult
+): Promise<void> {
+  for (let i = 0; i < toInsert.length; i += IMPORT_BATCH_SIZE) {
+    const batch = toInsert.slice(i, i + IMPORT_BATCH_SIZE);
+    const { error } = await supabaseAny
+      .from('attendances')
+      .upsert(batch, { onConflict: 'employee_id, attendance_date' });
+    if (error) result.errors.push(`Upsert batch ${Math.floor(i / IMPORT_BATCH_SIZE) + 1}: ${error.message}`);
+    else result.inserted += batch.length;
+  }
+
+  for (const { id, payload } of toUpdate) {
+    const { error } = await supabaseAny.from('attendances').update(payload).eq('id', id);
+    if (error) result.errors.push(`Update ID ${id}: ${error.message}`);
+    else result.updated++;
+  }
+}
+
+// ── Pipeline Utama: importFromAttlog ──────────────────────────────────────────
+//
+// Orkestrasi seluruh step engine. Tidak mengandung business logic secara
+// langsung — setiap keputusan didelegasikan ke fungsi step di atas.
+
+export async function importFromAttlog(
+  entries: AttlogEntry[],
+  storeId: number
+): Promise<ImportResult> {
+  const result: ImportResult = { inserted: 0, updated: 0, skipped: 0, errors: [], skippedReasons: [] };
+
+  // ── validateAttendanceSetting ─────────────────────────────────────────────
+  const settingResult = await validateAttendanceSetting(storeId);
+  if ('error' in settingResult) {
+    result.errors.push(settingResult.error);
+    return result;
+  }
+  const { settings } = settingResult;
+
+  // ── resolveEmployee ───────────────────────────────────────────────────────
+  const empResult = await resolveEmployee(storeId);
+  if ('error' in empResult) {
+    result.errors.push(empResult.error);
+    return result;
+  }
+  const { map: fingerprintMap } = empResult;
+
+  // Pisahkan entry yang punya mapping UUID
+  const validEntries: { entry: AttlogEntry; employeeUuid: string }[] = [];
+  for (const entry of entries) {
+    const uuid = fingerprintMap.get(entry.fingerprintId);
+    if (!uuid) {
+      result.skipped++;
+      result.skippedReasons.push(`Fingerprint ID ${entry.fingerprintId} tidak ditemukan.`);
+    } else {
+      validEntries.push({ entry, employeeUuid: uuid });
+    }
+  }
+  if (validEntries.length === 0) return result;
+
+  // ── Fetch existing records untuk compareExistingAttendance ────────────────
+  const employeeUuids = [...new Set(validEntries.map((r) => r.employeeUuid))];
+  const dates         = [...new Set(validEntries.map((r) => r.entry.date))];
+
+  const { data: existing, error: fetchError } = await supabaseAny
+    .from('attendances')
+    .select('id, employee_id, attendance_date, clock_in, clock_out, duration_minutes, penalty_minutes, status, is_manual_edit')
+    .in('employee_id', employeeUuids)
+    .in('attendance_date', dates);
+
+  if (fetchError) {
+    result.errors.push(`Gagal fetch data existing: ${fetchError.message}`);
+    return result;
+  }
+
+  const existingMap = new Map<string, ExistingRow>();
+  (existing ?? []).forEach((row: ExistingRow) =>
+    existingMap.set(`${row.employee_id}|${row.attendance_date}`, row)
+  );
+
+  const toInsert: object[] = [];
+  const toUpdate: { id: number; payload: object }[] = [];
+
+  // ── Per-entry pipeline ────────────────────────────────────────────────────
+  for (const { entry, employeeUuid } of validEntries) {
+    const { fingerprintId, date, scans } = entry;
+
+    // validateHoliday
+    const holidayCheck = validateHoliday(date, fingerprintId);
+    if (!holidayCheck.pass) {
+      result.skipped++;
+      result.skippedReasons.push(`Fingerprint ID ${fingerprintId} / ${date}: ${holidayCheck.reason}`);
+      continue;
+    }
+
+    // validateScanWindow — validator saja, tidak memfilter scans
+    const scanCheck = validateScanWindow(scans, settings, fingerprintId, date);
+    if (!scanCheck.pass) {
+      result.skipped++;
+      result.skippedReasons.push(scanCheck.reason);
+      continue;
+    }
+
+    // selectClockIn & selectClockOut menerima scans asli
+    const clockIn  = selectClockIn(scans, settings);
+
+    // Jika tidak ada scan dalam window clock-in → skip, jangan persist
+    if (!clockIn) {
+      result.skipped++;
+      result.skippedReasons.push(
+        `Fingerprint ID ${fingerprintId} / ${date}: Tidak ada scan dalam window jam masuk. Dilewati.`
+      );
+      continue;
+    }
+
+    const clockOut = selectClockOut(scans, clockIn, settings);
+
+    // Sanity: clock_out tidak boleh lebih kecil dari clock_in
+    if (clockOut && _min(clockOut) < _min(clockIn)) {
+      result.skipped++;
+      result.skippedReasons.push(
+        `Fingerprint ID ${fingerprintId} / ${date}: ` +
+        `Clock Out (${clockOut}) lebih kecil dari Clock In (${clockIn}). Dilewati.`
+      );
+      continue;
+    }
+
+    // calculatePenalty, calculateDuration, calculateStatus
+    const day: DayResult = {
+      clockIn,
+      clockOut,
+      penaltyMinutes:  calculatePenalty(clockIn, settings),
+      durationMinutes: calculateDuration(clockIn, clockOut, settings),
+      status:          calculateStatus(),
+    };
+
+    const payload = {
+      employee_id:      employeeUuid,
+      store_id:         Number(storeId),
+      attendance_date:  date,
+      clock_in:         day.clockIn,
+      clock_out:        day.clockOut,
+      duration_minutes: day.durationMinutes,
+      penalty_minutes:  day.penaltyMinutes,
+      status:           day.status,
+      note:             '',
+      is_manual_edit:   false,
+    };
+
+    // compareExistingAttendance
+    const existingRow = existingMap.get(`${employeeUuid}|${date}`);
+    const { action, skipReason } = compareExistingAttendance(existingRow, day, fingerprintId, date);
+
+    if (action === 'insert') {
+      toInsert.push(payload);
+    } else if (action === 'update') {
+      toUpdate.push({ id: existingRow!.id, payload });
+    } else {
+      result.skipped++;
+      if (skipReason) result.skippedReasons.push(skipReason);
+    }
+  }
+
+  // persistAttendance
+  await persistAttendance(toInsert, toUpdate, result);
+
+  return result;
 }

@@ -1,14 +1,16 @@
-import * as XLSX from 'xlsx';
-import { supabaseAny } from '@/lib/supabase';
+import { importFromAttlog } from './attendanceService';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
-export interface ZKTecoRow {
-  machineId: string;
+/**
+ * Satu kelompok scan mentah dari attlog untuk satu orang di satu hari.
+ * Parser tidak menentukan clock_in / clock_out — itu tugas attendanceService.
+ */
+export interface AttlogEntry {
+  fingerprintId: string;
   date: string;
-  clockIn: string | null;
-  clockOut: string | null;
-  status: 'hadir' | 'alpha';
+  /** Daftar waktu scan, sudah diurutkan ascending dan deduplikasi. Format: "HH:mm" */
+  scans: string[];
 }
 
 export interface ParseError {
@@ -17,7 +19,7 @@ export interface ParseError {
 }
 
 export interface ParseResult {
-  rows: ZKTecoRow[];
+  entries: AttlogEntry[];
   parseErrors: ParseError[];
 }
 
@@ -25,386 +27,146 @@ export interface ImportResult {
   inserted: number;
   updated: number;
   skipped: number;
+  /** Kondisi yang benar-benar gagal (DB error, setting tidak ada, dsb). */
   errors: string[];
+  /** Alasan data dilewati — bukan error, hanya informasi (manual edit, identik, dsb). */
+  skippedReasons: string[];
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 
-function toDateString(raw: unknown): string | null {
-  if (!raw) return null;
-  const s = String(raw).trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.substring(0, 10);
-  const dmyMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-  if (dmyMatch) return `${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}`;
-  const d = new Date(s);
-  if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
-  return null;
-}
+/** Selisih scan (menit) yang masih dianggap duplikat. */
+const DEDUP_WINDOW_MINUTES = 2;
 
-function toTimeString(raw: unknown): string | null {
-  if (!raw) return null;
-  const s = String(raw).trim();
-  if (!s) return null;
-  const match = s.match(/(\d{1,2}):(\d{2})/);
-  if (!match) return null;
-  return `${match[1].padStart(2, '0')}:${match[2]}`;
-}
+// ── Helpers (parsing only) ────────────────────────────────────────────────────
 
-function normalizeId(raw: unknown): string {
-  const s = String(raw).replace(/['"]/g, '').trim();
-  const n = Number(s);
-  return isNaN(n) ? s : String(n);
-}
-
-// ── Parser ────────────────────────────────────────────────────────────────────
-
-export function parseExceptionStatSheet(file: File): Promise<ParseResult> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onload = (e) => {
-      try {
-        const data = new Uint8Array(e.target!.result as ArrayBuffer);
-        const workbook = XLSX.read(data, { type: 'array' });
-
-        const sheetName =
-          workbook.SheetNames.find(
-            (name) =>
-              name.toLowerCase().includes('exception') ||
-              name.toLowerCase().includes('statistik')
-          ) ||
-          workbook.SheetNames[3] ||
-          workbook.SheetNames[0];
-
-        if (!sheetName || !workbook.Sheets[sheetName]) {
-          return reject(new Error(`Sheet tidak ditemukan. Sheet tersedia: ${workbook.SheetNames.join(', ')}`));
-        }
-
-        const worksheet = workbook.Sheets[sheetName];
-        const rows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: null });
-
-        const result: ZKTecoRow[] = [];
-        const parseErrors: ParseError[] = [];
-
-        for (let i = 4; i < rows.length; i++) {
-          const row = rows[i] as any[];
-          if (!row || row[0] === null || row[0] === undefined) continue;
-
-          const rawIdStr = String(row[0]).replace(/['"]/g, '').trim();
-          if (rawIdStr.toLowerCase() === 'id' || rawIdStr === '') continue;
-          const machineId = normalizeId(row[0]);
-
-          const dateStr = toDateString(row[3]);
-          if (!dateStr) continue;
-
-          const clockIn = toTimeString(row[4]);
-          const clockOut = toTimeString(row[5]);
-
-          let status: 'hadir' | 'alpha';
-          if (clockIn) {
-            status = 'hadir';
-          } else {
-            status = 'alpha';
-          }
-
-          result.push({ machineId, date: dateStr, clockIn, clockOut, status });
-        }
-
-        resolve({ rows: result, parseErrors });
-      } catch (err) {
-        reject(new Error(`Gagal membaca file Excel: ${String(err)}`));
-      }
-    };
-
-    reader.onerror = () => reject(new Error('Gagal membaca file dari disk.'));
-    reader.readAsArrayBuffer(file);
-  });
-}
-
-// ── Employee Map Builder ──────────────────────────────────────────────────────
-
-export async function buildEmployeeMap(storeId: number): Promise<Record<string, string>> {
-  const { data, error } = await supabaseAny
-    .from('employees')
-    .select('id, fingerprint_id')
-    .eq('store_id', Number(storeId))
-    .not('fingerprint_id', 'is', null);
-
-  if (error) throw new Error(`Gagal mengambil data karyawan: ${error.message}`);
-
-  const map: Record<string, string> = {};
-  (data ?? []).forEach((emp: { id: string; fingerprint_id: string | null }) => {
-    if (emp.fingerprint_id) {
-      map[normalizeId(emp.fingerprint_id)] = emp.id;
-    }
-  });
-  return map;
-}
-
-// ── Smart Importer ────────────────────────────────────────────────────────────
-
-const BATCH_SIZE = 50;
-
-// Helper to convert "HH:mm" to minutes since 00:00
 function timeToMinutes(timeStr: string): number {
   const [h, m] = timeStr.split(':').map(Number);
   return h * 60 + m;
 }
 
-// Helper to convert total minutes back to "HH:MM" (digunakan di pesan validasi)
-function toHHMM(totalMin: number): string {
-  const h = Math.floor(Math.max(0, totalMin) / 60) % 24;
-  const m = Math.max(0, totalMin) % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+function normalizeId(raw: string): string {
+  const s = raw.replace(/['"]/g, '').trim();
+  const n = Number(s);
+  return isNaN(n) ? s : String(n);
 }
 
-export async function importAttendances(
-  rows: ZKTecoRow[],
-  storeId: number,
-  employeeMap: Record<string, string>
-): Promise<ImportResult> {
-  const result: ImportResult = { inserted: 0, updated: 0, skipped: 0, errors: [] };
-  const skippedIds = new Set<string>();
+/** Normalisasi "HH:mm:ss" atau "HH:mm" → "HH:mm". */
+function normalizeTime(raw: string): string | null {
+  const match = raw.trim().match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!match) return null;
+  return `${match[1].padStart(2, '0')}:${match[2]}`;
+}
 
-  // Ambil data setting absensi
-  const { data: settingData, error: settingError } = await supabaseAny
-    .from('attendance_settings')
-    .select('*')
-    .eq('store_id', Number(storeId))
-    .single();
-
-  if (settingError && settingError.code !== 'PGRST116') {
-    result.errors.push(`Gagal mengambil aturan absensi: ${settingError.message}`);
-    return result;
+/** Buang scan yang selisihnya ≤ DEDUP_WINDOW_MINUTES dari scan sebelumnya. Input harus sudah sorted. */
+function deduplicate(sortedTimes: string[]): string[] {
+  if (sortedTimes.length === 0) return [];
+  const result = [sortedTimes[0]];
+  for (let i = 1; i < sortedTimes.length; i++) {
+    const prev = timeToMinutes(result[result.length - 1]);
+    const curr = timeToMinutes(sortedTimes[i]);
+    if (curr - prev > DEDUP_WINDOW_MINUTES) result.push(sortedTimes[i]);
   }
-
-  // Gunakan default fallback jika setting tidak ditemukan di DB
-  const shiftStartStr = settingData?.shift_start || '08:00';
-  const shiftEndStr = settingData?.shift_end || '17:00';
-  const gracePeriod = settingData?.grace_period_minutes ?? 15;
-  const breakStartStr = settingData?.break_start || '12:00';
-  const breakEndStr = settingData?.break_end || '13:00';
-
-  const shiftStartMin = timeToMinutes(shiftStartStr);
-  const shiftEndMin = timeToMinutes(shiftEndStr);
-  const breakStartMin = timeToMinutes(breakStartStr);
-  const breakEndMin = timeToMinutes(breakEndStr);
-
-  // Pisahkan baris yang punya mapping UUID
-  const mappedRows: { row: ZKTecoRow; employeeUuid: string }[] = [];
-  for (const row of rows) {
-    const employeeUuid = employeeMap[row.machineId];
-    if (!employeeUuid) {
-      result.skipped++;
-      skippedIds.add(row.machineId);
-    } else {
-      mappedRows.push({ row, employeeUuid });
-    }
-  }
-
-  if (skippedIds.size > 0) {
-    result.errors.push(
-      `ID mesin tidak ada di database (${result.skipped} data dilewati): [ID ${Array.from(skippedIds).join(', ID ')}]`
-    );
-  }
-
-  if (mappedRows.length === 0) return result;
-
-  // Fetch data yang sudah ada di DB untuk komparasi (smart upsert)
-  const employeeUuids = [...new Set(mappedRows.map((r) => r.employeeUuid))];
-  const dates = [...new Set(mappedRows.map((r) => r.row.date))];
-
-  const { data: existing, error: fetchError } = await supabaseAny
-    .from('attendances')
-    .select('id, employee_id, attendance_date, clock_in, clock_out, duration_minutes, penalty_minutes, status, is_manual_edit')
-    .in('employee_id', employeeUuids)
-    .in('attendance_date', dates);
-
-  if (fetchError) {
-    result.errors.push(`Gagal fetch data existing: ${fetchError.message}`);
-    return result;
-  }
-
-  // Buat lookup map: "employeeId|date" → existing row
-  type ExistingRow = {
-    id: number;
-    employee_id: string;
-    attendance_date: string;
-    clock_in: string | null;
-    clock_out: string | null;
-    duration_minutes: number | null;
-    penalty_minutes: number;
-    status: string;
-    is_manual_edit: boolean;
-  };
-  const existingMap = new Map<string, ExistingRow>();
-  (existing ?? []).forEach((row: ExistingRow) => {
-    existingMap.set(`${row.employee_id}|${row.attendance_date}`, row);
-  });
-
-  // Klasifikasi: INSERT vs UPDATE vs SKIP
-  const toInsert: object[] = [];
-  const toUpdate: { id: number; payload: object }[] = [];
-
-  for (const { row, employeeUuid } of mappedRows) {
-    const key = `${employeeUuid}|${row.date}`;
-    const existing = existingMap.get(key);
-
-    // ── Validasi window shift ────────────────────────────────────────────────
-    // Clock In valid : shift_start - 60 menit  s/d  shift_start + 120 menit
-    // Clock Out valid: shift_end   - 120 menit s/d  23:59
-    // Data di luar window ditolak dan tidak disimpan.
-    if (row.clockIn) {
-      const min      = timeToMinutes(row.clockIn);
-      const earliest = shiftStartMin - 60;
-      const latest   = shiftStartMin + 120;
-      if (min < earliest || min > latest) {
-        result.skipped++;
-        result.errors.push(
-          `ID Fingerprint ${row.machineId} / ${row.date}: ` +
-          `Clock In ${row.clockIn} di luar window jam masuk ` +
-          `(${toHHMM(earliest)}–${toHHMM(latest)}). ` +
-          `Shift: ${shiftStartStr}–${shiftEndStr}`
-        );
-        continue;
-      }
-    }
-    if (row.clockOut) {
-      const min      = timeToMinutes(row.clockOut);
-      const earliest = shiftEndMin - 120;
-      if (min < earliest) {
-        result.skipped++;
-        result.errors.push(
-          `ID Fingerprint ${row.machineId} / ${row.date}: ` +
-          `Clock Out ${row.clockOut} di luar window jam pulang ` +
-          `(minimal ${toHHMM(earliest)}). ` +
-          `Shift: ${shiftStartStr}–${shiftEndStr}`
-        );
-        continue;
-      }
-    }
-    // ────────────────────────────────────────────────────────────────────────
-
-    let duration_minutes: number | null = null;
-    let penaltyMinutes = 0;
-    let calculatedStatus: 'hadir' | 'alpha' = 'alpha';
-
-    if (row.clockIn) {
-      calculatedStatus = 'hadir';
-      
-      // Hitung keterlambatan
-      const clockInMin = timeToMinutes(row.clockIn);
-      const lateness = Math.max(0, clockInMin - shiftStartMin);
-      penaltyMinutes = Math.max(0, lateness - gracePeriod);
-
-      // Hitung durasi jika ada clock_out
-      if (row.clockOut) {
-        const clockOutMin = timeToMinutes(row.clockOut);
-        
-        // Effective time: mulai dari max(clock_in, shift_start) hingga min(clock_out, shift_end)
-        const effectiveStartMin = Math.max(clockInMin, shiftStartMin);
-        const effectiveEndMin = Math.min(clockOutMin, shiftEndMin);
-        
-        let totalDur = effectiveEndMin - effectiveStartMin;
-
-        // Kurangi durasi istirahat jika jam kerja melewati waktu istirahat
-        if (effectiveStartMin < breakEndMin && effectiveEndMin > breakStartMin) {
-          const breakOverlapStart = Math.max(effectiveStartMin, breakStartMin);
-          const breakOverlapEnd = Math.min(effectiveEndMin, breakEndMin);
-          const breakOverlap = breakOverlapEnd - breakOverlapStart;
-          totalDur -= breakOverlap;
-        }
-
-        duration_minutes = Math.max(0, totalDur);
-      }
-    } else {
-      // Tidak ada clock in → alpha
-      calculatedStatus = 'alpha';
-      penaltyMinutes = 0;
-    }
-
-    const payload = {
-      employee_id: employeeUuid,
-      store_id: Number(storeId),
-      attendance_date: row.date,
-      clock_in: row.clockIn,
-      clock_out: row.clockOut,
-      duration_minutes,
-      penalty_minutes: penaltyMinutes,
-      status: calculatedStatus,
-      note: '',
-      is_manual_edit: false,
-    };
-
-    if (!existing) {
-      // (d) Belum ada di DB → INSERT
-      toInsert.push(payload);
-    } else if (existing.is_manual_edit) {
-      // (a) Sudah diedit manual → SKIP
-      result.skipped++;
-    } else if (
-      existing.clock_in === row.clockIn &&
-      existing.clock_out === row.clockOut &&
-      existing.duration_minutes === duration_minutes &&
-      existing.penalty_minutes === penaltyMinutes &&
-      existing.status === calculatedStatus
-    ) {
-      // (b) Data identik → SKIP
-      result.skipped++;
-    } else {
-      // (c) Ada perbedaan → UPDATE
-      toUpdate.push({ id: existing.id, payload });
-    }
-  }
-
-  // Batch UPSERT (onConflict sebagai jaring pengaman duplikat)
-  for (let i = 0; i < toInsert.length; i += BATCH_SIZE) {
-    const batch = toInsert.slice(i, i + BATCH_SIZE);
-    const { error } = await supabaseAny
-      .from('attendances')
-      .upsert(batch, { onConflict: 'employee_id, attendance_date' });
-    if (error) {
-      result.errors.push(`Upsert batch ${Math.floor(i / BATCH_SIZE) + 1}: ${error.message}`);
-    } else {
-      result.inserted += batch.length;
-    }
-  }
-
-  // Batch UPDATE (satu per satu karena update by id)
-  for (const { id, payload } of toUpdate) {
-    const { error } = await supabaseAny.from('attendances').update(payload).eq('id', id);
-    if (error) {
-      result.errors.push(`Update ID ${id}: ${error.message}`);
-    } else {
-      result.updated++;
-    }
-  }
-
   return result;
 }
 
-// ── One-shot helper ───────────────────────────────────────────────────────────
+// ── Parser Murni ──────────────────────────────────────────────────────────────
 
+/**
+ * Membaca file attlog.dat dan menghasilkan raw scan groups.
+ *
+ * Tanggung jawab HANYA:
+ *   1. Baca teks plain
+ *   2. Validasi format (fingerprint_id, date, time)
+ *   3. Group by (fingerprint_id, date)
+ *   4. Sort ascending
+ *   5. Deduplicate (window 2 menit)
+ *
+ * Tidak menentukan clock_in, clock_out, status, penalty, atau durasi.
+ */
+export function parseAttlog(file: File): Promise<ParseResult> {
+  return new Promise((resolve, reject) => {
+    if (file.size === 0) {
+      return reject(new Error('File kosong. Tidak ada data yang dapat diproses.'));
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      try {
+        const text = e.target!.result as string;
+        const lines = text.split(/\r?\n/);
+
+        // Map: "fingerprintId|date" → string[] (raw scan times)
+        const scanMap = new Map<string, string[]>();
+        const parseErrors: ParseError[] = [];
+
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i].trim();
+          if (!line) continue;
+
+          const parts = line.split(/\s+/);
+          if (parts.length < 3) {
+            parseErrors.push({ row: i + 1, reason: `Baris ${i + 1}: kurang dari 3 kolom.` });
+            continue;
+          }
+
+          const [rawId, rawDate, rawTime] = parts;
+
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+            parseErrors.push({ row: i + 1, reason: `Baris ${i + 1}: format tanggal tidak valid ("${rawDate}").` });
+            continue;
+          }
+
+          const timeStr = normalizeTime(rawTime);
+          if (!timeStr) {
+            parseErrors.push({ row: i + 1, reason: `Baris ${i + 1}: format waktu tidak valid ("${rawTime}").` });
+            continue;
+          }
+
+          const fingerprintId = normalizeId(rawId);
+          const key = `${fingerprintId}|${rawDate}`;
+          if (!scanMap.has(key)) scanMap.set(key, []);
+          scanMap.get(key)!.push(timeStr);
+        }
+
+        const entries: AttlogEntry[] = [];
+        for (const [key, times] of scanMap) {
+          const [fingerprintId, date] = key.split('|');
+          times.sort((a, b) => timeToMinutes(a) - timeToMinutes(b));
+          entries.push({ fingerprintId, date, scans: deduplicate(times) });
+        }
+
+        resolve({ entries, parseErrors });
+      } catch (err) {
+        reject(new Error(`Gagal membaca file attlog: ${String(err)}`));
+      }
+    };
+
+    reader.onerror = () => reject(new Error('Gagal membaca file dari disk.'));
+    reader.readAsText(file, 'utf-8');
+  });
+}
+
+// ── Thin Orchestrator ─────────────────────────────────────────────────────────
+
+/**
+ * Orkestrasi: parse attlog → serahkan ke attendanceService untuk business rules.
+ * File ini tidak mengandung business logic apapun.
+ */
 export async function importZKTecoFile(
   file: File,
   storeId: number
 ): Promise<{ parseResult: ParseResult; importResult: ImportResult }> {
-  const parseResult = await parseExceptionStatSheet(file);
+  const parseResult = await parseAttlog(file);
 
-  if (parseResult.rows.length === 0) {
+  if (parseResult.entries.length === 0) {
     return {
       parseResult,
-      importResult: {
-        inserted: 0,
-        updated: 0,
-        skipped: 0,
-        errors: ['Tidak ada data absensi valid yang ditemukan di file ini.'],
-      },
+      importResult: { inserted: 0, updated: 0, skipped: 0, errors: ['Tidak ada data absensi valid yang ditemukan di file ini.'], skippedReasons: [] },
     };
   }
 
-  const employeeMap = await buildEmployeeMap(storeId);
-  const importResult = await importAttendances(parseResult.rows, storeId, employeeMap);
-
+  const importResult = await importFromAttlog(parseResult.entries, storeId);
   return { parseResult, importResult };
 }
