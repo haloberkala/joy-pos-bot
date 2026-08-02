@@ -1,10 +1,10 @@
 import { useState, useMemo, useEffect } from 'react';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
-import { CalendarIcon, Pencil, Trash2, Settings } from 'lucide-react';
+import { CalendarIcon, CalendarPlus, Pencil, Trash2, Settings, X } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { useAuth } from '@/contexts/AuthContext';
-import { getAttendancesByStore, updateAttendance, deleteAttendance, getAttendanceSetting, upsertAttendanceSetting, Attendance, AttendanceSetting } from '@/services/attendanceService';
+import { getAttendancesByStore, updateAttendance, deleteAttendance, getAttendanceSetting, upsertAttendanceSetting, getWorkHolidays, createWorkHoliday, deleteWorkHoliday, Attendance, AttendanceSetting, WorkHoliday, CreateWorkHolidayInput } from '@/services/attendanceService';
 import { getEmployeesByStore } from '@/services/employeesService';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -19,19 +19,23 @@ import { ZKTecoImportButton } from '@/components/backoffice/ZKTecoImportButton';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-type SimpleStatus = 'hadir' | 'tidak_hadir';
+type SimpleStatus = 'hadir' | 'tidak_hadir' | 'libur';
 
 const STATUS_LABELS: Record<SimpleStatus, string> = {
-  hadir: 'Hadir',
+  hadir:       'Hadir',
   tidak_hadir: 'Tidak Hadir',
+  libur:       'Libur',
 };
 const STATUS_COLORS: Record<SimpleStatus, string> = {
-  hadir: 'bg-green-100 text-green-800',
+  hadir:       'bg-green-100 text-green-800',
   tidak_hadir: 'bg-red-100 text-red-800',
+  libur:       'bg-blue-100 text-blue-800',
 };
 
 function toSimpleStatus(s: string): SimpleStatus {
-  return s === 'hadir' ? 'hadir' : 'tidak_hadir';
+  if (s === 'hadir') return 'hadir';
+  if (s === 'libur') return 'libur';
+  return 'tidak_hadir';
 }
 
 export default function AttendancePage() {
@@ -54,6 +58,18 @@ export default function AttendancePage() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
 
+  // Hari Libur
+  const now = new Date();
+  const [holidaysOpen, setHolidaysOpen] = useState(false);
+  const [holidays, setHolidays] = useState<WorkHoliday[]>([]);
+  const [holidayYear, setHolidayYear] = useState(now.getFullYear());
+  const [holidayMonth, setHolidayMonth] = useState(now.getMonth() + 1);
+  const [newHolidayDate, setNewHolidayDate] = useState('');
+  const [newHolidayName, setNewHolidayName] = useState('');
+  const [newHolidayType, setNewHolidayType] = useState<'national' | 'store'>('store');
+  const [isSavingHoliday, setIsSavingHoliday] = useState(false);
+  const [isDeletingHoliday, setIsDeletingHoliday] = useState<number | null>(null);
+
   const {
     register: registerSettings,
     handleSubmit: handleSaveSettings,
@@ -66,6 +82,11 @@ export default function AttendancePage() {
   useEffect(() => {
     loadData();
   }, [activeStoreId]);
+
+  useEffect(() => {
+    if (holidaysOpen) loadHolidays();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [holidayYear, holidayMonth, holidaysOpen]);
 
   const loadData = async () => {
     try {
@@ -81,6 +102,90 @@ export default function AttendancePage() {
       toast.error('Gagal memuat data absensi');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadHolidays = async () => {
+    if (!activeStoreId) return;
+    try {
+      const data = await getWorkHolidays(activeStoreId, holidayYear, holidayMonth);
+      setHolidays(data);
+    } catch {
+      toast.error('Gagal memuat data hari libur');
+    }
+  };
+
+  const [weeklyOffDays, setWeeklyOffDays] = useState<number[]>([]);
+  const [isSavingWeeklyOff, setIsSavingWeeklyOff] = useState(false);
+
+  const toggleWeeklyOff = (day: number) => {
+    setWeeklyOffDays((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]
+    );
+  };
+
+  const handleSaveWeeklyOff = async () => {
+    if (!activeStoreId) return;
+    try {
+      setIsSavingWeeklyOff(true);
+      const current = await getAttendanceSetting(activeStoreId);
+      await upsertAttendanceSetting(activeStoreId, {
+        ...(current ?? {}),
+        weekly_off_days: weeklyOffDays,
+      } as AttendanceSetting);
+      toast.success('Hari libur mingguan berhasil disimpan');
+    } catch {
+      toast.error('Gagal menyimpan hari libur mingguan');
+    } finally {
+      setIsSavingWeeklyOff(false);
+    }
+  };
+
+  const openHolidays = async () => {
+    setHolidaysOpen(true);
+    // Load weekly off days dari attendance_settings
+    if (activeStoreId) {
+      try {
+        const setting = await getAttendanceSetting(activeStoreId);
+        setWeeklyOffDays(Array.isArray(setting?.weekly_off_days) ? setting.weekly_off_days : []);
+      } catch { /* biarkan default kosong */ }
+    }
+    loadHolidays();
+  };
+
+  const handleAddHoliday = async () => {
+    if (!activeStoreId || !newHolidayDate || !newHolidayName.trim()) return;
+    try {
+      setIsSavingHoliday(true);
+      const input: CreateWorkHolidayInput = {
+        store_id: newHolidayType === 'store' ? activeStoreId : null,
+        date:     newHolidayDate,
+        name:     newHolidayName.trim(),
+        type:     newHolidayType,
+      };
+      await createWorkHoliday(input);
+      setNewHolidayDate('');
+      setNewHolidayName('');
+      setNewHolidayType('store');
+      await loadHolidays();
+      toast.success('Hari libur berhasil ditambahkan');
+    } catch {
+      toast.error('Gagal menambahkan hari libur');
+    } finally {
+      setIsSavingHoliday(false);
+    }
+  };
+
+  const handleDeleteHoliday = async (id: number) => {
+    try {
+      setIsDeletingHoliday(id);
+      await deleteWorkHoliday(id);
+      await loadHolidays();
+      toast.success('Hari libur dihapus');
+    } catch {
+      toast.error('Gagal menghapus hari libur');
+    } finally {
+      setIsDeletingHoliday(null);
     }
   };
 
@@ -105,9 +210,9 @@ export default function AttendancePage() {
 
   // Summary per karyawan (berdasarkan data yang sudah difilter)
   const summary = useMemo(() => {
-    const map: Record<string, { hadir: number; tidak_hadir: number }> = {};
+    const map: Record<string, { hadir: number; tidak_hadir: number; libur: number }> = {};
     for (const a of filtered) {
-      if (!map[a.employee_id]) map[a.employee_id] = { hadir: 0, tidak_hadir: 0 };
+      if (!map[a.employee_id]) map[a.employee_id] = { hadir: 0, tidak_hadir: 0, libur: 0 };
       map[a.employee_id][toSimpleStatus(a.status)]++;
     }
     return map;
@@ -239,10 +344,16 @@ export default function AttendancePage() {
         {activeStoreId && (
           <div className="flex items-center gap-2">
             {isOwner && (
-              <Button variant="outline" onClick={openSettings}>
-                <Settings className="w-4 h-4 mr-2" />
-                Aturan Absensi
-              </Button>
+              <>
+                <Button variant="outline" onClick={openHolidays}>
+                  <CalendarPlus className="w-4 h-4 mr-2" />
+                  Hari Libur
+                </Button>
+                <Button variant="outline" onClick={openSettings}>
+                  <Settings className="w-4 h-4 mr-2" />
+                  Aturan Absensi
+                </Button>
+              </>
             )}
             <ZKTecoImportButton storeId={activeStoreId} onSuccess={loadData} />
           </div>
@@ -314,6 +425,7 @@ export default function AttendancePage() {
             <SelectItem value="all">Semua Status</SelectItem>
             <SelectItem value="hadir">Hadir</SelectItem>
             <SelectItem value="tidak_hadir">Tidak Hadir</SelectItem>
+            <SelectItem value="libur">Libur</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -324,8 +436,8 @@ export default function AttendancePage() {
           {storeEmployees
             .filter((e) => e.is_active)
             .map((emp) => {
-              const s = summary[emp.id] || { hadir: 0, tidak_hadir: 0 };
-              const hasData = s.hadir > 0 || s.tidak_hadir > 0;
+              const s = summary[emp.id] || { hadir: 0, tidak_hadir: 0, libur: 0 };
+              const hasData = s.hadir > 0 || s.tidak_hadir > 0 || s.libur > 0;
               return (
                 <div key={emp.id} className="bg-card border border-border rounded-lg p-3">
                   <p className="font-medium text-sm">{emp.name}</p>
@@ -338,6 +450,11 @@ export default function AttendancePage() {
                         <Badge variant="outline" className="bg-red-50 text-red-700">
                           Tidak Hadir: {s.tidak_hadir}
                         </Badge>
+                        {s.libur > 0 && (
+                          <Badge variant="outline" className="bg-blue-50 text-blue-700">
+                            Libur: {s.libur}
+                          </Badge>
+                        )}
                       </>
                     ) : (
                       <span className="text-xs text-muted-foreground">Tidak ada data</span>
@@ -540,6 +657,141 @@ export default function AttendancePage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+      {/* ── Work Holiday Dialog ── */}
+      <Dialog open={holidaysOpen} onOpenChange={setHolidaysOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Kelola Hari Libur</DialogTitle>
+          </DialogHeader>
+
+          {/* ── Section 1: Libur Mingguan ── */}
+          <div className="border rounded-lg p-3 space-y-3 bg-muted/30">
+            <p className="text-sm font-medium">Libur Mingguan</p>
+            <div className="grid grid-cols-4 gap-y-2 gap-x-4">
+              {[
+                { day: 1, label: 'Senin' },
+                { day: 2, label: 'Selasa' },
+                { day: 3, label: 'Rabu' },
+                { day: 4, label: 'Kamis' },
+                { day: 5, label: 'Jumat' },
+                { day: 6, label: 'Sabtu' },
+                { day: 0, label: 'Minggu' },
+              ].map(({ day, label }) => (
+                <label key={day} className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 accent-primary"
+                    checked={weeklyOffDays.includes(day)}
+                    onChange={() => toggleWeeklyOff(day)}
+                  />
+                  <span className="text-sm">{label}</span>
+                </label>
+              ))}
+            </div>
+            <Button
+              size="sm"
+              className="w-full"
+              disabled={isSavingWeeklyOff}
+              onClick={handleSaveWeeklyOff}
+            >
+              {isSavingWeeklyOff ? 'Menyimpan...' : 'Simpan Libur Mingguan'}
+            </Button>
+          </div>
+
+          {/* ── Section 2: Hari Libur Khusus ── */}
+          <div>
+            <p className="text-sm font-medium mb-2">Hari Libur Khusus</p>
+
+          {/* Navigasi Bulan */}
+          <div className="flex items-center justify-between mb-2">
+            <Button
+              variant="ghost" size="sm"
+              onClick={() => {
+                const prev = holidayMonth === 1 ? { y: holidayYear - 1, m: 12 } : { y: holidayYear, m: holidayMonth - 1 };
+                setHolidayYear(prev.y); setHolidayMonth(prev.m);
+              }}
+            >‹</Button>
+            <span className="text-sm font-medium">
+              {new Date(holidayYear, holidayMonth - 1).toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}
+            </span>
+            <Button
+              variant="ghost" size="sm"
+              onClick={() => {
+                const next = holidayMonth === 12 ? { y: holidayYear + 1, m: 1 } : { y: holidayYear, m: holidayMonth + 1 };
+                setHolidayYear(next.y); setHolidayMonth(next.m);
+              }}
+            >›</Button>
+            <Button variant="outline" size="sm" onClick={loadHolidays}>Muat</Button>
+          </div>
+
+          {/* Daftar Hari Libur */}
+          <div className="max-h-48 overflow-y-auto border rounded-lg divide-y">
+            {holidays.length === 0 ? (
+              <p className="text-center text-sm text-muted-foreground py-6">Belum ada hari libur bulan ini</p>
+            ) : holidays.map((h) => (
+              <div key={h.id} className="flex items-center justify-between px-3 py-2">
+                <div>
+                  <p className="text-sm font-medium">{h.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {h.date} &nbsp;·&nbsp;
+                    <span className={h.type === 'national' ? 'text-blue-600' : 'text-orange-600'}>
+                      {h.type === 'national' ? 'Nasional' : 'Toko'}
+                    </span>
+                  </p>
+                </div>
+                <Button
+                  variant="ghost" size="icon"
+                  disabled={isDeletingHoliday === h.id}
+                  onClick={() => handleDeleteHoliday(h.id)}
+                >
+                  <X className="w-4 h-4 text-destructive" />
+                </Button>
+              </div>
+            ))}
+          </div>
+
+          {/* Form Tambah */}
+          <div className="border-t pt-4 space-y-3">
+            <p className="text-sm font-medium">Tambah Hari Libur</p>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Tanggal</label>
+                <Input
+                  type="date"
+                  value={newHolidayDate}
+                  onChange={(e) => setNewHolidayDate(e.target.value)}
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Jenis</label>
+                <Select value={newHolidayType} onValueChange={(v) => setNewHolidayType(v as 'national' | 'store')}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="store">Libur Toko</SelectItem>
+                    <SelectItem value="national">Libur Nasional</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">Nama / Keterangan</label>
+              <Input
+                placeholder="Contoh: Idul Fitri, Renovasi Toko..."
+                value={newHolidayName}
+                onChange={(e) => setNewHolidayName(e.target.value)}
+              />
+            </div>
+            <Button
+              className="w-full"
+              disabled={isSavingHoliday || !newHolidayDate || !newHolidayName.trim()}
+              onClick={handleAddHoliday}
+            >
+              {isSavingHoliday ? 'Menyimpan...' : 'Tambah Hari Libur'}
+            </Button>
+          </div>
+          </div>{/* end Section 2 */}
         </DialogContent>
       </Dialog>
     </div>

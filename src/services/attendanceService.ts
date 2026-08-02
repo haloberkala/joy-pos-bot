@@ -8,7 +8,7 @@ export interface Attendance {
   clock_in: string | null;
   clock_out: string | null;
   duration_minutes: number | null;
-  status: 'hadir' | 'alpha' | 'izin' | 'sakit' | 'cuti';
+  status: 'hadir' | 'alpha' | 'izin' | 'sakit' | 'cuti' | 'libur';
   note: string;
   is_manual_edit: boolean;
   created_at: string;
@@ -23,6 +23,8 @@ export interface AttendanceSetting {
   grace_period_minutes: number;
   break_start: string;
   break_end: string;
+  /** Hari libur mingguan. 0=Minggu, 1=Senin, ..., 6=Sabtu (JS Date.getDay() convention). */
+  weekly_off_days: number[];
 }
 
 export interface CreateAttendanceInput {
@@ -32,12 +34,12 @@ export interface CreateAttendanceInput {
   clock_in?: string;
   clock_out?: string;
   duration_minutes?: number;
-  status: 'hadir' | 'alpha' | 'izin' | 'sakit' | 'cuti';
+  status: 'hadir' | 'alpha' | 'izin' | 'sakit' | 'cuti' | 'libur';
   note?: string;
 }
 
 export interface UpdateAttendanceInput {
-  status?: 'hadir' | 'alpha' | 'izin' | 'sakit' | 'cuti';
+  status?: 'hadir' | 'alpha' | 'izin' | 'sakit' | 'cuti' | 'libur';
   note?: string;
   clock_in?: string;
   clock_out?: string;
@@ -310,6 +312,79 @@ export async function upsertAttendanceSetting(storeId: number, setting: Attendan
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// WORK CALENDAR — Hari Libur
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface WorkHoliday {
+  id:         number;
+  store_id:   number | null; // null = libur nasional
+  date:       string;        // 'YYYY-MM-DD'
+  name:       string;
+  type:       'national' | 'store';
+  created_at: string;
+}
+
+export interface CreateWorkHolidayInput {
+  store_id: number | null;
+  date:     string;
+  name:     string;
+  type:     'national' | 'store';
+}
+
+/**
+ * Ambil semua hari libur yang berlaku untuk toko ini
+ * (libur toko + libur nasional) dalam satu tahun/bulan.
+ */
+export async function getWorkHolidays(
+  storeId: number,
+  year: number,
+  month: number
+): Promise<WorkHoliday[]> {
+  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const lastDay   = new Date(year, month, 0).getDate();
+  const endDate   = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+  const { data, error } = await supabaseAny
+    .from('work_holidays')
+    .select('*')
+    .gte('date', startDate)
+    .lte('date', endDate)
+    .or(`store_id.eq.${storeId},store_id.is.null`)
+    .order('date', { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []) as WorkHoliday[];
+}
+
+/**
+ * Tambah satu hari libur (nasional atau toko).
+ */
+export async function createWorkHoliday(
+  input: CreateWorkHolidayInput
+): Promise<WorkHoliday> {
+  const { data, error } = await supabaseAny
+    .from('work_holidays')
+    .insert(input)
+    .select()
+    .single();
+
+  if (error) throw error;
+  return data as WorkHoliday;
+}
+
+/**
+ * Hapus satu hari libur.
+ */
+export async function deleteWorkHoliday(id: number): Promise<void> {
+  const { error } = await supabaseAny
+    .from('work_holidays')
+    .delete()
+    .eq('id', id);
+
+  if (error) throw error;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // ATTENDANCE ENGINE
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -321,8 +396,10 @@ export async function upsertAttendanceSetting(storeId: number, setting: Attendan
 //     ↓
 //   validateAttendanceSetting() — pastikan aturan sudah dikonfigurasi
 //     ↓ AttendanceEngineSettings
-//   validateHoliday()       — (Tahap 1: semua hari dianggap hari kerja)
-//     ↓
+//   fetchHolidayMap()       — batch fetch hari libur khusus (nasional + toko)
+//     ↓ holidayMap + weeklyOffDays dari settings
+//   isDayOff()              — helper: cek libur khusus ATAU libur mingguan
+//     ↓ off: true → persist 'libur', skip pipeline
 //   validateScanWindow()    — validasi: warning jika semua scan di luar window
 //     ↓ scans (TIDAK difilter — source of truth tetap scans asli)
 //   selectClockIn()         — pilih scan clock-in berdasarkan aturan shift
@@ -371,9 +448,11 @@ interface AttendanceEngineSettings {
   shiftEndMin:   number;
   breakStartMin: number;
   breakEndMin:   number;
+  /** Hari libur mingguan. 0=Minggu … 6=Sabtu. */
+  weeklyOffDays: number[];
 }
 
-type AttendanceStatus = 'hadir' | 'alpha' | 'izin' | 'sakit' | 'cuti';
+type AttendanceStatus = 'hadir' | 'alpha' | 'izin' | 'sakit' | 'cuti' | 'libur';
 
 /** Hasil kalkulasi satu hari kerja sebelum ditulis ke DB. */
 interface DayResult {
@@ -427,6 +506,34 @@ function _normalizeId(raw: string): string {
   return isNaN(n) ? s : String(n);
 }
 
+/** Nama hari (indeks 0=Minggu s/d 6=Sabtu), dipakai sebagai keterangan libur mingguan. */
+const DAY_NAMES = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'] as const;
+
+/**
+ * Apakah tanggal `date` adalah hari libur?
+ * Mengecek dua sumber:
+ *   1. holidayMap — hari libur khusus (nasional / toko)
+ *   2. weeklyOffDays — hari libur mingguan dari attendance_settings
+ *
+ * Return: { off: true, name } jika libur, { off: false } jika hari kerja.
+ */
+function isDayOff(
+  date: string,
+  holidayMap: Map<string, string>,
+  weeklyOffDays: number[]
+): { off: true; name: string } | { off: false } {
+  // Cek hari libur khusus (tanggal spesifik)
+  const holidayName = holidayMap.get(date);
+  if (holidayName !== undefined) return { off: true, name: holidayName };
+
+  // Cek hari libur mingguan (day of week)
+  // Tambahkan T00:00:00 untuk memastikan parsing konsisten tanpa timezone shift
+  const dow = new Date(date + 'T00:00:00').getDay(); // 0=Minggu … 6=Sabtu
+  if (weeklyOffDays.includes(dow)) return { off: true, name: DAY_NAMES[dow] };
+
+  return { off: false };
+}
+
 /**
  * Apakah waktu `t` berada dalam window jam masuk?
  * Window: shift_start - 60 menit  s/d  shift_start + 120 menit
@@ -467,15 +574,16 @@ async function validateAttendanceSetting(
     };
   }
 
-  const shiftStart  = (data.shift_start  ?? '08:00') as string;
-  const shiftEnd    = (data.shift_end    ?? '17:00') as string;
-  const breakStart  = (data.break_start  ?? '12:00') as string;
-  const breakEnd    = (data.break_end    ?? '13:00') as string;
-  const gracePeriod = (data.grace_period_minutes ?? 15) as number;
+  const shiftStart    = (data.shift_start  ?? '08:00') as string;
+  const shiftEnd      = (data.shift_end    ?? '17:00') as string;
+  const breakStart    = (data.break_start  ?? '12:00') as string;
+  const breakEnd      = (data.break_end    ?? '13:00') as string;
+  const gracePeriod   = (data.grace_period_minutes ?? 15) as number;
+  const weeklyOffDays = Array.isArray(data.weekly_off_days) ? (data.weekly_off_days as number[]) : [];
 
   return {
     settings: {
-      shiftStart, shiftEnd, gracePeriod, breakStart, breakEnd,
+      shiftStart, shiftEnd, gracePeriod, breakStart, breakEnd, weeklyOffDays,
       shiftStartMin: _min(shiftStart),
       shiftEndMin:   _min(shiftEnd),
       breakStartMin: _min(breakStart),
@@ -507,17 +615,33 @@ async function resolveEmployee(
   return { map };
 }
 
-// ── Step 3: validateHoliday ───────────────────────────────────────────────────
+// ── Step 3: fetchHolidayMap ───────────────────────────────────────────────────
 //
-// Tahap 1: semua tanggal dianggap hari kerja. Fungsi ini selalu lolos.
-// Nanti saat modul kalender hari libur ditambahkan, cukup modifikasi step ini.
+// Fetch hari libur satu kali sebelum loop per-entry.
+// Return: Map<'YYYY-MM-DD', namaLibur> — mencakup libur nasional (store_id IS NULL)
+//         dan libur khusus toko (store_id = storeId).
+// Jika tanggal ada di map → entry dipersist sebagai status 'libur',
+// scan diabaikan (clock_in/out = null, penalty = 0).
 
-function validateHoliday(
-  _date: string,
-  _fingerprintId: string
-): { pass: true } | { pass: false; reason: string } {
-  // Placeholder — Tahap 1 tidak mendukung hari libur.
-  return { pass: true };
+async function fetchHolidayMap(
+  storeId: number,
+  dates: string[]
+): Promise<Map<string, string>> {
+  if (dates.length === 0) return new Map();
+
+  const { data, error } = await supabaseAny
+    .from('work_holidays')
+    .select('date, name')
+    .in('date', dates)
+    .or(`store_id.eq.${storeId},store_id.is.null`);
+
+  if (error) throw new Error(`Gagal fetch hari libur: ${error.message}`);
+
+  const map = new Map<string, string>();
+  (data ?? []).forEach((row: { date: string; name: string }) =>
+    map.set(row.date, row.name)
+  );
+  return map;
 }
 
 // ── Step 4: validateScanWindow ────────────────────────────────────────────────
@@ -767,6 +891,15 @@ export async function importFromAttlog(
     existingMap.set(`${row.employee_id}|${row.attendance_date}`, row)
   );
 
+  // ── Fetch hari libur (satu kali, batch) ──────────────────────────────────
+  let holidayMap = new Map<string, string>();
+  try {
+    holidayMap = await fetchHolidayMap(storeId, dates);
+  } catch (e) {
+    result.errors.push((e as Error).message);
+    return result;
+  }
+
   const toInsert: object[] = [];
   const toUpdate: { id: number; payload: object }[] = [];
 
@@ -774,11 +907,30 @@ export async function importFromAttlog(
   for (const { entry, employeeUuid } of validEntries) {
     const { fingerprintId, date, scans } = entry;
 
-    // validateHoliday
-    const holidayCheck = validateHoliday(date, fingerprintId);
-    if (!holidayCheck.pass) {
-      result.skipped++;
-      result.skippedReasons.push(`Fingerprint ID ${fingerprintId} / ${date}: ${holidayCheck.reason}`);
+    // validateHoliday — lookup di Map yang sudah di-fetch
+    // isDayOff — cek libur khusus (holidayMap) DAN libur mingguan (weeklyOffDays)
+    const dayOff = isDayOff(date, holidayMap, settings.weeklyOffDays);
+    if (dayOff.off) {
+      // Persist sebagai 'libur' — scan diabaikan, penalty/duration = 0/null
+      const holidayPayload = {
+        employee_id:      employeeUuid,
+        store_id:         Number(storeId),
+        attendance_date:  date,
+        clock_in:         null,
+        clock_out:        null,
+        duration_minutes: null,
+        penalty_minutes:  0,
+        status:           'libur' as AttendanceStatus,
+        note:             dayOff.name,
+        is_manual_edit:   false,
+      };
+      const existingRow = existingMap.get(`${employeeUuid}|${date}`);
+      if (!existingRow) {
+        toInsert.push(holidayPayload);
+      } else if (!existingRow.is_manual_edit && existingRow.status !== 'libur') {
+        toUpdate.push({ id: existingRow.id, payload: holidayPayload });
+      }
+      // jika sudah 'libur' atau manual edit, tidak ditimpa
       continue;
     }
 
