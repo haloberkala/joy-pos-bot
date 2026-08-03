@@ -58,6 +58,9 @@ async function getExpensesByDateRange(storeId: number, dateFrom?: Date, dateTo?:
 
 /**
  * Fetch total payroll for months overlapping the date range.
+ * ONLY includes payrolls with status 'transferred' (already paid).
+ * Payrolls with status 'pending' are NOT included in financial reports.
+ * 
  * payrolls uses integer month+year columns, so we convert the date range
  * to (yearMonth) pairs and include all payrolls whose month/year fall within.
  */
@@ -65,7 +68,8 @@ async function getTotalPayrollByDateRange(storeId: number, dateFrom?: Date, date
   let query = supabase
     .from('payrolls')
     .select('total_salary, month, year')
-    .eq('store_id', storeId);
+    .eq('store_id', storeId)
+    .eq('status', 'transferred'); // ✅ ONLY paid/transferred payrolls
 
   // Convert dates to year/month integers for filtering
   if (dateFrom) {
