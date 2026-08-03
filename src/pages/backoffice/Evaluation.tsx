@@ -147,9 +147,9 @@ export default function Evaluation() {
               <TableHead>Nama</TableHead>
               <TableHead>Jabatan</TableHead>
               <TableHead className="text-right">Total Hari</TableHead>
-              <TableHead className="text-right">Complete</TableHead>
-              <TableHead className="text-right">Partial</TableHead>
-              <TableHead className="text-right">Incomplete</TableHead>
+              <TableHead className="text-right">Hadir Penuh</TableHead>
+              <TableHead className="text-right">Hadir Sebagian</TableHead>
+              <TableHead className="text-right">Belum Lengkap</TableHead>
               <TableHead>Kehadiran (%)</TableHead>
               <TableHead>Penilaian</TableHead>
             </TableRow>

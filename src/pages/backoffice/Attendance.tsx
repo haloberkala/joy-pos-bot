@@ -22,9 +22,9 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 const STATUS_LABELS: Record<AttendanceStatus, string> = {
-  complete:    'Complete',
-  partial:     'Partial',
-  incomplete:  'Incomplete',
+  complete:    'Hadir Penuh',
+  partial:     'Hadir Sebagian',
+  incomplete:  'Belum Lengkap',
 };
 
 const STATUS_COLORS: Record<AttendanceStatus, string> = {
@@ -108,18 +108,30 @@ export default function AttendancePage() {
   }, [loadData]);
 
   const filtered = useMemo(() => {
-    const dateStr = filterDate ? format(filterDate, 'yyyy-MM-dd') : null;
     return attendances
       .filter((a) => {
         const emp = employeeMap.get(a.employee_id);
         if (!emp) return false;
         if (filterEmployee !== 'all' && String(a.employee_id) !== String(filterEmployee)) return false;
-        if (dateStr && a.attendance_date !== dateStr) return false;
+        
+        // Date filtering: specific date OR month/year
+        if (filterDate) {
+          // Mode harian: filter by specific date
+          const dateStr = format(filterDate, 'yyyy-MM-dd');
+          if (a.attendance_date !== dateStr) return false;
+        } else {
+          // Mode bulanan: filter by month/year
+          const attDate = new Date(a.attendance_date);
+          if (attDate.getMonth() + 1 !== filterMonth || attDate.getFullYear() !== filterYear) {
+            return false;
+          }
+        }
+        
         if (filterStatus !== 'all' && a.status !== filterStatus) return false;
         return true;
       })
       .sort((a, b) => b.attendance_date.localeCompare(a.attendance_date));
-  }, [attendances, employeeMap, filterEmployee, filterDate, filterStatus]);
+  }, [attendances, employeeMap, filterEmployee, filterDate, filterMonth, filterYear, filterStatus]);
 
   // Summary per karyawan (berdasarkan data yang sudah difilter)
   const summary = useMemo(() => {
@@ -270,31 +282,92 @@ export default function AttendancePage() {
 
       {/* ── Filters ── */}
       <div className="flex flex-wrap gap-3">
-        {/* Month/Year Selector */}
-        <Select 
-          value={`${filterYear}-${filterMonth}`} 
-          onValueChange={(value) => {
-            const [year, month] = value.split('-').map(Number);
-            setFilterYear(year);
-            setFilterMonth(month);
-          }}
-        >
-          <SelectTrigger className="w-48">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {Array.from({ length: 12 }, (_, i) => {
-              const month = i + 1;
-              const year = filterYear;
-              const date = new Date(year, month - 1);
-              return (
-                <SelectItem key={`${year}-${month}`} value={`${year}-${month}`}>
-                  {format(date, 'MMMM yyyy', { locale: localeId })}
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
+        {/* Date Picker - Mode Bulanan atau Harian */}
+        <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              className={cn(
+                'w-64 justify-start text-left font-normal',
+                !filterDate && 'text-muted-foreground'
+              )}
+            >
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              {filterDate
+                ? format(filterDate, 'd MMMM yyyy', { locale: localeId })
+                : format(new Date(filterYear, filterMonth - 1), 'MMMM yyyy', { locale: localeId })}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={filterDate}
+              onSelect={(date) => {
+                setFilterDate(date);
+                if (date) {
+                  // Update month/year based on selected date
+                  setFilterMonth(date.getMonth() + 1);
+                  setFilterYear(date.getFullYear());
+                }
+                setCalendarOpen(false);
+              }}
+              initialFocus
+            />
+            {filterDate && (
+              <div className="border-t p-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-muted-foreground"
+                  onClick={() => { 
+                    setFilterDate(undefined); 
+                    setCalendarOpen(false); 
+                  }}
+                >
+                  Tampilkan seluruh bulan
+                </Button>
+              </div>
+            )}
+            {!filterDate && (
+              <div className="border-t p-2 space-y-2">
+                <div className="flex gap-2">
+                  <Select 
+                    value={String(filterMonth)} 
+                    onValueChange={(v) => setFilterMonth(Number(v))}
+                  >
+                    <SelectTrigger className="flex-1">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Array.from({ length: 12 }, (_, i) => {
+                        const month = i + 1;
+                        const date = new Date(filterYear, i);
+                        return (
+                          <SelectItem key={month} value={String(month)}>
+                            {format(date, 'MMMM', { locale: localeId })}
+                          </SelectItem>
+                        );
+                      })}
+                    </SelectContent>
+                  </Select>
+                  <Select 
+                    value={String(filterYear)} 
+                    onValueChange={(v) => setFilterYear(Number(v))}
+                  >
+                    <SelectTrigger className="w-24">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {[now.getFullYear() - 1, now.getFullYear(), now.getFullYear() + 1].map(y =>
+                        <SelectItem key={y} value={String(y)}>{y}</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
 
         <Select value={filterEmployee} onValueChange={setFilterEmployee}>
           <SelectTrigger className="w-48">
@@ -310,56 +383,15 @@ export default function AttendancePage() {
           </SelectContent>
         </Select>
 
-        {/* Date Picker harian */}
-        <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="outline"
-              className={cn(
-                'w-48 justify-start text-left font-normal',
-                !filterDate && 'text-muted-foreground'
-              )}
-            >
-              <CalendarIcon className="mr-2 h-4 w-4" />
-              {filterDate
-                ? format(filterDate, 'd MMMM yyyy', { locale: localeId })
-                : 'Filter tanggal spesifik'}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
-            <Calendar
-              mode="single"
-              selected={filterDate}
-              onSelect={(date) => {
-                setFilterDate(date);
-                setCalendarOpen(false);
-              }}
-              initialFocus
-            />
-            {filterDate && (
-              <div className="border-t p-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full text-muted-foreground"
-                  onClick={() => { setFilterDate(undefined); setCalendarOpen(false); }}
-                >
-                  Hapus filter tanggal
-                </Button>
-              </div>
-            )}
-          </PopoverContent>
-        </Popover>
-
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-36">
+          <SelectTrigger className="w-44">
             <SelectValue placeholder="Semua Status" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua Status</SelectItem>
-            <SelectItem value="complete">Complete</SelectItem>
-            <SelectItem value="partial">Partial</SelectItem>
-            <SelectItem value="incomplete">Incomplete</SelectItem>
+            <SelectItem value="complete">Hadir Penuh</SelectItem>
+            <SelectItem value="partial">Hadir Sebagian</SelectItem>
+            <SelectItem value="incomplete">Belum Lengkap</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -380,17 +412,17 @@ export default function AttendancePage() {
                       <>
                         {s.complete > 0 && (
                           <Badge variant="outline" className="bg-green-50 text-green-700">
-                            Complete: {s.complete}
+                            Hadir Penuh: {s.complete}
                           </Badge>
                         )}
                         {s.partial > 0 && (
                           <Badge variant="outline" className="bg-yellow-50 text-yellow-700">
-                            Partial: {s.partial}
+                            Hadir Sebagian: {s.partial}
                           </Badge>
                         )}
                         {s.incomplete > 0 && (
                           <Badge variant="outline" className="bg-red-50 text-red-700">
-                            Incomplete: {s.incomplete}
+                            Belum Lengkap: {s.incomplete}
                           </Badge>
                         )}
                       </>
@@ -411,10 +443,10 @@ export default function AttendancePage() {
             <TableRow>
               <TableHead>Nama</TableHead>
               <TableHead>Tanggal</TableHead>
-              <TableHead>Clock In</TableHead>
-              <TableHead>Break Out</TableHead>
-              <TableHead>Break In</TableHead>
-              <TableHead>Clock Out</TableHead>
+              <TableHead>Jam Masuk</TableHead>
+              <TableHead>Mulai Istirahat</TableHead>
+              <TableHead>Selesai Istirahat</TableHead>
+              <TableHead>Jam Pulang</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Keterangan</TableHead>
               <TableHead className="w-12" />
@@ -484,7 +516,7 @@ export default function AttendancePage() {
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-900">
               <p className="font-medium mb-1">Informasi</p>
               <p className="text-xs">
-                Edit attendance hanya untuk mengubah status dan catatan. Waktu fingerprint (Clock In, Clock Out, Break) tetap berasal dari mesin fingerprint dan tidak bisa diedit manual.
+                Edit attendance hanya untuk mengubah status dan catatan. Waktu fingerprint (Jam Masuk, Jam Pulang, Istirahat) tetap berasal dari mesin fingerprint dan tidak bisa diedit manual.
               </p>
               <p className="text-xs mt-2">
                 Setelah disimpan, attendance akan ditandai sebagai Manual Edit dan import fingerprint berikutnya tidak akan mengubahnya.
@@ -496,19 +528,19 @@ export default function AttendancePage() {
               <p className="text-xs font-medium text-muted-foreground uppercase">Data Fingerprint</p>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div>
-                  <span className="text-muted-foreground">Clock In:</span>
+                  <span className="text-muted-foreground">Jam Masuk:</span>
                   <span className="ml-2 font-medium">{editRow?.clock_in || '-'}</span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Clock Out:</span>
+                  <span className="text-muted-foreground">Jam Pulang:</span>
                   <span className="ml-2 font-medium">{editRow?.clock_out || '-'}</span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Break Out:</span>
+                  <span className="text-muted-foreground">Mulai Istirahat:</span>
                   <span className="ml-2 font-medium">{editRow?.break_out || '-'}</span>
                 </div>
                 <div>
-                  <span className="text-muted-foreground">Break In:</span>
+                  <span className="text-muted-foreground">Selesai Istirahat:</span>
                   <span className="ml-2 font-medium">{editRow?.break_in || '-'}</span>
                 </div>
               </div>
@@ -522,9 +554,9 @@ export default function AttendancePage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="complete">Complete</SelectItem>
-                  <SelectItem value="partial">Partial</SelectItem>
-                  <SelectItem value="incomplete">Incomplete</SelectItem>
+                  <SelectItem value="complete">Hadir Penuh</SelectItem>
+                  <SelectItem value="partial">Hadir Sebagian</SelectItem>
+                  <SelectItem value="incomplete">Belum Lengkap</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-[10px] text-muted-foreground">
