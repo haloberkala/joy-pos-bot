@@ -15,6 +15,8 @@ export interface Payroll {
   year: number;
   daily_salary: number;
   days_present: number;
+  complete_days: number;
+  partial_days: number;
   total_salary: number;
   status: 'pending' | 'transferred';
   transferred_at: string | null;
@@ -30,6 +32,8 @@ export interface CreatePayrollInput {
   year: number;
   daily_salary: number;
   days_present: number;
+  complete_days: number;
+  partial_days: number;
   total_salary: number;
   status?: 'pending' | 'transferred';
   note?: string;
@@ -93,6 +97,8 @@ export async function createPayroll(input: CreatePayrollInput): Promise<Payroll>
         year: input.year,
         daily_salary: input.daily_salary,
         days_present: input.days_present,
+        complete_days: input.complete_days,
+        partial_days: input.partial_days,
         total_salary: input.total_salary,
         status: input.status || 'pending',
         note: input.note || null,
@@ -214,6 +220,8 @@ export async function generatePayrollsForMonth(
         year,
         daily_salary: calculation.dailySalary,
         days_present: calculation.daysPresent,
+        complete_days: calculation.completeDays,
+        partial_days: calculation.partialDays,
         total_salary: calculation.totalSalary,
         status: 'pending',
       });

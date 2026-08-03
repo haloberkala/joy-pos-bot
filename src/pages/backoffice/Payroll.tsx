@@ -222,7 +222,8 @@ export default function PayrollPage() {
               </div>
               <div className="border-t border-border pt-3 space-y-2 text-sm">
                 <div className="flex justify-between"><span>Gaji Harian</span><span>{formatRupiah(slipPayroll.daily_salary)}</span></div>
-                <div className="flex justify-between"><span>Hari Hadir</span><span>{slipPayroll.days_present} hari</span></div>
+                <div className="flex justify-between"><span>Hadir Penuh</span><span>{slipPayroll.complete_days} hari</span></div>
+                <div className="flex justify-between"><span>Hadir Sebagian</span><span>{slipPayroll.partial_days} hari</span></div>
                 <div className="flex justify-between font-bold text-base border-t pt-2"><span>Total Gaji</span><span className="text-primary">{formatRupiah(slipPayroll.total_salary)}</span></div>
               </div>
               <div className="text-sm">
