@@ -1,7 +1,8 @@
 import { useMemo, useEffect, useState, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getAttendancesByStoreAndMonth } from '@/services/attendanceService';
+import { getAttendancesByStore } from '@/services/attendanceService';
 import { getEmployeesByStore } from '@/services/employeesService';
+import { calculateAttendanceSummary } from '@/lib/payroll/calculations';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
@@ -26,7 +27,7 @@ export default function Evaluation() {
     try {
       setIsLoading(true);
       const [attendancesData, employeesData] = await Promise.all([
-        getAttendancesByStoreAndMonth(activeStoreId, selectedYear, selectedMonth),
+        getAttendancesByStore(activeStoreId, { year: selectedYear, month: selectedMonth }),
         getEmployeesByStore(activeStoreId),
       ]);
       setAttendances(attendancesData);
@@ -49,16 +50,41 @@ export default function Evaluation() {
     [employees]
   );
 
+  // Group attendances by employee ID (O(n), single pass)
+  const attendancesByEmployee = useMemo(() => {
+    const grouped = new Map<string, typeof attendances>();
+    for (const att of attendances) {
+      const existing = grouped.get(att.employee_id);
+      if (existing) {
+        existing.push(att);
+      } else {
+        grouped.set(att.employee_id, [att]);
+      }
+    }
+    return grouped;
+  }, [attendances]);
+
   const evalData = useMemo(() => {
     return storeEmployees.map(emp => {
-      const empAtt = attendances.filter(a => a.employee_id === emp.id);
+      // O(1) lookup instead of O(n) filter
+      const empAtt = attendancesByEmployee.get(emp.id) || [];
       const total = empAtt.length;
-      const hadir = empAtt.filter(a => a.status === 'hadir').length;
-      const tidakHadir = total - hadir;
-      const rate = total > 0 ? Math.round((hadir / total) * 100) : 0;
-      return { emp, total, hadir, tidakHadir, rate };
+      
+      // Use shared calculation logic
+      const summary = calculateAttendanceSummary(empAtt);
+      const rate = total > 0 ? Math.round((summary.daysPresent / total) * 100) : 0;
+      
+      return { 
+        emp, 
+        total, 
+        completeDays: summary.completeDays, 
+        partialDays: summary.partialDays, 
+        incompleteDays: summary.incompleteDays, 
+        hadir: summary.daysPresent, 
+        rate 
+      };
     }).sort((a, b) => b.rate - a.rate);
-  }, [storeEmployees, attendances]);
+  }, [storeEmployees, attendancesByEmployee]);
 
   const getRateColor = (rate: number) => {
     if (rate >= 90) return 'text-green-600';
@@ -121,27 +147,29 @@ export default function Evaluation() {
               <TableHead>Nama</TableHead>
               <TableHead>Jabatan</TableHead>
               <TableHead className="text-right">Total Hari</TableHead>
-              <TableHead className="text-right">Hadir</TableHead>
-              <TableHead className="text-right">Tidak Hadir</TableHead>
-              <TableHead>Tingkat Kehadiran</TableHead>
+              <TableHead className="text-right">Complete</TableHead>
+              <TableHead className="text-right">Partial</TableHead>
+              <TableHead className="text-right">Incomplete</TableHead>
+              <TableHead>Kehadiran (%)</TableHead>
               <TableHead>Penilaian</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {evalData.length === 0 && (
               <TableRow>
-                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                   Tidak ada data evaluasi untuk periode ini
                 </TableCell>
               </TableRow>
             )}
-            {evalData.map(({ emp, total, hadir, tidakHadir, rate }) => (
+            {evalData.map(({ emp, total, completeDays, partialDays, incompleteDays, rate }) => (
               <TableRow key={emp.id}>
                 <TableCell className="font-medium">{emp.name}</TableCell>
                 <TableCell>{emp.position}</TableCell>
                 <TableCell className="text-right">{total}</TableCell>
-                <TableCell className="text-right">{hadir}</TableCell>
-                <TableCell className="text-right">{tidakHadir}</TableCell>
+                <TableCell className="text-right">{completeDays}</TableCell>
+                <TableCell className="text-right">{partialDays}</TableCell>
+                <TableCell className="text-right">{incompleteDays}</TableCell>
                 <TableCell>
                   <div className="flex items-center gap-2">
                     <Progress value={rate} className="w-20 h-2" />

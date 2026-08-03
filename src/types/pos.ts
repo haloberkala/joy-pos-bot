@@ -350,7 +350,7 @@ export interface SupplierDebtPayment {
 
 export type EmployeeRole = 'owner' | 'admin' | 'cashier' | 'employee';
 export type EmployeeStatus = 'active' | 'inactive';
-export type AttendanceStatus = 'hadir' | 'sakit' | 'izin' | 'cuti' | 'alpha';
+export type AttendanceStatus = 'complete' | 'partial' | 'incomplete';
 export type PayrollStatus = 'pending' | 'transferred';
 
 export interface Employee {

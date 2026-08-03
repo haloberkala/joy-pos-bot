@@ -662,8 +662,11 @@ export interface Database {
           attendance_date: string
           clock_in: string | null
           clock_out: string | null
+          break_out: string | null
+          break_in: string | null
           duration_minutes: number | null
-          status: "hadir" | "sakit" | "izin" | "cuti" | "alpha"
+          penalty_minutes: number | null
+          status: "complete" | "partial" | "incomplete"
           note: string | null
           is_manual_edit: boolean | null
           created_at: string | null
@@ -676,8 +679,11 @@ export interface Database {
           attendance_date: string
           clock_in?: string | null
           clock_out?: string | null
+          break_out?: string | null
+          break_in?: string | null
           duration_minutes?: number | null
-          status: "hadir" | "sakit" | "izin" | "cuti" | "alpha"
+          penalty_minutes?: number | null
+          status: "complete" | "partial" | "incomplete"
           note?: string | null
           is_manual_edit?: boolean | null
           created_at?: string | null
@@ -690,8 +696,11 @@ export interface Database {
           attendance_date?: string
           clock_in?: string | null
           clock_out?: string | null
+          break_out?: string | null
+          break_in?: string | null
           duration_minutes?: number | null
-          status?: "hadir" | "sakit" | "izin" | "cuti" | "alpha"
+          penalty_minutes?: number | null
+          status?: "complete" | "partial" | "incomplete"
           note?: string | null
           is_manual_edit?: boolean | null
           created_at?: string | null

@@ -1,6 +1,11 @@
 import { supabase } from '@/lib/supabase';
-import { getAttendanceSummary } from './attendanceService';
 import { getEmployeesByStore } from './employeesService';
+import { getAttendancesByStore } from './attendanceService';
+import { 
+  calculateAttendanceSummary, 
+  calculatePayrollSalary,
+  groupAttendancesByEmployee 
+} from '@/lib/payroll/calculations';
 
 export interface Payroll {
   id: number;
@@ -164,6 +169,7 @@ export async function deletePayrollsByMonth(storeId: number, year: number, month
 
 /**
  * Generate payrolls for all active employees in a store for a given month
+ * Optimized: Single query for employees and attendances, then process in memory
  */
 export async function generatePayrollsForMonth(
   storeId: number,
@@ -177,30 +183,38 @@ export async function generatePayrollsForMonth(
       return []; // Already generated
     }
 
-    // Get all active employees
-    const employees = await getEmployeesByStore(storeId);
+    // Step 1: Load all data in parallel (2 queries only, no N+1)
+    const [employees, attendances] = await Promise.all([
+      getEmployeesByStore(storeId),
+      getAttendancesByStore(storeId, { year, month }),
+    ]);
+
+    // Step 2: Filter active employees
     const activeEmployees = employees.filter(e => e.is_active);
 
+    // Step 3: Group attendances by employee (O(n), single pass)
+    const attendancesByEmployee = groupAttendancesByEmployee(attendances);
+
+    // Step 4: Calculate payroll for each employee (O(n), no additional queries)
     const newPayrolls: Payroll[] = [];
 
     for (const employee of activeEmployees) {
-      // Get attendance summary for this employee
-      const summary = await getAttendanceSummary(employee.id, year, month);
-      
-      // Calculate salary
+      const employeeAttendances = attendancesByEmployee.get(employee.id) || [];
       const dailySalary = employee.daily_salary || 0;
-      const daysPresent = summary.hadir;
-      const totalSalary = dailySalary * daysPresent;
 
-      // Create payroll
+      // Pure calculation, no side effects
+      const summary = calculateAttendanceSummary(employeeAttendances);
+      const calculation = calculatePayrollSalary(summary, dailySalary);
+
+      // Create payroll record
       const payroll = await createPayroll({
         employee_id: employee.id,
         store_id: storeId,
         month,
         year,
-        daily_salary: dailySalary,
-        days_present: daysPresent,
-        total_salary: totalSalary,
+        daily_salary: calculation.dailySalary,
+        days_present: calculation.daysPresent,
+        total_salary: calculation.totalSalary,
         status: 'pending',
       });
 

@@ -1,11 +1,12 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
-import { CalendarIcon, CalendarPlus, Pencil, Trash2, Settings } from 'lucide-react';
+import { CalendarIcon, Pencil, Trash2, Settings } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { useAuth } from '@/contexts/AuthContext';
-import { getAttendancesByStore, updateAttendance, deleteAttendance, getAttendanceSetting, upsertAttendanceSetting, Attendance, AttendanceSetting } from '@/services/attendanceService';
+import { getAttendancesByStore, updateAttendance, deleteAttendance, getAttendanceSetting, upsertAttendanceSetting, Attendance, AttendanceSetting, AttendanceStatus } from '@/services/attendanceService';
 import { getEmployeesByStore } from '@/services/employeesService';
+import { formatTime24h } from '@/lib/format';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -16,41 +17,38 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { ZKTecoImportButton } from '@/components/backoffice/ZKTecoImportButton';
-import { WorkHolidayDialog } from '@/components/backoffice/WorkHolidayDialog';
+import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-type SimpleStatus = 'hadir' | 'tidak_hadir' | 'libur';
-
-const STATUS_LABELS: Record<SimpleStatus, string> = {
-  hadir:       'Hadir',
-  tidak_hadir: 'Tidak Hadir',
-  libur:       'Libur',
-};
-const STATUS_COLORS: Record<SimpleStatus, string> = {
-  hadir:       'bg-green-100 text-green-800',
-  tidak_hadir: 'bg-red-100 text-red-800',
-  libur:       'bg-blue-100 text-blue-800',
+const STATUS_LABELS: Record<AttendanceStatus, string> = {
+  complete:    'Complete',
+  partial:     'Partial',
+  incomplete:  'Incomplete',
 };
 
-function toSimpleStatus(s: string): SimpleStatus {
-  if (s === 'hadir') return 'hadir';
-  if (s === 'libur') return 'libur';
-  return 'tidak_hadir';
-}
+const STATUS_COLORS: Record<AttendanceStatus, string> = {
+  complete:    'bg-green-100 text-green-800',
+  partial:     'bg-yellow-100 text-yellow-800',
+  incomplete:  'bg-red-100 text-red-800',
+};
 
 export default function AttendancePage() {
   const { activeStoreId, user } = useAuth();
   const isOwner = user?.role === 'owner';
 
+  // Get current month/year for default filter
+  const now = new Date();
+  const [filterMonth, setFilterMonth] = useState<number>(now.getMonth() + 1);
+  const [filterYear, setFilterYear] = useState<number>(now.getFullYear());
   const [filterEmployee, setFilterEmployee] = useState<string>('all');
-  const [filterDate, setFilterDate] = useState<Date | undefined>(new Date());
+  const [filterDate, setFilterDate] = useState<Date | undefined>(undefined);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [calendarOpen, setCalendarOpen] = useState(false);
 
   const [editRow, setEditRow] = useState<Attendance | null>(null);
-  const [editStatus, setEditStatus] = useState<SimpleStatus>('hadir');
   const [editNote, setEditNote] = useState('');
+  const [editStatus, setEditStatus] = useState<AttendanceStatus>('incomplete');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -58,9 +56,6 @@ export default function AttendancePage() {
 
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
-
-  // Hari Libur
-  const [holidaysOpen, setHolidaysOpen] = useState(false);
 
   const {
     register: registerSettings,
@@ -71,15 +66,22 @@ export default function AttendancePage() {
   const [attendances, setAttendances] = useState<Attendance[]>([]);
   const [employees, setEmployees] = useState<any[]>([]);
 
-  useEffect(() => {
-    loadData();
-  }, [activeStoreId]);
+  // Build employee map for O(1) lookup
+  const employeeMap = useMemo(
+    () => new Map(employees.map(e => [e.id, e])),
+    [employees]
+  );
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    if (!activeStoreId) return;
+    
     try {
       setIsLoading(true);
       const [attendancesData, employeesData] = await Promise.all([
-        getAttendancesByStore(activeStoreId),
+        getAttendancesByStore(activeStoreId, {
+          month: filterMonth,
+          year: filterYear,
+        }),
         getEmployeesByStore(activeStoreId),
       ]);
       setAttendances(attendancesData);
@@ -90,41 +92,51 @@ export default function AttendancePage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [activeStoreId, filterMonth, filterYear]);
 
-  const storeEmployees = useMemo(
-    () => employees.filter((e) => e.store_id === activeStoreId),
-    [employees, activeStoreId]
-  );
+  useEffect(() => {
+    let cancelled = false;
+    
+    const load = async () => {
+      await loadData();
+      if (cancelled) return;
+    };
+    
+    load();
+    
+    return () => { cancelled = true; };
+  }, [loadData]);
 
   const filtered = useMemo(() => {
     const dateStr = filterDate ? format(filterDate, 'yyyy-MM-dd') : null;
     return attendances
       .filter((a) => {
-        const emp = employees.find((e) => e.id === a.employee_id);
-        if (!emp || emp.store_id !== activeStoreId) return false;
+        const emp = employeeMap.get(a.employee_id);
+        if (!emp) return false;
         if (filterEmployee !== 'all' && String(a.employee_id) !== String(filterEmployee)) return false;
         if (dateStr && a.attendance_date !== dateStr) return false;
-        if (filterStatus !== 'all' && toSimpleStatus(a.status) !== filterStatus) return false;
+        if (filterStatus !== 'all' && a.status !== filterStatus) return false;
         return true;
       })
       .sort((a, b) => b.attendance_date.localeCompare(a.attendance_date));
-  }, [attendances, employees, activeStoreId, filterEmployee, filterDate, filterStatus]);
+  }, [attendances, employeeMap, filterEmployee, filterDate, filterStatus]);
 
   // Summary per karyawan (berdasarkan data yang sudah difilter)
   const summary = useMemo(() => {
-    const map: Record<string, { hadir: number; tidak_hadir: number; libur: number }> = {};
+    const map: Record<string, { complete: number; partial: number; incomplete: number }> = {};
     for (const a of filtered) {
-      if (!map[a.employee_id]) map[a.employee_id] = { hadir: 0, tidak_hadir: 0, libur: 0 };
-      map[a.employee_id][toSimpleStatus(a.status)]++;
+      if (!map[a.employee_id]) {
+        map[a.employee_id] = { complete: 0, partial: 0, incomplete: 0 };
+      }
+      map[a.employee_id][a.status]++;
     }
     return map;
   }, [filtered]);
 
   const openEdit = (row: Attendance) => {
     setEditRow(row);
-    setEditStatus(toSimpleStatus(row.status));
     setEditNote(row.note ?? '');
+    setEditStatus(row.status);
   };
 
   const saveEdit = async () => {
@@ -132,7 +144,7 @@ export default function AttendancePage() {
     try {
       setIsSaving(true);
       await updateAttendance(editRow.id, {
-        status: (editStatus === 'hadir' ? 'hadir' : 'alpha') as any,
+        status: editStatus,
         note: editNote.trim(),
         is_manual_edit: true,
       });
@@ -162,13 +174,6 @@ export default function AttendancePage() {
     }
   };
 
-  const formatTime24h = (timeStr: string) => {
-    if (!timeStr) return '';
-    const parts = timeStr.match(/(\d+):(\d+)/);
-    if (parts) return `${parts[1].padStart(2, '0')}:${parts[2].padStart(2, '0')}`;
-    return timeStr;
-  };
-
   const openSettings = async () => {
     setSettingsOpen(true);
     if (!activeStoreId) return;
@@ -179,8 +184,10 @@ export default function AttendancePage() {
           ...setting,
           shift_start: formatTime24h(setting.shift_start),
           shift_end: formatTime24h(setting.shift_end),
-          break_start: formatTime24h(setting.break_start),
-          break_end: formatTime24h(setting.break_end),
+          break_start: formatTime24h(setting.break_start) || '12:00',
+          break_end: formatTime24h(setting.break_end) || '13:00',
+          break_return_tolerance_minutes: setting.break_return_tolerance_minutes ?? 15,
+          clock_out_tolerance_minutes: setting.clock_out_tolerance_minutes ?? 30,
         });
       } else {
         resetSettings({
@@ -189,6 +196,8 @@ export default function AttendancePage() {
           grace_period_minutes: 15,
           break_start: '12:00',
           break_end: '13:00',
+          break_return_tolerance_minutes: 15,
+          clock_out_tolerance_minutes: 30,
         });
       }
     } catch {
@@ -207,6 +216,8 @@ export default function AttendancePage() {
         shift_end: formatTime24h(data.shift_end),
         break_start: formatTime24h(data.break_start),
         break_end: formatTime24h(data.break_end),
+        break_return_tolerance_minutes: data.break_return_tolerance_minutes ?? 15,
+        clock_out_tolerance_minutes: data.clock_out_tolerance_minutes ?? 30,
       };
 
       await upsertAttendanceSetting(activeStoreId, payload);
@@ -247,16 +258,10 @@ export default function AttendancePage() {
         {activeStoreId && (
           <div className="flex items-center gap-2">
             {isOwner && (
-              <>
-                <Button variant="outline" onClick={() => setHolidaysOpen(true)}>
-                  <CalendarPlus className="w-4 h-4 mr-2" />
-                  Hari Libur
-                </Button>
-                <Button variant="outline" onClick={openSettings}>
-                  <Settings className="w-4 h-4 mr-2" />
-                  Aturan Absensi
-                </Button>
-              </>
+              <Button variant="outline" onClick={openSettings}>
+                <Settings className="w-4 h-4 mr-2" />
+                Aturan Absensi
+              </Button>
             )}
             <ZKTecoImportButton storeId={activeStoreId} onSuccess={loadData} />
           </div>
@@ -265,13 +270,39 @@ export default function AttendancePage() {
 
       {/* ── Filters ── */}
       <div className="flex flex-wrap gap-3">
+        {/* Month/Year Selector */}
+        <Select 
+          value={`${filterYear}-${filterMonth}`} 
+          onValueChange={(value) => {
+            const [year, month] = value.split('-').map(Number);
+            setFilterYear(year);
+            setFilterMonth(month);
+          }}
+        >
+          <SelectTrigger className="w-48">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {Array.from({ length: 12 }, (_, i) => {
+              const month = i + 1;
+              const year = filterYear;
+              const date = new Date(year, month - 1);
+              return (
+                <SelectItem key={`${year}-${month}`} value={`${year}-${month}`}>
+                  {format(date, 'MMMM yyyy', { locale: localeId })}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+
         <Select value={filterEmployee} onValueChange={setFilterEmployee}>
           <SelectTrigger className="w-48">
             <SelectValue placeholder="Semua Karyawan" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua Karyawan</SelectItem>
-            {storeEmployees.map((e) => (
+            {employees.filter((e) => e.is_active).map((e) => (
               <SelectItem key={e.id} value={String(e.id)}>
                 {e.name}
               </SelectItem>
@@ -292,7 +323,7 @@ export default function AttendancePage() {
               <CalendarIcon className="mr-2 h-4 w-4" />
               {filterDate
                 ? format(filterDate, 'd MMMM yyyy', { locale: localeId })
-                : 'Pilih tanggal'}
+                : 'Filter tanggal spesifik'}
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="start">
@@ -313,7 +344,7 @@ export default function AttendancePage() {
                   className="w-full text-muted-foreground"
                   onClick={() => { setFilterDate(undefined); setCalendarOpen(false); }}
                 >
-                  Tampilkan semua tanggal
+                  Hapus filter tanggal
                 </Button>
               </div>
             )}
@@ -326,9 +357,9 @@ export default function AttendancePage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Semua Status</SelectItem>
-            <SelectItem value="hadir">Hadir</SelectItem>
-            <SelectItem value="tidak_hadir">Tidak Hadir</SelectItem>
-            <SelectItem value="libur">Libur</SelectItem>
+            <SelectItem value="complete">Complete</SelectItem>
+            <SelectItem value="partial">Partial</SelectItem>
+            <SelectItem value="incomplete">Incomplete</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -336,26 +367,30 @@ export default function AttendancePage() {
       {/* ── Summary Cards ── */}
       {filterEmployee === 'all' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          {storeEmployees
+          {employees
             .filter((e) => e.is_active)
             .map((emp) => {
-              const s = summary[emp.id] || { hadir: 0, tidak_hadir: 0, libur: 0 };
-              const hasData = s.hadir > 0 || s.tidak_hadir > 0 || s.libur > 0;
+              const s = summary[emp.id] || { complete: 0, partial: 0, incomplete: 0 };
+              const hasData = s.complete > 0 || s.partial > 0 || s.incomplete > 0;
               return (
                 <div key={emp.id} className="bg-card border border-border rounded-lg p-3">
                   <p className="font-medium text-sm">{emp.name}</p>
                   <div className="flex gap-2 mt-2 flex-wrap">
                     {hasData ? (
                       <>
-                        <Badge variant="outline" className="bg-green-50 text-green-700">
-                          Hadir: {s.hadir}
-                        </Badge>
-                        <Badge variant="outline" className="bg-red-50 text-red-700">
-                          Tidak Hadir: {s.tidak_hadir}
-                        </Badge>
-                        {s.libur > 0 && (
-                          <Badge variant="outline" className="bg-blue-50 text-blue-700">
-                            Libur: {s.libur}
+                        {s.complete > 0 && (
+                          <Badge variant="outline" className="bg-green-50 text-green-700">
+                            Complete: {s.complete}
+                          </Badge>
+                        )}
+                        {s.partial > 0 && (
+                          <Badge variant="outline" className="bg-yellow-50 text-yellow-700">
+                            Partial: {s.partial}
+                          </Badge>
+                        )}
+                        {s.incomplete > 0 && (
+                          <Badge variant="outline" className="bg-red-50 text-red-700">
+                            Incomplete: {s.incomplete}
                           </Badge>
                         )}
                       </>
@@ -376,10 +411,10 @@ export default function AttendancePage() {
             <TableRow>
               <TableHead>Nama</TableHead>
               <TableHead>Tanggal</TableHead>
-              <TableHead>Jam Masuk</TableHead>
-              <TableHead>Jam Keluar</TableHead>
-              <TableHead>Durasi</TableHead>
-              <TableHead>Terlambat</TableHead>
+              <TableHead>Clock In</TableHead>
+              <TableHead>Break Out</TableHead>
+              <TableHead>Break In</TableHead>
+              <TableHead>Clock Out</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Keterangan</TableHead>
               <TableHead className="w-12" />
@@ -394,31 +429,25 @@ export default function AttendancePage() {
               </TableRow>
             )}
             {filtered.slice(0, 200).map((row) => {
-              const emp = employees.find((e) => e.id === row.employee_id);
-              const durH = row.duration_minutes ? Math.floor(row.duration_minutes / 60) : null;
-              const durM = row.duration_minutes ? row.duration_minutes % 60 : null;
-              const simple = toSimpleStatus(row.status);
-              const lateMinutes = row.penalty_minutes || 0;
+              const emp = employeeMap.get(row.employee_id);
               
               return (
                 <TableRow key={row.id}>
-                  <TableCell className="font-medium">{emp?.name}</TableCell>
+                  <TableCell className="font-medium">{emp?.name || 'Unknown'}</TableCell>
                   <TableCell>{row.attendance_date}</TableCell>
                   <TableCell>{row.clock_in || '-'}</TableCell>
+                  <TableCell>{row.break_out || '-'}</TableCell>
+                  <TableCell>{row.break_in || '-'}</TableCell>
                   <TableCell>{row.clock_out || '-'}</TableCell>
-                  <TableCell>{durH !== null ? `${durH}j ${durM}m` : '-'}</TableCell>
                   <TableCell>
-                    {lateMinutes > 0 ? (
-                      <span className="text-red-600 font-medium">{lateMinutes} menit</span>
-                    ) : (
-                      <span className="text-muted-foreground">-</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={STATUS_COLORS[simple]}>{STATUS_LABELS[simple]}</Badge>
-                    {row.is_manual_edit && (
-                      <span className="ml-1 text-xs text-muted-foreground">(edit)</span>
-                    )}
+                    <div className="flex items-center gap-2">
+                      <Badge className={STATUS_COLORS[row.status]}>{STATUS_LABELS[row.status]}</Badge>
+                      {row.is_manual_edit && (
+                        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+                          🟡 Manual
+                        </Badge>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{row.note}</TableCell>
                   <TableCell>
@@ -435,33 +464,82 @@ export default function AttendancePage() {
 
       {/* ── Edit Dialog ── */}
       <Dialog open={!!editRow} onOpenChange={() => setEditRow(null)}>
-        <DialogContent>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit Absensi</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              {employees.find((e) => e.id === editRow?.employee_id)?.name} —{' '}
-              {editRow?.attendance_date}
-            </p>
-            <div>
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium">
+                {employeeMap.get(editRow?.employee_id || '')?.name || 'Unknown Employee'} —{' '}
+                {editRow?.attendance_date}
+              </p>
+              {editRow?.is_manual_edit && (
+                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+                  🟡 Manual Edit
+                </Badge>
+              )}
+            </div>
+
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-900">
+              <p className="font-medium mb-1">Informasi</p>
+              <p className="text-xs">
+                Edit attendance hanya untuk mengubah status dan catatan. Waktu fingerprint (Clock In, Clock Out, Break) tetap berasal dari mesin fingerprint dan tidak bisa diedit manual.
+              </p>
+              <p className="text-xs mt-2">
+                Setelah disimpan, attendance akan ditandai sebagai Manual Edit dan import fingerprint berikutnya tidak akan mengubahnya.
+              </p>
+            </div>
+
+            {/* Display fingerprint times (read-only) */}
+            <div className="bg-muted/30 p-3 rounded-lg space-y-2">
+              <p className="text-xs font-medium text-muted-foreground uppercase">Data Fingerprint</p>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Clock In:</span>
+                  <span className="ml-2 font-medium">{editRow?.clock_in || '-'}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Clock Out:</span>
+                  <span className="ml-2 font-medium">{editRow?.clock_out || '-'}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Break Out:</span>
+                  <span className="ml-2 font-medium">{editRow?.break_out || '-'}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Break In:</span>
+                  <span className="ml-2 font-medium">{editRow?.break_in || '-'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Status - editable */}
+            <div className="space-y-2">
               <label className="text-sm font-medium">Status</label>
-              <Select value={editStatus} onValueChange={(v) => setEditStatus(v as SimpleStatus)}>
+              <Select value={editStatus} onValueChange={(v) => setEditStatus(v as AttendanceStatus)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="hadir">Hadir</SelectItem>
-                  <SelectItem value="tidak_hadir">Tidak Hadir</SelectItem>
+                  <SelectItem value="complete">Complete</SelectItem>
+                  <SelectItem value="partial">Partial</SelectItem>
+                  <SelectItem value="incomplete">Incomplete</SelectItem>
                 </SelectContent>
               </Select>
+              <p className="text-[10px] text-muted-foreground">
+                Ubah status jika diperlukan penyesuaian manual
+              </p>
             </div>
-            <div>
-              <label className="text-sm font-medium">Keterangan</label>
-              <Input
+
+            {/* Note - editable */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Catatan</label>
+              <textarea
+                className="w-full min-h-[80px] px-3 py-2 text-sm border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring"
                 value={editNote}
                 onChange={(e) => setEditNote(e.target.value)}
-                placeholder="Isi keterangan..."
+                placeholder="Tambahkan keterangan tambahan (opsional)..."
               />
             </div>
           </div>
@@ -508,67 +586,99 @@ export default function AttendancePage() {
 
       {/* ── Settings Dialog ── */}
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Aturan Absensi</DialogTitle>
           </DialogHeader>
           <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-900">
-            <p className="font-medium mb-1">Cara Kerja:</p>
-            <ul className="space-y-1 text-xs">
-              <li>• <strong>Clock In/Out</strong>: Karyawan hanya perlu fingerprint saat masuk dan keluar</li>
-              <li>• <strong>Durasi</strong>: Dihitung dari Clock In - Clock Out, dikurangi waktu istirahat otomatis</li>
-              <li>• <strong>Terlambat</strong>: Dihitung jika Clock In lebih dari Grace Period setelah Shift Start</li>
-              <li>• <strong>Lembur</strong>: Tidak dihitung, durasi maksimal sampai Shift End</li>
-            </ul>
+            <p className="font-medium mb-1">Cara Kerja Absensi</p>
+            <p className="text-xs">
+              Sistem akan otomatis menentukan status kehadiran berdasarkan waktu fingerprint yang masuk. 
+              Pastikan jam kerja dan jam istirahat di bawah ini sesuai dengan aturan di toko anda agar hasil absensi menjadi akurat.
+            </p>
           </div>
-          <form onSubmit={handleSaveSettings(onSubmitSettings)} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Jam Masuk (Shift Start)</label>
-                <Input type="text" placeholder="08:00" {...registerSettings('shift_start', { required: true, pattern: /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/ })} />
-                <p className="text-[10px] text-muted-foreground">Format 24 Jam (misal: 08:00)</p>
+          <form onSubmit={handleSaveSettings(onSubmitSettings)} className="space-y-6">
+            {/* Shift Settings */}
+            <div className="space-y-4">
+              <h3 className="text-base font-semibold">Jam Kerja</h3>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Jam Masuk</label>
+                  <Input type="text" placeholder="08:00" {...registerSettings('shift_start', { required: true, pattern: /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/ })} />
+                  <p className="text-[10px] text-muted-foreground">Contoh: 08:00 atau 09:30</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Toleransi Absen Masuk (Menit)</label>
+                  <Input type="number" {...registerSettings('grace_period_minutes', { required: true, valueAsNumber: true })} />
+                  <p className="text-[10px] text-muted-foreground">Berapa menit sesudah jam masuk yang masih dianggap sebagai absen masuk</p>
+                </div>
               </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Jam Keluar (Shift End)</label>
-                <Input type="text" placeholder="17:00" {...registerSettings('shift_end', { required: true, pattern: /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/ })} />
-                <p className="text-[10px] text-muted-foreground">Format 24 Jam (misal: 17:00)</p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Jam Pulang</label>
+                  <Input type="text" placeholder="17:00" {...registerSettings('shift_end', { required: true, pattern: /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/ })} />
+                  <p className="text-[10px] text-muted-foreground">Contoh: 17:00 atau 18:30</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Toleransi Absen Pulang (Menit)</label>
+                  <Input type="number" defaultValue={30} {...registerSettings('clock_out_tolerance_minutes', { valueAsNumber: true })} />
+                  <p className="text-[10px] text-muted-foreground">Berapa menit sesudah jam pulang yang masih dianggap sebagai absen pulang</p>
+                </div>
               </div>
             </div>
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Toleransi Keterlambatan (Menit)</label>
-              <Input type="number" {...registerSettings('grace_period_minutes', { required: true, valueAsNumber: true })} />
-              <p className="text-[10px] text-muted-foreground">Keterlambatan dihitung setelah Grace Period</p>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Mulai Istirahat</label>
-                <Input type="text" placeholder="12:00" {...registerSettings('break_start', { required: true, pattern: /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/ })} />
-                <p className="text-[10px] text-muted-foreground">Otomatis dikurangi dari durasi</p>
+
+            <Separator />
+
+            {/* Break Settings */}
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-base font-semibold">Jam Istirahat</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Atur waktu istirahat untuk memastikan karyawan tercatat kembali bekerja setelah istirahat.
+                </p>
               </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Jam Mulai Istirahat</label>
+                  <Input type="text" placeholder="12:00" {...registerSettings('break_start', { pattern: /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/ })} />
+                  <p className="text-[10px] text-muted-foreground">Contoh: 12:00 atau 13:00</p>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Jam Selesai Istirahat</label>
+                  <Input type="text" placeholder="13:00" {...registerSettings('break_end', { pattern: /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/ })} />
+                  <p className="text-[10px] text-muted-foreground">Contoh: 13:00 atau 14:00</p>
+                </div>
+              </div>
+              
               <div className="space-y-2">
-                <label className="text-sm font-medium">Selesai Istirahat</label>
-                <Input type="text" placeholder="13:00" {...registerSettings('break_end', { required: true, pattern: /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/ })} />
-                <p className="text-[10px] text-muted-foreground">Otomatis dikurangi dari durasi</p>
+                <label className="text-sm font-medium">Toleransi Kembali Setelah Istirahat (Menit)</label>
+                <Input 
+                  type="number" 
+                  {...registerSettings('break_return_tolerance_minutes', { 
+                    required: true, 
+                    valueAsNumber: true,
+                    min: 0
+                  })} 
+                  placeholder="15"
+                />
+                <p className="text-[10px] text-muted-foreground">
+                  Berapa menit sesudah jam istirahat selesai yang masih dianggap sebagai absen kembali bekerja
+                </p>
               </div>
             </div>
+
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setSettingsOpen(false)}>
                 Batal
               </Button>
               <Button type="submit" disabled={isSavingSettings}>
-                {isSavingSettings ? 'Menyimpan...' : 'Simpan'}
+                {isSavingSettings ? 'Menyimpan...' : 'Simpan Aturan'}
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
-
-      {/* ── Work Holiday Dialog ── */}
-      <WorkHolidayDialog 
-        open={holidaysOpen} 
-        onOpenChange={setHolidaysOpen}
-        storeId={activeStoreId}
-      />
     </div>
   );
 }

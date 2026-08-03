@@ -41,3 +41,15 @@ export function formatMonthYear(date: Date | null = null): string {
     year: "numeric",
   }).format(dateToFormat);
 }
+
+/**
+ * Format time string to 24-hour format (HH:mm)
+ * @param timeStr - Time string in various formats
+ * @returns Formatted time string in HH:mm format
+ */
+export function formatTime24h(timeStr: string | null | undefined): string {
+  if (!timeStr) return '';
+  const parts = timeStr.match(/(\d+):(\d+)/);
+  if (parts) return `${parts[1].padStart(2, '0')}:${parts[2].padStart(2, '0')}`;
+  return timeStr;
+}

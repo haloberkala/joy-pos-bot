@@ -7,24 +7,34 @@ export interface Attendance {
   attendance_date: string;
   clock_in: string | null;
   clock_out: string | null;
+  break_out: string | null;
+  break_in: string | null;
+  // Internal fields for database compatibility (not exposed in new UI)
   duration_minutes: number | null;
-  status: 'hadir' | 'alpha' | 'izin' | 'sakit' | 'cuti' | 'libur';
+  penalty_minutes?: number;
+  // Status: Only new statuses
+  status: 'complete' | 'partial' | 'incomplete';
   note: string;
   is_manual_edit: boolean;
   created_at: string;
   updated_at: string;
 }
 
+// Attendance status type
+export type AttendanceStatus = 'complete' | 'partial' | 'incomplete';
+
 export interface AttendanceSetting {
-  id: number;
-  store_id: number;
+  id?: number;
+  store_id?: number;
   shift_start: string;
   shift_end: string;
   grace_period_minutes: number;
   break_start: string;
   break_end: string;
-  /** Hari libur mingguan. 0=Minggu, 1=Senin, ..., 6=Sabtu (JS Date.getDay() convention). */
-  weekly_off_days: number[];
+  break_return_tolerance_minutes: number;
+  clock_out_tolerance_minutes?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface CreateAttendanceInput {
@@ -33,140 +43,60 @@ export interface CreateAttendanceInput {
   attendance_date: string;
   clock_in?: string;
   clock_out?: string;
-  duration_minutes?: number;
-  status: 'hadir' | 'alpha' | 'izin' | 'sakit' | 'cuti' | 'libur';
+  break_out?: string;
+  break_in?: string;
+  status: AttendanceStatus;
   note?: string;
 }
 
 export interface UpdateAttendanceInput {
-  status?: 'hadir' | 'alpha' | 'izin' | 'sakit' | 'cuti' | 'libur';
+  status?: AttendanceStatus;
   note?: string;
   clock_in?: string;
   clock_out?: string;
-  duration_minutes?: number;
+  break_out?: string;
+  break_in?: string;
   is_manual_edit?: boolean;
 }
 
 /**
- * Get attendances by store
+ * Get attendances by store with optional filtering
  */
-export async function getAttendancesByStore(storeId: number): Promise<Attendance[]> {
+export async function getAttendancesByStore(
+  storeId: number,
+  options?: {
+    month?: number;
+    year?: number;
+    employeeId?: string;
+  }
+): Promise<Attendance[]> {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('attendances')
       .select('*')
-      .eq('store_id', storeId)
-      .order('attendance_date', { ascending: false });
+      .eq('store_id', storeId);
+
+    // Filter by month/year if provided
+    if (options?.month && options?.year) {
+      const startDate = `${options.year}-${String(options.month).padStart(2, '0')}-01`;
+      const lastDay = new Date(options.year, options.month, 0).getDate();
+      const endDate = `${options.year}-${String(options.month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+      query = query.gte('attendance_date', startDate).lte('attendance_date', endDate);
+    }
+
+    // Filter by employee if provided
+    if (options?.employeeId) {
+      query = query.eq('employee_id', options.employeeId);
+    }
+
+    query = query.order('attendance_date', { ascending: false });
+
+    const { data, error } = await query;
 
     if (error) throw error;
     return data || [];
   } catch (error) {
     console.error('Error fetching attendances:', error);
-    throw error;
-  }
-}
-
-/**
- * Get attendances by store filtered by month/year (server-side filtering)
- */
-export async function getAttendancesByStoreAndMonth(
-  storeId: number,
-  year: number,
-  month: number
-): Promise<Attendance[]> {
-  try {
-    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-    const lastDay = new Date(year, month, 0).getDate();
-    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-
-    const { data, error } = await supabase
-      .from('attendances')
-      .select('*')
-      .eq('store_id', storeId)
-      .gte('attendance_date', startDate)
-      .lte('attendance_date', endDate)
-      .order('attendance_date', { ascending: false });
-
-    if (error) throw error;
-    return data || [];
-  } catch (error) {
-    console.error('Error fetching monthly attendances by store:', error);
-    throw error;
-  }
-}
-
-/**
- * Get attendances by employee
- */
-export async function getAttendancesByEmployee(employeeId: string): Promise<Attendance[]> {
-  try {
-    const { data, error } = await supabase
-      .from('attendances')
-      .select('*')
-      .eq('employee_id', employeeId)
-      .order('attendance_date', { ascending: false });
-
-    if (error) throw error;
-    return data || [];
-  } catch (error) {
-    console.error('Error fetching employee attendances:', error);
-    throw error;
-  }
-}
-
-/**
- * Get attendances by month
- */
-export async function getAttendancesByMonth(
-  storeId: number,
-  year: number,
-  month: number
-): Promise<Attendance[]> {
-  try {
-    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-    const lastDay = new Date(year, month, 0).getDate();
-    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-
-    const { data, error } = await supabase
-      .from('attendances')
-      .select('*')
-      .eq('store_id', storeId)
-      .gte('attendance_date', startDate)
-      .lte('attendance_date', endDate)
-      .order('attendance_date', { ascending: false });
-
-    if (error) throw error;
-    return data || [];
-  } catch (error) {
-    console.error('Error fetching monthly attendances:', error);
-    throw error;
-  }
-}
-
-/**
- * Create attendance
- */
-export async function createAttendance(input: CreateAttendanceInput): Promise<Attendance> {
-  try {
-    const { data, error } = await supabase
-      .from('attendances')
-      .insert({
-        employee_id: input.employee_id,
-        store_id: input.store_id,
-        attendance_date: input.attendance_date,
-        clock_in: input.clock_in || null,
-        clock_out: input.clock_out || null,
-        duration_minutes: input.duration_minutes || null,
-        status: input.status,
-        note: input.note || '',
-      })
-      .select()
-      .single();
-
-    if (error) throw error;
-    return data;
-  } catch (error) {
-    console.error('Error creating attendance:', error);
     throw error;
   }
 }
@@ -185,7 +115,8 @@ export async function updateAttendance(
     if (input.note !== undefined) updateData.note = input.note;
     if (input.clock_in !== undefined) updateData.clock_in = input.clock_in;
     if (input.clock_out !== undefined) updateData.clock_out = input.clock_out;
-    if (input.duration_minutes !== undefined) updateData.duration_minutes = input.duration_minutes;
+    if (input.break_out !== undefined) updateData.break_out = input.break_out;
+    if (input.break_in !== undefined) updateData.break_in = input.break_in;
     if (input.is_manual_edit !== undefined) updateData.is_manual_edit = input.is_manual_edit;
 
     const { data, error } = await supabase
@@ -217,52 +148,6 @@ export async function deleteAttendance(id: number): Promise<void> {
   } catch (error) {
     console.error('Error deleting attendance:', error);
     throw error;
-  }
-}
-
-/**
- * Get attendance summary for employee in a month
- */
-export async function getAttendanceSummary(
-  employeeId: string,
-  year: number,
-  month: number
-): Promise<{ total: number; hadir: number; alpha: number; izin: number; sakit: number; cuti: number }> {
-  try {
-    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-    const lastDay = new Date(year, month, 0).getDate();
-    const endDate = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-
-    const { data, error } = await supabase
-      .from('attendances')
-      .select('status')
-      .eq('employee_id', employeeId)
-      .gte('attendance_date', startDate)
-      .lte('attendance_date', endDate);
-
-    if (error) throw error;
-
-    const summary = {
-      total: data?.length || 0,
-      hadir: 0,
-      alpha: 0,
-      izin: 0,
-      sakit: 0,
-      cuti: 0,
-    };
-
-    data?.forEach((att: { status: string }) => {
-      if (att.status === 'hadir') summary.hadir++;
-      else if (att.status === 'alpha') summary.alpha++;
-      else if (att.status === 'izin') summary.izin++;
-      else if (att.status === 'sakit') summary.sakit++;
-      else if (att.status === 'cuti') summary.cuti++;
-    });
-
-    return summary;
-  } catch (error) {
-    console.error('Error getting attendance summary:', error);
-    return { total: 0, hadir: 0, alpha: 0, izin: 0, sakit: 0, cuti: 0 };
   }
 }
 
@@ -312,149 +197,38 @@ export async function upsertAttendanceSetting(storeId: number, setting: Attendan
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// WORK CALENDAR — Hari Libur
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface WorkHoliday {
-  id:         number;
-  store_id:   number | null; // null = libur nasional
-  date:       string;        // 'YYYY-MM-DD'
-  name:       string;
-  type:       'national' | 'store';
-  created_at: string;
-}
-
-export interface CreateWorkHolidayInput {
-  store_id: number | null;
-  date:     string;
-  name:     string;
-  type:     'national' | 'store';
-}
-
-/**
- * Ambil semua hari libur yang berlaku untuk toko ini
- * (libur toko + libur nasional) dalam satu tahun/bulan.
- */
-export async function getWorkHolidays(
-  storeId: number,
-  year: number,
-  month: number
-): Promise<WorkHoliday[]> {
-  const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-  const lastDay   = new Date(year, month, 0).getDate();
-  const endDate   = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-
-  const { data, error } = await supabaseAny
-    .from('work_holidays')
-    .select('*')
-    .gte('date', startDate)
-    .lte('date', endDate)
-    .or(`store_id.eq.${storeId},store_id.is.null`)
-    .order('date', { ascending: true });
-
-  if (error) throw error;
-  return (data ?? []) as WorkHoliday[];
-}
-
-/**
- * Ambil semua hari libur untuk satu tahun (untuk toko ini).
- */
-export async function getWorkHolidaysByYear(
-  storeId: number,
-  year: number
-): Promise<WorkHoliday[]> {
-  const startDate = `${year}-01-01`;
-  const endDate   = `${year}-12-31`;
-
-  const { data, error } = await supabaseAny
-    .from('work_holidays')
-    .select('*')
-    .gte('date', startDate)
-    .lte('date', endDate)
-    .or(`store_id.eq.${storeId},store_id.is.null`)
-    .order('date', { ascending: false });
-
-  if (error) throw error;
-  return (data ?? []) as WorkHoliday[];
-}
-
-/**
- * Tambah satu hari libur (nasional atau toko).
- */
-export async function createWorkHoliday(
-  input: CreateWorkHolidayInput
-): Promise<WorkHoliday> {
-  const { data, error } = await supabaseAny
-    .from('work_holidays')
-    .insert(input)
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data as WorkHoliday;
-}
-
-/**
- * Update hari libur.
- */
-export async function updateWorkHoliday(
-  id: number,
-  input: Partial<CreateWorkHolidayInput>
-): Promise<WorkHoliday> {
-  const { data, error } = await supabaseAny
-    .from('work_holidays')
-    .update(input)
-    .eq('id', id)
-    .select()
-    .single();
-
-  if (error) throw error;
-  return data as WorkHoliday;
-}
-
-/**
- * Hapus satu hari libur.
- */
-export async function deleteWorkHoliday(id: number): Promise<void> {
-  const { error } = await supabaseAny
-    .from('work_holidays')
-    .delete()
-    .eq('id', id);
-
-  if (error) throw error;
-}
-
 // ═══════════════════════════════════════════════════════════════════════════════
-// ATTENDANCE ENGINE
+// ATTENDANCE ENGINE — Revision 2026-08-04 (Final Simplification)
 // ═══════════════════════════════════════════════════════════════════════════════
+//
+// Filosofi Baru:
+//   - Attendance Engine hanya menghasilkan status: COMPLETE, PARTIAL, INCOMPLETE
+//   - Tidak ada status "libur" — hari libur adalah domain Payroll
+//   - Tidak ada holiday engine (work_holidays, weekly_off_days diabaikan)
+//   - Break sebagai KONFIGURASI (bukan entity), langsung di attendance_settings
+//   - Break berfungsi sebagai checkpoint kehadiran (break_out, break_in)
+//   - Durasi dan keterlambatan TIDAK dihitung — domain Payroll
 //
 // Pipeline:
 //   Parse (attendanceImportService)
 //     ↓ AttlogEntry[]
-//   resolveEmployee()       — fingerprint_id → employee UUID
+//   resolveEmployee()             — fingerprint_id → employee UUID
 //     ↓
-//   validateAttendanceSetting() — pastikan aturan sudah dikonfigurasi
-//     ↓ AttendanceEngineSettings
-//   fetchHolidayMap()       — batch fetch hari libur khusus (nasional + toko)
-//     ↓ holidayMap + weeklyOffDays dari settings
-//   isDayOff()              — helper: cek libur khusus ATAU libur mingguan
-//     ↓ off: true → persist 'libur', skip pipeline
-//   validateScanWindow()    — validasi: warning jika semua scan di luar window
-//     ↓ scans (TIDAK difilter — source of truth tetap scans asli)
-//   selectClockIn()         — pilih scan clock-in berdasarkan aturan shift
-//     ↓ clockIn
-//   selectClockOut()        — pilih scan clock-out berdasarkan aturan shift
-//     ↓ clockOut
-//   calculatePenalty()      — hitung keterlambatan vs grace period
-//     ↓ penaltyMinutes
-//   calculateDuration()     — hitung durasi efektif (potong OT & break)
-//     ↓ durationMinutes
-//   calculateStatus()       — tentukan status hadir / alpha
+//   validateAttendanceSetting()   — pastikan aturan sudah dikonfigurasi
+//     ↓ AttendanceEngineSettings (break config langsung dari settings)
+//   selectClockIn()               — scan pertama dalam Clock In Window
+//     ↓ clockIn (null jika tidak ada scan dalam window)
+//   selectBreakOut()              — scan pertama dalam Break Out Window
+//     ↓ breakOut (null jika tidak ada break atau tidak ada scan)
+//   selectBreakIn()               — scan pertama dalam Break In Window
+//     ↓ breakIn (null jika tidak ada breakOut atau tidak ada scan)
+//   selectClockOut()              — scan terakhir dalam Clock Out Window
+//     ↓ clockOut (null jika tidak ada scan dalam window)
+//   classifyAttendance()          — tentukan COMPLETE / PARTIAL / INCOMPLETE
 //     ↓ status
-//   compareExistingAttendance() — INSERT / UPDATE / SKIP
+//   compareExistingAttendance()   — INSERT / UPDATE / SKIP
 //     ↓
-//   persistAttendance()     — tulis ke database
+//   persistAttendance()           — tulis ke database
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // ── Tipe Lokal ────────────────────────────────────────────────────────────────
@@ -481,25 +255,28 @@ interface AttendanceEngineSettings {
   shiftStart:   string; // "HH:mm"
   shiftEnd:     string;
   gracePeriod:  number; // menit
-  breakStart:   string;
-  breakEnd:     string;
   // Derived (menit sejak 00:00) — dihitung sekali, dipakai di semua step.
   shiftStartMin: number;
   shiftEndMin:   number;
-  breakStartMin: number;
-  breakEndMin:   number;
-  /** Hari libur mingguan. 0=Minggu … 6=Sabtu. */
-  weeklyOffDays: number[];
+  clockOutTolerance: number; // menit - toleransi setelah shift_end
+  /** 
+   * Break configuration (bukan entity terpisah).
+   * Dibaca langsung dari attendance_settings.
+   * Jika null, berarti toko tidak dikonfigurasi break.
+   */
+  break: {
+    startMin: number;       // Break Out Window start
+    endMin: number;         // Break Out Window end
+    returnToleranceMin: number; // Break In Window tolerance setelah endMin
+  } | null;
 }
-
-type AttendanceStatus = 'hadir' | 'alpha' | 'izin' | 'sakit' | 'cuti' | 'libur';
 
 /** Hasil kalkulasi satu hari kerja sebelum ditulis ke DB. */
 interface DayResult {
   clockIn:         string | null;
+  breakOut:        string | null;
+  breakIn:         string | null;
   clockOut:        string | null;
-  penaltyMinutes:  number;
-  durationMinutes: number | null;
   status:          AttendanceStatus;
 }
 
@@ -511,6 +288,8 @@ interface ExistingRow {
   attendance_date:  string;
   clock_in:         string | null;
   clock_out:        string | null;
+  break_out:        string | null;
+  break_in:         string | null;
   duration_minutes: number | null;
   penalty_minutes:  number;
   status:           string;
@@ -521,23 +300,11 @@ interface ExistingRow {
 
 const IMPORT_BATCH_SIZE = 50;
 
-/**
- * Berapa menit setelah shift_end scan masih dianggap clock-out yang valid.
- * Contoh: shift 17:00 + 180 menit = batas clock-out 20:00.
- */
-const MAX_CLOCK_OUT_AFTER_SHIFT = 180;
-
 // ── Helper Murni ──────────────────────────────────────────────────────────────
 
 function _min(t: string): number {
   const [h, m] = t.split(':').map(Number);
   return h * 60 + m;
-}
-
-function _fmt(totalMin: number): string {
-  const h = Math.floor(Math.max(0, totalMin) / 60) % 24;
-  const m = Math.max(0, totalMin) % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
 function _normalizeId(raw: string): string {
@@ -546,60 +313,38 @@ function _normalizeId(raw: string): string {
   return isNaN(n) ? s : String(n);
 }
 
-/** Nama hari (indeks 0=Minggu s/d 6=Sabtu), dipakai sebagai keterangan libur mingguan. */
-const DAY_NAMES = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'] as const;
-
 /**
- * Apakah tanggal `date` adalah hari libur?
- * Mengecek dua sumber:
- *   1. holidayMap — hari libur khusus (nasional / toko)
- *   2. weeklyOffDays — hari libur mingguan dari attendance_settings
- *
- * Return: { off: true, name } jika libur, { off: false } jika hari kerja.
- */
-function isDayOff(
-  date: string,
-  holidayMap: Map<string, string>,
-  weeklyOffDays: number[]
-): { off: true; name: string } | { off: false } {
-  // Cek hari libur khusus (tanggal spesifik)
-  const holidayName = holidayMap.get(date);
-  if (holidayName !== undefined) return { off: true, name: holidayName };
-
-  // Cek hari libur mingguan (day of week)
-  // Tambahkan T00:00:00 untuk memastikan parsing konsisten tanpa timezone shift
-  const dow = new Date(date + 'T00:00:00').getDay(); // 0=Minggu … 6=Sabtu
-  if (weeklyOffDays.includes(dow)) return { off: true, name: DAY_NAMES[dow] };
-
-  return { off: false };
-}
-
-/**
- * Apakah waktu `t` berada dalam window jam masuk?
- * Window: shift_start - 60 menit  s/d  shift_start + 120 menit
+ * Apakah waktu `t` berada dalam Clock In Window?
+ * Window: [shift_start, shift_start + grace_period]
+ * HANYA SETELAH jam masuk (tidak ada toleransi sebelum)
  */
 function isInClockInWindow(t: string, s: AttendanceEngineSettings): boolean {
   const m = _min(t);
-  return m >= s.shiftStartMin - 60 && m <= s.shiftStartMin + 120;
+  // Window: dari shift_start sampai shift_start + grace_period
+  return m >= s.shiftStartMin && m <= s.shiftStartMin + s.gracePeriod;
 }
 
 /**
- * Apakah waktu `t` berada dalam window jam pulang?
- * Window: shift_end - 120 menit  s/d  shift_end + MAX_CLOCK_OUT_AFTER_SHIFT
+ * Apakah waktu `t` berada dalam Clock Out Window?
+ * Window: [shift_end, shift_end + clockOutTolerance]
+ * HANYA SETELAH jam pulang (tidak ada toleransi sebelum)
  */
 function isInClockOutWindow(t: string, s: AttendanceEngineSettings): boolean {
   const m = _min(t);
-  return m >= s.shiftEndMin - 120 && m <= s.shiftEndMin + MAX_CLOCK_OUT_AFTER_SHIFT;
+  // Window: dari shift_end sampai shift_end + clockOutTolerance
+  return m >= s.shiftEndMin && m <= s.shiftEndMin + s.clockOutTolerance;
 }
 
 // ── Step 1: validateAttendanceSetting ────────────────────────────────────────
 //
 // Ambil attendance_settings dari DB dan konversi ke AttendanceEngineSettings.
+// Break configuration dibaca langsung dari attendance_settings (bukan tabel terpisah).
 // Error hard-stop jika setting belum dikonfigurasi — import tidak boleh lanjut.
 
 async function validateAttendanceSetting(
   storeId: number
 ): Promise<{ settings: AttendanceEngineSettings } | { error: string }> {
+  // Fetch attendance_settings
   const { data, error } = await supabaseAny
     .from('attendance_settings')
     .select('*')
@@ -614,20 +359,40 @@ async function validateAttendanceSetting(
     };
   }
 
-  const shiftStart    = (data.shift_start  ?? '08:00') as string;
-  const shiftEnd      = (data.shift_end    ?? '17:00') as string;
-  const breakStart    = (data.break_start  ?? '12:00') as string;
-  const breakEnd      = (data.break_end    ?? '13:00') as string;
-  const gracePeriod   = (data.grace_period_minutes ?? 15) as number;
-  const weeklyOffDays = Array.isArray(data.weekly_off_days) ? (data.weekly_off_days as number[]) : [];
+  const shiftStart  = (data.shift_start  ?? '08:00') as string;
+  const shiftEnd    = (data.shift_end    ?? '17:00') as string;
+  const gracePeriod = (data.grace_period_minutes ?? 15) as number;
+  const clockOutTolerance = (data.clock_out_tolerance_minutes ?? 30) as number;
+  const breakReturnTolerance = (data.break_return_tolerance_minutes ?? 15) as number;
+
+  // Break configuration langsung dari attendance_settings
+  const breakStart = (data.break_start ?? null) as string | null;
+  const breakEnd   = (data.break_end   ?? null) as string | null;
+  
+  let parsedBreak: {
+    startMin: number;
+    endMin: number;
+    returnToleranceMin: number;
+  } | null = null;
+
+  // Jika break dikonfigurasi (break_start dan break_end ada)
+  if (breakStart && breakEnd) {
+    parsedBreak = {
+      startMin: _min(breakStart),
+      endMin: _min(breakEnd),
+      returnToleranceMin: breakReturnTolerance,
+    };
+  }
 
   return {
     settings: {
-      shiftStart, shiftEnd, gracePeriod, breakStart, breakEnd, weeklyOffDays,
+      shiftStart,
+      shiftEnd,
+      gracePeriod,
       shiftStartMin: _min(shiftStart),
       shiftEndMin:   _min(shiftEnd),
-      breakStartMin: _min(breakStart),
-      breakEndMin:   _min(breakEnd),
+      clockOutTolerance,
+      break: parsedBreak,
     },
   };
 }
@@ -655,74 +420,13 @@ async function resolveEmployee(
   return { map };
 }
 
-// ── Step 3: fetchHolidayMap ───────────────────────────────────────────────────
-//
-// Fetch hari libur satu kali sebelum loop per-entry.
-// Return: Map<'YYYY-MM-DD', namaLibur> — mencakup libur nasional (store_id IS NULL)
-//         dan libur khusus toko (store_id = storeId).
-// Jika tanggal ada di map → entry dipersist sebagai status 'libur',
-// scan diabaikan (clock_in/out = null, penalty = 0).
-
-async function fetchHolidayMap(
-  storeId: number,
-  dates: string[]
-): Promise<Map<string, string>> {
-  if (dates.length === 0) return new Map();
-
-  const { data, error } = await supabaseAny
-    .from('work_holidays')
-    .select('date, name')
-    .in('date', dates)
-    .or(`store_id.eq.${storeId},store_id.is.null`);
-
-  if (error) throw new Error(`Gagal fetch hari libur: ${error.message}`);
-
-  const map = new Map<string, string>();
-  (data ?? []).forEach((row: { date: string; name: string }) =>
-    map.set(row.date, row.name)
-  );
-  return map;
-}
-
-// ── Step 4: validateScanWindow ────────────────────────────────────────────────
-//
-// HANYA memvalidasi — tidak memfilter array scan.
-// scans asli tetap menjadi source of truth untuk selectClockIn/Out.
-//
-// Return: { pass: true } jika minimal satu scan berada dalam window clock-in
-//         ATAU window clock-out.
-//         { pass: false, reason } jika semua scan di luar kedua window (entry dilewati).
-
-function validateScanWindow(
-  scans: string[],
-  s: AttendanceEngineSettings,
-  fingerprintId: string,
-  date: string
-): { pass: true } | { pass: false; reason: string } {
-  const hasValidScan = scans.some(
-    (t) => isInClockInWindow(t, s) || isInClockOutWindow(t, s)
-  );
-
-  if (!hasValidScan) {
-    return {
-      pass: false,
-      reason:
-        `Fingerprint ID ${fingerprintId} / ${date}: ` +
-        `Semua scan berada di luar aturan absensi ` +
-        `(window masuk ${_fmt(s.shiftStartMin - 60)}–${_fmt(s.shiftStartMin + 120)}, ` +
-        `window pulang ${_fmt(s.shiftEndMin - 120)}–${_fmt(s.shiftEndMin + MAX_CLOCK_OUT_AFTER_SHIFT)}). Dilewati.`,
-    };
-  }
-
-  return { pass: true };
-}
-
-// ── Step 5: selectClockIn ─────────────────────────────────────────────────────
+// ── Step 3: selectClockIn ─────────────────────────────────────────────────────
 //
 // Menerima scans asli. Mengembalikan scan pertama dalam window clock-in.
-// Jika tidak ada scan dalam window → null (TIDAK fallback ke scans[0]).
+// Jika tidak ada scan dalam window → null.
 //
-// Window: shift_start - 60 menit  s/d  shift_start + 120 menit
+// Window: [shift_start, shift_start + grace_period]
+// HANYA SETELAH jam masuk (tidak ada toleransi sebelum)
 
 function selectClockIn(
   scans: string[],
@@ -732,90 +436,152 @@ function selectClockIn(
   return inWindow.length > 0 ? inWindow[0] : null;
 }
 
+// ── Step 4: selectBreakOut ────────────────────────────────────────────────────
+//
+// Mengembalikan scan pertama dalam Break Out Window (setelah clockIn).
+// Window: [break.startMin, break.endMin]
+// Jika tidak ada scan dalam window → null.
+
+function selectBreakOut(
+  scans: string[],
+  clockIn: string,
+  s: AttendanceEngineSettings
+): string | null {
+  if (!s.break) return null;
+  
+  const clockInMin = _min(clockIn);
+  const inWindow = scans.filter((t) => {
+    const m = _min(t);
+    // Scan harus setelah clockIn dan dalam break window
+    return m > clockInMin && m >= s.break!.startMin && m <= s.break!.endMin;
+  });
+  
+  return inWindow.length > 0 ? inWindow[0] : null;
+}
+
+// ── Step 5: selectBreakIn ─────────────────────────────────────────────────────
+//
+// Mengembalikan scan pertama dalam Break In Window (setelah break end).
+// Window: [break.endMin, break.endMin + returnToleranceMin]
+// Jika tidak ada scan dalam window → null.
+
+function selectBreakIn(
+  scans: string[],
+  breakOut: string | null,
+  s: AttendanceEngineSettings
+): string | null {
+  if (!s.break || !breakOut) return null;
+  
+  const breakOutMin = _min(breakOut);
+  const breakInWindowEnd = s.break.endMin + s.break.returnToleranceMin;
+  
+  const inWindow = scans.filter((t) => {
+    const m = _min(t);
+    // Scan harus setelah breakOut dan dalam break-in window
+    return m > breakOutMin && m >= s.break!.endMin && m <= breakInWindowEnd;
+  });
+  
+  return inWindow.length > 0 ? inWindow[0] : null;
+}
+
 // ── Step 6: selectClockOut ────────────────────────────────────────────────────
 //
-// Menerima scans asli. Mengembalikan scan terakhir dalam window clock-out
-// yang bukan clockIn itu sendiri.
-// Scan di luar window clock-out (mis. 10:17 saat shift 08-17) diabaikan.
+// Mengembalikan scan terakhir dalam Clock Out Window.
+// Window: [shift_end, shift_end + clockOutTolerance]
+// HANYA SETELAH jam pulang (tidak ada toleransi sebelum)
 // Jika tidak ada kandidat valid → null.
-//
-// Window: shift_end - 120 menit  s/d  shift_end + MAX_CLOCK_OUT_AFTER_SHIFT
 
 function selectClockOut(
   scans: string[],
   clockIn: string | null,
-  s: AttendanceEngineSettings
+  s: AttendanceEngineSettings,
+  debug: boolean = false
 ): string | null {
+  if (debug) {
+    console.log('🔍 Clock Out Selection');
+    console.log(`  Shift End        : ${s.shiftEnd}`);
+    console.log(`  Tolerance        : ${s.clockOutTolerance} menit`);
+    console.log(`  Window           :`);
+    console.log(`    ${s.shiftEnd}`);
+    console.log(`    ↓`);
+    const endMin = s.shiftEndMin + s.clockOutTolerance;
+    const endHour = Math.floor(endMin / 60);
+    const endMinute = endMin % 60;
+    console.log(`    ${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}`);
+    console.log(`  Scans            :`);
+    scans.forEach((t) => {
+      const inWindow = t !== clockIn && isInClockOutWindow(t, s);
+      console.log(`    ${t} -> ${inWindow ? 'true' : 'false'}`);
+    });
+  }
+
   // Kandidat: scan dalam window clock-out, bukan clock-in
   const candidates = scans.filter(
     (t) => t !== clockIn && isInClockOutWindow(t, s)
   );
 
-  if (candidates.length === 0) return null;
-
-  // Deprioritisasi scan yang jatuh di window break
-  const nonBreak = candidates.filter((t) => {
-    const m = _min(t);
-    return !(m >= s.breakStartMin && m <= s.breakEndMin);
-  });
-
-  const pool = nonBreak.length > 0 ? nonBreak : candidates;
-  return pool[pool.length - 1];
+  if (candidates.length === 0) {
+    if (debug) console.log(`  Result           : null`);
+    return null;
+  }
+  
+  // Ambil scan terakhir
+  const result = candidates[candidates.length - 1];
+  if (debug) console.log(`  Result           : ${result}`);
+  return result;
 }
 
-// ── Step 7: calculatePenalty ──────────────────────────────────────────────────
+// ── Step 7: classifyAttendance ────────────────────────────────────────────────
 //
-// Keterlambatan = max(0, clock_in - shift_start)
-// Penalty       = max(0, keterlambatan - grace_period)
-
-function calculatePenalty(clockIn: string | null, s: AttendanceEngineSettings): number {
-  if (!clockIn) return 0;
-  const lateness = Math.max(0, _min(clockIn) - s.shiftStartMin);
-  return Math.max(0, lateness - s.gracePeriod);
-}
-
-// ── Step 8: calculateDuration ─────────────────────────────────────────────────
+// Tentukan status: COMPLETE, PARTIAL, atau INCOMPLETE berdasarkan checkpoint.
 //
-// Durasi efektif = min(clock_out, shift_end) - max(clock_in, shift_start)
-//                  dikurangi overlap dengan break.
-// OT tidak dihitung — durasi dibatasi oleh shift_end.
-// Dirancang untuk nanti mendukung: multiple break, OT threshold.
+// Decision tree (Revisi 2026-08-04):
+//   clockIn tidak ada        → INCOMPLETE (ada log fingerprint tapi tidak ada clock-in valid)
+//   
+//   breakConfig tidak ada    → clockOut ada? COMPLETE : INCOMPLETE
+//   
+//   breakOut tidak ada       → INCOMPLETE (belum mencapai break window)
+//   
+//   breakIn tidak ada        → PARTIAL (berhenti di break window)
+//   
+//   clockOut tidak ada       → INCOMPLETE (sudah break-in tapi tidak clock-out)
+//   
+//   Semua checkpoint ada     → COMPLETE
+//
+// CATATAN: Fungsi ini sekarang bisa menerima clockIn = null. 
+// Record tetap akan dibuat dengan status INCOMPLETE.
 
-function calculateDuration(
-  clockIn: string,
+function classifyAttendance(
+  clockIn: string | null,
+  breakOut: string | null,
+  breakIn: string | null,
   clockOut: string | null,
   s: AttendanceEngineSettings
-): number | null {
-  if (!clockOut) return null;
-
-  const ciMin = _min(clockIn);
-  const coMin = _min(clockOut);
-
-  // Effective window: dibatasi shift_start s/d shift_end
-  const effStart = Math.max(ciMin, s.shiftStartMin);
-  const effEnd   = Math.min(coMin, s.shiftEndMin);
-  let dur = effEnd - effStart;
-
-  // Kurangi overlap dengan break
-  if (effStart < s.breakEndMin && effEnd > s.breakStartMin) {
-    const bStart = Math.max(effStart, s.breakStartMin);
-    const bEnd   = Math.min(effEnd,   s.breakEndMin);
-    dur -= (bEnd - bStart);
+): AttendanceStatus {
+  // Tidak ada clock-in = ada log fingerprint tapi tidak ada clock-in valid
+  if (!clockIn) return 'incomplete';
+  
+  // Jika tidak ada konfigurasi break
+  if (!s.break) {
+    return clockOut ? 'complete' : 'incomplete';
   }
-
-  return Math.max(0, dur);
+  
+  // Break dikonfigurasi — pipeline lengkap: clockIn → breakOut → breakIn → clockOut
+  
+  // Tidak ada breakOut = belum mencapai break window
+  if (!breakOut) return 'incomplete';
+  
+  // Tidak ada breakIn = PARTIAL (berhenti di break window)
+  if (!breakIn) return 'partial';
+  
+  // Sudah break-in tapi tidak clock-out = INCOMPLETE
+  if (!clockOut) return 'incomplete';
+  
+  // Semua checkpoint lengkap
+  return 'complete';
 }
 
-// ── Step 9: calculateStatus ───────────────────────────────────────────────────
-//
-// clockIn valid → hadir.
-// Kasus clockIn null sudah ditangani di pipeline sebelum fungsi ini dipanggil.
-
-function calculateStatus(): AttendanceStatus {
-  return 'hadir';
-}
-
-// ── Step 10: compareExistingAttendance ────────────────────────────────────────
+// ── Step 8: compareExistingAttendance ─────────────────────────────────────────
 //
 // Bandingkan hasil kalkulasi dengan data yang sudah ada di DB.
 // Return action yang harus dilakukan: insert / update / skip.
@@ -836,16 +602,16 @@ function compareExistingAttendance(
   }
 
   const identical =
-    existing.clock_in         === day.clockIn          &&
-    existing.clock_out        === day.clockOut         &&
-    existing.duration_minutes === day.durationMinutes  &&
-    existing.penalty_minutes  === day.penaltyMinutes   &&
-    existing.status           === day.status;
+    existing.clock_in  === day.clockIn  &&
+    existing.break_out === day.breakOut &&
+    existing.break_in  === day.breakIn  &&
+    existing.clock_out === day.clockOut &&
+    existing.status    === day.status;
 
   return { action: identical ? 'skip_identical' : 'update' };
 }
 
-// ── Step 11: persistAttendance ────────────────────────────────────────────────
+// ── Step 9: persistAttendance ─────────────────────────────────────────────────
 //
 // Tulis ke DB: batch INSERT atau per-record UPDATE.
 // Dipisah agar mudah diganti dengan transaction atau RPC di masa depan.
@@ -859,7 +625,7 @@ async function persistAttendance(
     const batch = toInsert.slice(i, i + IMPORT_BATCH_SIZE);
     const { error } = await supabaseAny
       .from('attendances')
-      .upsert(batch, { onConflict: 'employee_id, attendance_date' });
+      .upsert(batch, { onConflict: 'employee_id,attendance_date' });
     if (error) result.errors.push(`Upsert batch ${Math.floor(i / IMPORT_BATCH_SIZE) + 1}: ${error.message}`);
     else result.inserted += batch.length;
   }
@@ -873,8 +639,10 @@ async function persistAttendance(
 
 // ── Pipeline Utama: importFromAttlog ──────────────────────────────────────────
 //
-// Orkestrasi seluruh step engine. Tidak mengandung business logic secara
-// langsung — setiap keputusan didelegasikan ke fungsi step di atas.
+// Orkestrasi seluruh step engine berdasarkan filosofi baru:
+//   - Attendance hanya COMPLETE, PARTIAL, INCOMPLETE
+//   - Tidak ada holiday engine (work_holidays dan weekly_off_days diabaikan)
+//   - Break sebagai checkpoint (breakOut dan breakIn)
 
 export async function importFromAttlog(
   entries: AttlogEntry[],
@@ -917,7 +685,7 @@ export async function importFromAttlog(
 
   const { data: existing, error: fetchError } = await supabaseAny
     .from('attendances')
-    .select('id, employee_id, attendance_date, clock_in, clock_out, duration_minutes, penalty_minutes, status, is_manual_edit')
+    .select('id, employee_id, attendance_date, clock_in, clock_out, break_out, break_in, duration_minutes, penalty_minutes, status, is_manual_edit')
     .in('employee_id', employeeUuids)
     .in('attendance_date', dates);
 
@@ -931,15 +699,6 @@ export async function importFromAttlog(
     existingMap.set(`${row.employee_id}|${row.attendance_date}`, row)
   );
 
-  // ── Fetch hari libur (satu kali, batch) ──────────────────────────────────
-  let holidayMap = new Map<string, string>();
-  try {
-    holidayMap = await fetchHolidayMap(storeId, dates);
-  } catch (e) {
-    result.errors.push((e as Error).message);
-    return result;
-  }
-
   const toInsert: object[] = [];
   const toUpdate: { id: number; payload: object }[] = [];
 
@@ -947,57 +706,25 @@ export async function importFromAttlog(
   for (const { entry, employeeUuid } of validEntries) {
     const { fingerprintId, date, scans } = entry;
 
-    // validateHoliday — lookup di Map yang sudah di-fetch
-    // isDayOff — cek libur khusus (holidayMap) DAN libur mingguan (weeklyOffDays)
-    const dayOff = isDayOff(date, holidayMap, settings.weeklyOffDays);
-    if (dayOff.off) {
-      // Persist sebagai 'libur' — scan diabaikan, penalty/duration = 0/null
-      const holidayPayload = {
-        employee_id:      employeeUuid,
-        store_id:         Number(storeId),
-        attendance_date:  date,
-        clock_in:         null,
-        clock_out:        null,
-        duration_minutes: null,
-        penalty_minutes:  0,
-        status:           'libur' as AttendanceStatus,
-        note:             dayOff.name,
-        is_manual_edit:   false,
-      };
-      const existingRow = existingMap.get(`${employeeUuid}|${date}`);
-      if (!existingRow) {
-        toInsert.push(holidayPayload);
-      } else if (!existingRow.is_manual_edit && existingRow.status !== 'libur') {
-        toUpdate.push({ id: existingRow.id, payload: holidayPayload });
-      }
-      // jika sudah 'libur' atau manual edit, tidak ditimpa
-      continue;
-    }
+    // selectClockIn — scan pertama dalam Clock In Window
+    const clockIn = selectClockIn(scans, settings);
 
-    // validateScanWindow — validator saja, tidak memfilter scans
-    const scanCheck = validateScanWindow(scans, settings, fingerprintId, date);
-    if (!scanCheck.pass) {
-      result.skipped++;
-      result.skippedReasons.push(scanCheck.reason);
-      continue;
-    }
+    // FILOSOFI BARU (2026-08-04):
+    // Jika tidak ada clockIn yang valid, TETAP buat record dengan status incomplete.
+    // JANGAN lagi skip — setiap hari dengan log fingerprint harus memiliki record attendance.
 
-    // selectClockIn & selectClockOut menerima scans asli
-    const clockIn  = selectClockIn(scans, settings);
+    // selectBreakOut — scan pertama dalam Break Out Window (setelah clockIn)
+    // Jika clockIn tidak ada, breakOut pasti tidak bisa terdeteksi
+    const breakOut = clockIn ? selectBreakOut(scans, clockIn, settings) : null;
 
-    // Jika tidak ada scan dalam window clock-in → skip, jangan persist
-    if (!clockIn) {
-      result.skipped++;
-      result.skippedReasons.push(
-        `Fingerprint ID ${fingerprintId} / ${date}: Tidak ada scan dalam window jam masuk. Dilewati.`
-      );
-      continue;
-    }
+    // selectBreakIn — scan pertama dalam Break In Window (setelah breakOut)
+    const breakIn = selectBreakIn(scans, breakOut, settings);
 
-    const clockOut = selectClockOut(scans, clockIn, settings);
+    // selectClockOut — scan terakhir dalam Clock Out Window
+    const clockOut = clockIn ? selectClockOut(scans, clockIn, settings) : null;
 
-    // Sanity: clock_out tidak boleh lebih kecil dari clock_in
-    if (clockOut && _min(clockOut) < _min(clockIn)) {
+    // Sanity: clock_out tidak boleh lebih kecil dari clock_in (hanya jika keduanya ada)
+    if (clockIn && clockOut && _min(clockOut) < _min(clockIn)) {
       result.skipped++;
       result.skippedReasons.push(
         `Fingerprint ID ${fingerprintId} / ${date}: ` +
@@ -1006,13 +733,16 @@ export async function importFromAttlog(
       continue;
     }
 
-    // calculatePenalty, calculateDuration, calculateStatus
+    // classifyAttendance — COMPLETE, PARTIAL, atau INCOMPLETE
+    // Bisa menerima clockIn = null (akan menghasilkan status incomplete)
+    const status = classifyAttendance(clockIn, breakOut, breakIn, clockOut, settings);
+
     const day: DayResult = {
       clockIn,
+      breakOut,
+      breakIn,
       clockOut,
-      penaltyMinutes:  calculatePenalty(clockIn, settings),
-      durationMinutes: calculateDuration(clockIn, clockOut, settings),
-      status:          calculateStatus(),
+      status,
     };
 
     const payload = {
@@ -1020,9 +750,10 @@ export async function importFromAttlog(
       store_id:         Number(storeId),
       attendance_date:  date,
       clock_in:         day.clockIn,
+      break_out:        day.breakOut,
+      break_in:         day.breakIn,
       clock_out:        day.clockOut,
-      duration_minutes: day.durationMinutes,
-      penalty_minutes:  day.penaltyMinutes,
+      // duration_minutes dan penalty_minutes TIDAK diisi (domain Payroll)
       status:           day.status,
       note:             '',
       is_manual_edit:   false,
