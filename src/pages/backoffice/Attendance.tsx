@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
 import { format } from 'date-fns';
 import { id as localeId } from 'date-fns/locale';
-import { CalendarIcon, Pencil, Trash2, Settings } from 'lucide-react';
+import { CalendarIcon, Pencil, Trash2, Settings, Info } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { useAuth } from '@/contexts/AuthContext';
 import { getAttendancesByStore, updateAttendance, deleteAttendance, getAttendanceSetting, upsertAttendanceSetting, Attendance, AttendanceSetting, AttendanceStatus } from '@/services/attendanceService';
@@ -18,6 +18,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { ZKTecoImportButton } from '@/components/backoffice/ZKTecoImportButton';
 import { Separator } from '@/components/ui/separator';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -146,12 +148,24 @@ export default function AttendancePage() {
   }, [filtered]);
 
   const openEdit = (row: Attendance) => {
+    // Authorization: Hanya Owner yang boleh edit
+    if (!isOwner) {
+      toast.error('Anda tidak memiliki izin untuk mengubah data absensi');
+      return;
+    }
+    
     setEditRow(row);
     setEditNote(row.note ?? '');
     setEditStatus(row.status);
   };
 
   const saveEdit = async () => {
+    // Authorization: Hanya Owner yang boleh save
+    if (!isOwner) {
+      toast.error('Anda tidak memiliki izin untuk mengubah data absensi');
+      return;
+    }
+    
     if (!editRow) return;
     try {
       setIsSaving(true);
@@ -171,6 +185,12 @@ export default function AttendancePage() {
   };
 
   const handleDelete = async () => {
+    // Authorization: Hanya Owner yang boleh delete
+    if (!isOwner) {
+      toast.error('Anda tidak memiliki izin untuk menghapus data absensi');
+      return;
+    }
+    
     if (!editRow) return;
     try {
       setIsDeleting(true);
@@ -249,7 +269,7 @@ export default function AttendancePage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground">Rekap Absensi</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">Data kehadiran karyawan per hari</p>
+            <p className="text-sm text-muted-foreground mt-0.5">Data absensi karyawan per hari</p>
           </div>
         </div>
         <p className="text-muted-foreground">Memuat data...</p>
@@ -264,7 +284,7 @@ export default function AttendancePage() {
         <div>
           <h1 className="text-2xl font-bold text-foreground">Rekap Absensi</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Data kehadiran karyawan berdasarkan Clock In dan Clock Out
+            Data absensi karyawan berdasarkan Clock In dan Clock Out
           </p>
         </div>
         {activeStoreId && (
@@ -396,6 +416,254 @@ export default function AttendancePage() {
         </Select>
       </div>
 
+      {/* ── Information Card (Owner Only) ── */}
+      {isOwner && (
+        <Accordion type="single" collapsible className="bg-card border border-border rounded-lg">
+          <AccordionItem value="info" className="border-none">
+            <AccordionTrigger className="px-4 py-3 hover:no-underline">
+              <div className="flex items-center gap-2">
+                <Info className="w-5 h-5 text-blue-600" />
+                <span className="font-semibold text-base">Bagaimana Sistem Absensi Bekerja?</span>
+              </div>
+            </AccordionTrigger>
+          <AccordionContent className="px-4 pb-4 space-y-6">
+            {/* Section 1: Cara Sistem Membaca Fingerprint */}
+            <div className="space-y-3">
+              <h3 className="font-semibold text-sm">1. Cara Sistem Membaca Fingerprint</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Sistem akan membaca seluruh data fingerprint pada setiap tanggal kerja, kemudian mencoba 
+                mencocokkan setiap scan dengan waktu absensi yang telah ditentukan, yaitu:
+              </p>
+              <ul className="text-sm text-muted-foreground space-y-1 ml-5 list-disc">
+                <li>Jam Masuk</li>
+                <li>Jam Mulai Istirahat</li>
+                <li>Jam Selesai Istirahat</li>
+                <li>Jam Pulang</li>
+              </ul>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                Jika pada waktu tertentu tidak ditemukan scan yang sesuai, maka bagian tersebut akan 
+                ditampilkan sebagai <span className="font-medium text-foreground">"-"</span> (kosong). 
+                Sistem tidak akan mengisi waktu secara otomatis.
+              </p>
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                <p className="text-xs text-blue-900">
+                  <span className="font-medium">Catatan:</span> Sistem hanya mengambil scan yang sesuai dengan 
+                  aturan jam kerja yang telah diatur pada Aturan Absensi.
+                </p>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Section 2: Arti Status Attendance */}
+            <div className="space-y-3">
+              <h3 className="font-semibold text-sm">2. Arti Status Absensi</h3>
+              <div className="border border-border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left p-3 font-semibold">Status</th>
+                      <th className="text-left p-3 font-semibold">Penjelasan</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    <tr>
+                      <td className="p-3">
+                        <Badge className="bg-green-100 text-green-800 border-green-200">Hadir Penuh</Badge>
+                      </td>
+                      <td className="p-3 text-muted-foreground">
+                        Semua proses absensi berhasil tercatat (Masuk, Istirahat, dan Pulang).
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3">
+                        <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">Hadir Sebagian</Badge>
+                      </td>
+                      <td className="p-3 text-muted-foreground">
+                        Karyawan sudah melakukan absen masuk dan mulai istirahat, tetapi belum tercatat kembali setelah istirahat.
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3">
+                        <Badge className="bg-red-100 text-red-800 border-red-200">Belum Lengkap</Badge>
+                      </td>
+                      <td className="p-3 text-muted-foreground">
+                        Ada satu atau lebih data absensi yang belum lengkap atau tidak sesuai aturan jam kerja.
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* Section 3: Aturan Klasifikasi */}
+            <div className="space-y-3">
+              <h3 className="font-semibold text-sm">3. Aturan Klasifikasi Absensi</h3>
+              <div className="border border-border rounded-lg overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-center p-2 font-semibold border-r border-border">No</th>
+                      <th className="text-center p-2 font-semibold border-r border-border">Masuk</th>
+                      <th className="text-center p-2 font-semibold border-r border-border">Mulai Istirahat</th>
+                      <th className="text-center p-2 font-semibold border-r border-border">Selesai Istirahat</th>
+                      <th className="text-center p-2 font-semibold border-r border-border">Pulang</th>
+                      <th className="text-center p-2 font-semibold">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {[
+                      { no: 1, m: '-', mi: '-', si: '-', p: '-', status: 'skip', label: 'Tidak dibuat' },
+                      { no: 2, m: '-', mi: '-', si: '-', p: '✓', status: 'incomplete', label: 'Belum Lengkap' },
+                      { no: 3, m: '-', mi: '-', si: '✓', p: '-', status: 'incomplete', label: 'Belum Lengkap' },
+                      { no: 4, m: '-', mi: '-', si: '✓', p: '✓', status: 'incomplete', label: 'Belum Lengkap' },
+                      { no: 5, m: '-', mi: '✓', si: '-', p: '-', status: 'incomplete', label: 'Belum Lengkap' },
+                      { no: 6, m: '-', mi: '✓', si: '-', p: '✓', status: 'incomplete', label: 'Belum Lengkap' },
+                      { no: 7, m: '-', mi: '✓', si: '✓', p: '-', status: 'incomplete', label: 'Belum Lengkap' },
+                      { no: 8, m: '-', mi: '✓', si: '✓', p: '✓', status: 'incomplete', label: 'Belum Lengkap' },
+                      { no: 9, m: '✓', mi: '-', si: '-', p: '-', status: 'incomplete', label: 'Belum Lengkap' },
+                      { no: 10, m: '✓', mi: '-', si: '-', p: '✓', status: 'incomplete', label: 'Belum Lengkap' },
+                      { no: 11, m: '✓', mi: '-', si: '✓', p: '-', status: 'incomplete', label: 'Belum Lengkap' },
+                      { no: 12, m: '✓', mi: '-', si: '✓', p: '✓', status: 'incomplete', label: 'Belum Lengkap' },
+                      { no: 13, m: '✓', mi: '✓', si: '-', p: '-', status: 'partial', label: 'Hadir Sebagian' },
+                      { no: 14, m: '✓', mi: '✓', si: '-', p: '✓', status: 'incomplete', label: 'Belum Lengkap' },
+                      { no: 15, m: '✓', mi: '✓', si: '✓', p: '-', status: 'incomplete', label: 'Belum Lengkap' },
+                      { no: 16, m: '✓', mi: '✓', si: '✓', p: '✓', status: 'complete', label: 'Hadir Penuh' },
+                    ].map((row) => (
+                      <tr key={row.no}>
+                        <td className="text-center p-2 border-r border-border text-muted-foreground">{row.no}</td>
+                        <td className="text-center p-2 border-r border-border">{row.m}</td>
+                        <td className="text-center p-2 border-r border-border">{row.mi}</td>
+                        <td className="text-center p-2 border-r border-border">{row.si}</td>
+                        <td className="text-center p-2 border-r border-border">{row.p}</td>
+                        <td className="text-center p-2">
+                          {row.status === 'skip' && (
+                            <span className="text-muted-foreground">{row.label}</span>
+                          )}
+                          {row.status === 'complete' && (
+                            <Badge className="bg-green-100 text-green-800 border-green-200 text-[10px]">
+                              {row.label}
+                            </Badge>
+                          )}
+                          {row.status === 'partial' && (
+                            <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 text-[10px]">
+                              {row.label}
+                            </Badge>
+                          )}
+                          {row.status === 'incomplete' && (
+                            <Badge className="bg-red-100 text-red-800 border-red-200 text-[10px]">
+                              {row.label}
+                            </Badge>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Sistem menentukan status berdasarkan kombinasi data fingerprint yang berhasil ditemukan. 
+                Jika suatu waktu absensi tidak ditemukan, maka akan ditampilkan sebagai "-" tanpa mengubah data lainnya.
+              </p>
+            </div>
+
+            <Separator />
+
+            {/* Section 4: Import Fingerprint */}
+            <div className="space-y-3">
+              <h3 className="font-semibold text-sm">4. Bagaimana Import Fingerprint Bekerja</h3>
+              <div className="border border-border rounded-lg overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left p-3 font-semibold">Kondisi</th>
+                      <th className="text-left p-3 font-semibold">Yang Dilakukan Sistem</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    <tr>
+                      <td className="p-3 text-muted-foreground">
+                        Belum ada data Absensi pada tanggal tersebut
+                      </td>
+                      <td className="p-3">
+                        <span className="flex items-center gap-1.5">
+                          <span>✅</span>
+                          <span>Membuat data absensi baru</span>
+                        </span>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 text-muted-foreground">
+                        Sudah ada data dan belum pernah diedit manual, tetapi datanya sama
+                      </td>
+                      <td className="p-3">
+                        <span className="flex items-center gap-1.5">
+                          <span>⏭</span>
+                          <span>Tidak melakukan apa pun</span>
+                        </span>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 text-muted-foreground">
+                        Sudah ada data dan belum pernah diedit manual, tetapi datanya berubah
+                      </td>
+                      <td className="p-3">
+                        <span className="flex items-center gap-1.5">
+                          <span>🔄</span>
+                          <span>Memperbarui jam absensi sesuai fingerprint terbaru</span>
+                        </span>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="p-3 text-muted-foreground">
+                        Data pernah diedit manual
+                      </td>
+                      <td className="p-3">
+                        <span className="flex items-center gap-1.5">
+                          <span>🔒</span>
+                          <span>Tidak akan diubah oleh proses import</span>
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Setelah data absensi diedit secara manual, sistem akan menganggap data tersebut 
+                telah diverifikasi sehingga proses import fingerprint berikutnya tidak akan mengubah data tersebut lagi.
+              </p>
+            </div>
+
+            <Separator />
+
+            {/* Section 5: Catatan Penting */}
+            <div className="space-y-3">
+              <h3 className="font-semibold text-sm">5. Catatan Penting</h3>
+              <Alert className="border-amber-200 bg-amber-50">
+                <Info className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-xs text-amber-900 space-y-2 ml-2">
+                  <ul className="space-y-1.5 list-disc ml-4">
+                    <li>
+                      Sistem hanya menggunakan data fingerprint yang sesuai dengan aturan jam kerja.
+                    </li>
+                    <li>
+                      Scan di luar waktu yang telah ditentukan tidak digunakan untuk menentukan status absensi.
+                    </li>
+                    <li>
+                      Jika suatu waktu absensi tidak ditemukan, maka akan ditampilkan sebagai "-" dan status absensi
+                      akan disesuaikan berdasarkan aturan klasifikasi.
+                    </li>
+                  </ul>
+                </AlertDescription>
+              </Alert>
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
+      )}
+
       {/* ── Summary Cards ── */}
       {filterEmployee === 'all' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -449,13 +717,13 @@ export default function AttendancePage() {
               <TableHead>Jam Pulang</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Keterangan</TableHead>
-              <TableHead className="w-12" />
+              {isOwner && <TableHead className="w-12" />}
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.length === 0 && (
               <TableRow>
-                <TableCell colSpan={9} className="text-center text-muted-foreground py-8">
+                <TableCell colSpan={isOwner ? 9 : 8} className="text-center text-muted-foreground py-8">
                   Tidak ada data absensi
                 </TableCell>
               </TableRow>
@@ -482,11 +750,13 @@ export default function AttendancePage() {
                     </div>
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{row.note}</TableCell>
-                  <TableCell>
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(row)}>
-                      <Pencil className="w-4 h-4" />
-                    </Button>
-                  </TableCell>
+                  {isOwner && (
+                    <TableCell>
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(row)}>
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                    </TableCell>
+                  )}
                 </TableRow>
               );
             })}
@@ -494,8 +764,8 @@ export default function AttendancePage() {
         </Table>
       </div>
 
-      {/* ── Edit Dialog ── */}
-      <Dialog open={!!editRow} onOpenChange={() => setEditRow(null)}>
+      {/* ── Edit Dialog (Owner Only) ── */}
+      <Dialog open={!!editRow && isOwner} onOpenChange={() => setEditRow(null)}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Edit Absensi</DialogTitle>
@@ -516,10 +786,10 @@ export default function AttendancePage() {
             <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-900">
               <p className="font-medium mb-1">Informasi</p>
               <p className="text-xs">
-                Edit attendance hanya untuk mengubah status dan catatan. Waktu fingerprint (Jam Masuk, Jam Pulang, Istirahat) tetap berasal dari mesin fingerprint dan tidak bisa diedit manual.
+                Edit data absensi hanya untuk mengubah status dan catatan. Waktu fingerprint (Jam Masuk, Jam Pulang, Istirahat) tetap berasal dari mesin fingerprint dan tidak bisa diedit manual.
               </p>
               <p className="text-xs mt-2">
-                Setelah disimpan, attendance akan ditandai sebagai Manual Edit dan import fingerprint berikutnya tidak akan mengubahnya.
+                Setelah disimpan, data absensi akan ditandai sebagai Manual Edit dan import fingerprint berikutnya tidak akan mengubahnya.
               </p>
             </div>
 
@@ -625,7 +895,7 @@ export default function AttendancePage() {
           <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-900">
             <p className="font-medium mb-1">Cara Kerja Absensi</p>
             <p className="text-xs">
-              Sistem akan otomatis menentukan status kehadiran berdasarkan waktu fingerprint yang masuk. 
+              Sistem akan otomatis menentukan status absensi berdasarkan waktu fingerprint yang masuk. 
               Pastikan jam kerja dan jam istirahat di bawah ini sesuai dengan aturan di toko anda agar hasil absensi menjadi akurat.
             </p>
           </div>
