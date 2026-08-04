@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { FileUp, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
 import { importZKTecoFile } from '@/services/attendanceImportService';
 
 interface Props {
@@ -50,25 +51,22 @@ export function ZKTecoImportButton({ storeId, onSuccess }: Props) {
 
   return (
     <>
-      <button
+      <Button
         onClick={() => !isLoading && inputRef.current?.click()}
         disabled={isLoading}
-        className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-border bg-white
-          text-sm font-medium text-foreground hover:bg-surface active:scale-[0.97]
-          transition-all disabled:opacity-50 disabled:cursor-not-allowed touch-manipulation"
       >
         {isLoading ? (
           <>
-            <Loader2 className="w-4 h-4 animate-spin" />
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
             Memproses...
           </>
         ) : (
           <>
-            <FileUp className="w-4 h-4" />
+            <FileUp className="w-4 h-4 mr-2" />
             Import Absensi
           </>
         )}
-      </button>
+      </Button>
 
       <input
         ref={inputRef}
