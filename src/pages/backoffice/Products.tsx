@@ -410,7 +410,7 @@ export default function Products() {
               <Package className="w-5 h-5 text-blue-600" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Total SKU</p>
+              <p className="text-sm text-muted-foreground">Total Barang</p>
               <p className="text-xl font-bold">{storeProducts.length}</p>
             </div>
           </div>
