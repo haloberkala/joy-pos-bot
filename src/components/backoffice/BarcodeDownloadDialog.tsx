@@ -18,7 +18,7 @@ import { Button }   from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input }    from '@/components/ui/input';
 import { Label }    from '@/components/ui/label';
-import { Download, Loader2, Search, SearchX } from 'lucide-react';
+import { AlertCircle, Download, Loader2, Minus, Plus, Search, SearchX, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { generateRollLabelPDF } from '@/lib/barcode/rollLabelPdf';
 
@@ -33,11 +33,11 @@ export function BarcodeDownloadDialog({
   onClose,
   products,
 }: BarcodeDownloadDialogProps) {
-  const [selectedIds, setSelectedIds]   = useState<Set<number>>(new Set());
+  const [quantities, setQuantities]     = useState<Map<number, number>>(new Map());
   const [searchQuery, setSearchQuery]   = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // ── Filtered list (useMemo for performance with large catalogs) ────────────
+  // ── Filtered list ──────────────────────────────────────────────────────────
   const filteredProducts = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) return products;
@@ -49,30 +49,35 @@ export function BarcodeDownloadDialog({
   }, [products, searchQuery]);
 
   // ── Derived state ──────────────────────────────────────────────────────────
-  const selectedCount = selectedIds.size;
-  const totalPages    = Math.ceil(selectedCount / 2);
-
-  // "Select All" is scoped to the current filtered list
-  const filteredIds       = useMemo(() => new Set(filteredProducts.map((p) => p.id)), [filteredProducts]);
-  const isAllFilteredSelected =
-    filteredProducts.length > 0 &&
-    filteredProducts.every((p) => selectedIds.has(p.id));
+  const selectedCount = quantities.size;
+  const totalLabels = useMemo(() => {
+    let sum = 0;
+    quantities.forEach(qty => sum += qty);
+    return sum;
+  }, [quantities]);
+  const totalPages = Math.ceil(totalLabels / 2);
+  const emptySlots = totalPages * 2 - totalLabels;
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
-  /** Toggle all within the currently visible (filtered) list only. */
-  const handleToggleAll = (checked: boolean) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      filteredIds.forEach((id) => (checked ? next.add(id) : next.delete(id)));
+  const handleToggleProduct = (id: number, checked: boolean) => {
+    setQuantities((prev) => {
+      const next = new Map(prev);
+      if (checked) {
+        next.set(id, 1);
+      } else {
+        next.delete(id);
+      }
       return next;
     });
   };
 
-  const handleToggleProduct = (id: number, checked: boolean) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      checked ? next.add(id) : next.delete(id);
+  const handleQuantityChange = (id: number, delta: number) => {
+    setQuantities((prev) => {
+      const next = new Map(prev);
+      const current = next.get(id) || 0;
+      const newQty = Math.max(1, current + delta);
+      next.set(id, newQty);
       return next;
     });
   };
@@ -82,13 +87,44 @@ export function BarcodeDownloadDialog({
 
     setIsGenerating(true);
     try {
-      // Preserve original order from the products prop
-      const selected = products.filter((p) => selectedIds.has(p.id));
-      generateRollLabelPDF(selected, 'tsc-te300', 'barcode-te300.pdf');
-      toast.success(`PDF berhasil dibuat · ${selectedCount} label · ${totalPages} halaman`);
+      // Expand products by quantity
+      const expanded: Product[] = [];
+      products.forEach((p) => {
+        const qty = quantities.get(p.id);
+        if (qty) {
+          for (let i = 0; i < qty; i++) {
+            expanded.push(p);
+          }
+        }
+      });
+
+      // Always add empty labels if needed (auto-fill is always ON)
+      if (emptySlots > 0) {
+        const emptyProduct: Product = {
+          id: -1,
+          code: '',
+          name: '',
+          selling_price_retail: 0,
+          selling_price_grosir: 0,
+          buying_price: 0,
+          stock: 0,
+          store_id: 0,
+          category_id: null,
+          brand_id: null,
+          is_active: true,
+          created_at: '',
+          updated_at: '',
+        };
+        for (let i = 0; i < emptySlots; i++) {
+          expanded.push(emptyProduct);
+        }
+      }
+
+      generateRollLabelPDF(expanded, 'tsc-te300', 'barcode-te300.pdf');
+      toast.success(`PDF berhasil dibuat · ${totalLabels} label · ${totalPages} halaman`);
       setTimeout(() => {
         onClose();
-        setSelectedIds(new Set());
+        setQuantities(new Map());
         setSearchQuery('');
       }, 500);
     } catch (err) {
@@ -103,112 +139,194 @@ export function BarcodeDownloadDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col gap-0 p-0">
+      <DialogContent className="max-w-5xl h-[600px] flex flex-col gap-0 p-0">
 
         {/* Header */}
-        <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
-          <DialogTitle>Download Barcode Label</DialogTitle>
-          <p className="text-xs text-muted-foreground">
-            TSC TE300 · 110 × 30 mm · 2 label per halaman
-          </p>
-        </DialogHeader>
-
-        {/* Search bar */}
-        <div className="px-6 pb-3 shrink-0">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
-            <Input
-              autoFocus
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari nama produk atau kode..."
-              className="pl-9"
-            />
-          </div>
-        </div>
-
-        {/* Select All */}
-        <div className="px-6 py-2 border-y shrink-0">
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="select-all"
-              checked={isAllFilteredSelected}
-              onCheckedChange={(v) => handleToggleAll(!!v)}
-            />
-            <Label htmlFor="select-all" className="font-semibold cursor-pointer text-sm">
-              {searchQuery.trim()
-                ? `Pilih semua hasil "${searchQuery.trim()}"`
-                : 'Pilih Semua'}
-            </Label>
-          </div>
-        </div>
-
-        {/* Product list */}
-        <div className="flex-1 overflow-y-auto px-6 py-2 min-h-0">
-          {filteredProducts.length === 0 ? (
-            /* Empty state */
-            <div className="flex flex-col items-center justify-center gap-2 py-12 text-muted-foreground">
-              <SearchX className="w-8 h-8 opacity-40" />
-              <p className="text-sm">Tidak ada produk ditemukan.</p>
+        <div className="px-6 py-4 border-b shrink-0">
+          <div className="flex items-start justify-between">
+            <div>
+              <DialogTitle>Download Barcode Label</DialogTitle>
             </div>
-          ) : (
-            <div className="space-y-0.5">
-              {filteredProducts.map((product) => (
-                <div
-                  key={product.id}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted/50 cursor-pointer"
-                  onClick={() => handleToggleProduct(product.id, !selectedIds.has(product.id))}
-                >
-                  <Checkbox
-                    id={`product-${product.id}`}
-                    checked={selectedIds.has(product.id)}
-                    onCheckedChange={(v) => handleToggleProduct(product.id, !!v)}
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                  <Label
-                    htmlFor={`product-${product.id}`}
-                    className="flex-1 cursor-pointer text-sm select-none"
-                    onClick={(e) => e.preventDefault()} /* row click handles it */
-                  >
-                    <span className="font-medium">{product.name}</span>
-                    <span className="text-muted-foreground ml-2 text-xs">
-                      {product.code}
-                    </span>
-                  </Label>
+          </div>
+        </div>
+
+        {/* Two Column Layout */}
+        <div className="flex-1 flex min-h-0">
+          
+          {/* LEFT: Product Catalog */}
+          <div className="flex-1 flex flex-col border-r min-w-0">
+            {/* Search */}
+            <div className="px-4 py-3 border-b">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  autoFocus
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Cari produk..."
+                  className="pl-9 h-9"
+                />
+              </div>
+            </div>
+
+            {/* Product List */}
+            <div className="flex-1 overflow-y-auto">
+              {filteredProducts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-center px-4">
+                  <SearchX className="w-10 h-10 text-muted-foreground/40 mb-2" />
+                  <p className="text-sm text-muted-foreground">Tidak ada produk ditemukan</p>
                 </div>
-              ))}
+              ) : (
+                <div className="divide-y">
+                  {filteredProducts.map((product) => {
+                    const qty = quantities.get(product.id) || 0;
+                    const isSelected = qty > 0;
+                    
+                    return (
+                      <div
+                        key={product.id}
+                        className={`px-4 py-2.5 hover:bg-muted/50 cursor-pointer transition-colors ${
+                          isSelected ? 'bg-primary/5' : ''
+                        }`}
+                        onClick={() => handleToggleProduct(product.id, !isSelected)}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={(v) => handleToggleProduct(product.id, !!v)}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{product.name}</p>
+                            <p className="text-xs text-muted-foreground">{product.code}</p>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          )}
-        </div>
-
-        {/* Summary + Download */}
-        <div className="px-6 pt-3 pb-5 border-t shrink-0 space-y-3">
-          {/* Counter – always shows total selected, not filtered count */}
-          <div className="text-sm text-muted-foreground">
-            {selectedCount > 0 ? (
-              <>
-                <span className="font-semibold text-foreground">{selectedCount}</span> produk dipilih ·{' '}
-                <span className="font-semibold text-foreground">{totalPages}</span> halaman PDF
-                {selectedCount % 2 !== 0 && (
-                  <span className="block text-xs mt-0.5">
-                    Halaman terakhir: 1 label (kanan kosong)
-                  </span>
-                )}
-              </>
-            ) : (
-              'Belum ada produk dipilih'
-            )}
           </div>
 
-          <Button
-            onClick={handleDownload}
-            disabled={selectedCount === 0 || isGenerating}
-            className="w-full gap-2"
-          >
-            {isGenerating
-              ? <><Loader2 className="w-4 h-4 animate-spin" />Generating…</>
-              : <><Download className="w-4 h-4" />Download PDF · TSC TE300</>}
-          </Button>
+          {/* RIGHT: Print Queue & Summary */}
+          <div className="w-[380px] flex flex-col shrink-0">
+            
+            {/* Print Queue */}
+            <div className="flex-1 flex flex-col min-h-0">
+              <div className="px-4 py-3 border-b">
+                <h3 className="text-sm font-semibold">Print Queue</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {selectedCount === 0 ? 'Pilih produk untuk mulai' : `${selectedCount} produk dipilih`}
+                </p>
+              </div>
+
+              <div className="flex-1 overflow-y-auto">
+                {selectedCount === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center px-4">
+                    <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-2">
+                      <Download className="w-6 h-6 text-muted-foreground" />
+                    </div>
+                    <p className="text-sm text-muted-foreground">Belum ada produk dipilih</p>
+                  </div>
+                ) : (
+                  <div className="divide-y">
+                    {Array.from(quantities.entries()).map(([productId, qty]) => {
+                      const product = products.find(p => p.id === productId);
+                      if (!product) return null;
+                      
+                      return (
+                        <div key={productId} className="px-4 py-3">
+                          <div className="flex items-start justify-between gap-3 mb-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">{product.name}</p>
+                              <p className="text-xs text-muted-foreground">{product.code}</p>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-6 w-6 shrink-0"
+                              onClick={() => handleToggleProduct(productId, false)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-muted-foreground">Jumlah</span>
+                            <div className="flex items-center gap-2">
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => handleQuantityChange(productId, -1)}
+                              >
+                                <Minus className="h-3 w-3" />
+                              </Button>
+                              <span className="text-sm font-semibold w-8 text-center tabular-nums">
+                                {qty}
+                              </span>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => handleQuantityChange(productId, 1)}
+                              >
+                                <Plus className="h-3 w-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Summary & Actions */}
+            <div className="border-t bg-muted/20">
+              {/* Summary */}
+              <div className="px-4 py-3 space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Total Label</span>
+                  <span className="font-semibold tabular-nums">{totalLabels}</span>
+                </div>
+              </div>
+
+              {/* Warning */}
+              {emptySlots > 0 && selectedCount > 0 && (
+                <div className="px-4 pb-3">
+                  <div className="bg-amber-50 border border-amber-200 rounded p-2 flex items-start gap-2">
+                    <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-[11px] text-amber-900 leading-snug">
+                      <span className="font-medium">Label ganjil.</span> Halaman terakhir akan memiliki 1 slot kosong.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Download Button */}
+              <div className="px-4 pb-4">
+                <Button
+                  onClick={handleDownload}
+                  disabled={selectedCount === 0 || isGenerating}
+                  className="w-full"
+                >
+                  {isGenerating ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Download PDF
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
 
       </DialogContent>

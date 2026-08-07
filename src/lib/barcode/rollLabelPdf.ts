@@ -141,6 +141,10 @@ function fitPriceFs(doc: jsPDF, text: string): number {
  * @param originX  Pass LEFT_X (3) for left column, RIGHT_X (57) for right.
  */
 function renderLabelContent(doc: jsPDF, product: Product, originX: number): void {
+  // Skip rendering if this is an empty label (code is empty)
+  if (!product.code || product.code.trim() === '') {
+    return; // Leave blank space
+  }
 
   // 1. Barcode – vector CODE128
   drawBarcode(doc, product.code, originX + BC_X, BC_Y, BC_W, BC_H);
